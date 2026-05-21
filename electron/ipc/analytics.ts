@@ -42,7 +42,7 @@ export function registerHandlers(): void {
     // type is inside data JSON, not a column
     const rows = dbManager.rawQuery<Record<string, unknown>>(
       `SELECT
-        COALESCE(json_extract(data, '$.tool_name'), 'unknown') as toolName,
+        COALESCE(json_extract(data, '$.tool'), 'unknown') as toolName,
         COUNT(*) as count
       FROM part
       WHERE json_extract(data, '$.type') = 'tool'
@@ -63,11 +63,11 @@ export function registerHandlers(): void {
     // type is inside data JSON, not a column
     const rows = dbManager.rawQuery<Record<string, unknown>>(
       `SELECT
-        COALESCE(json_extract(data, '$.skill_name'), 'unknown') as skillName,
+        COALESCE(json_extract(data, '$.state.input.name'), 'unknown') as skillName,
         COUNT(*) as count
       FROM part
       WHERE json_extract(data, '$.type') = 'tool'
-        AND json_extract(data, '$.tool_name') = 'skill'
+        AND json_extract(data, '$.tool') = 'skill'
       GROUP BY skillName
       ORDER BY count DESC
       LIMIT 20`

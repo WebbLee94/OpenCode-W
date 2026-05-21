@@ -1,12 +1,13 @@
-import { ipcMain, dialog, app } from 'electron'
+import { ipcMain, dialog } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import type { BackupDTO, BackupPreviewDTO } from '../../shared/types'
 import dbManager from '../database'
 import Database from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 
-const BACKUP_DIR = path.join(app.getPath('userData'), 'backups')
+const BACKUP_DIR = path.join(os.homedir(), '.DBScope-OC', 'backups')
 
 function ensureBackupDir(): void {
   if (!fs.existsSync(BACKUP_DIR)) {
@@ -25,14 +26,20 @@ function getBackupFiles(): BackupDTO[] {
     const filePath = path.join(BACKUP_DIR, file)
     try {
       const stat = fs.statSync(filePath)
-      // Parse timestamp from filename: opencode-backup-2024-01-15T10-30-00.db
+      // Parse timestamp from filename: opencode-backup-2024-01-15T10-30-00-000.db
       const dateMatch = file.match(/opencode-backup-(.+)\.db/)
-      const createdAt = dateMatch ? dateMatch[1].replace(/-/g, (_m, offset) => {
-        // Restore ISO format: first 3 segments are date, rest is time
-        if (offset < 10) return '-'
-        if (offset === 10) return 'T'
-        return ':'
-      }) : stat.mtime.toISOString()
+      const createdAt = dateMatch ? (() => {
+        // e.g. "2024-01-15T10-30-00-000" → "2024-01-15T10:30:00.000"
+        const raw = dateMatch[1]
+        const tIdx = raw.indexOf('T')
+        if (tIdx === -1) return stat.mtime.toISOString()
+        const datePart = raw.slice(0, tIdx) // "2024-01-15"
+        const timePart = raw.slice(tIdx + 1) // "10-30-00-000"
+        const timeSegments = timePart.split('-')
+        const time = timeSegments.slice(0, 3).join(':') // "10:30:00"
+        const ms = timeSegments[3] || '000' // "000"
+        return `${datePart}T${time}.${ms}`
+      })() : stat.mtime.toISOString()
 
       backups.push({
         fileName: file,
