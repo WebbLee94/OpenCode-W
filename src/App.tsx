@@ -99,7 +99,7 @@ function Layout() {
           <div className="flex items-center gap-2">
             <Database size={20} className="text-blue-600" />
             <div>
-              <h1 className="text-base font-semibold text-gray-900">OpenCode DB</h1>
+              <h1 className="text-base font-semibold text-gray-900">DBScope-OC</h1>
               <p className="text-xs text-gray-500">Database Manager</p>
             </div>
           </div>

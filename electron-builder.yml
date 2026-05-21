@@ -1,5 +1,5 @@
-appId: com.opencode.db-manager
-productName: OpenCode DB Manager
+appId: com.dbscope.oc
+productName: DBScope-OC
 directories:
   output: dist
 files:
