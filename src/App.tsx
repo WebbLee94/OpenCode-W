@@ -4,7 +4,7 @@ import Sessions from './features/sessions/Sessions'
 import Messages from './features/messages/Messages'
 import Cleanup from './features/cleanup/Cleanup'
 import Backup from './features/backup/Backup'
-import { LayoutDashboard, MessageSquare, Trash2, HardDrive, Database, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Trash2, HardDrive, Database, ChevronRight, FolderSync } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { invoke, isElectron } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
@@ -57,6 +57,7 @@ function Breadcrumb() {
 function Layout() {
   const [dbConnected, setDbConnected] = useState(false)
   const [dbPath, setDbPath] = useState<string>('')
+  const [appVersion, setAppVersion] = useState('')
 
   const checkConnection = useCallback(async () => {
     if (!isElectron()) {
@@ -73,6 +74,10 @@ function Layout() {
 
   useEffect(() => {
     checkConnection()
+    // Get app version
+    if (isElectron()) {
+      invoke<string>(IPC_CHANNELS.APP_GET_VERSION).then((v) => setAppVersion(v)).catch(() => {})
+    }
   }, [checkConnection])
 
   const handleOpenDatabase = async () => {
@@ -100,7 +105,7 @@ function Layout() {
             <Database size={20} className="text-blue-600" />
             <div>
               <h1 className="text-base font-semibold text-gray-900">DBScope-OC</h1>
-              <p className="text-xs text-gray-500">Database Manager</p>
+              <p className="text-xs text-gray-500">OC Database Manager{appVersion ? ` v${appVersion}` : ''}</p>
             </div>
           </div>
         </div>
@@ -125,13 +130,22 @@ function Layout() {
         </div>
         {/* Database connection status */}
         <div className="p-3 border-t border-gray-200">
-          <button
-            onClick={handleOpenDatabase}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs rounded-md bg-gray-50 hover:bg-gray-100 transition-colors text-gray-700"
-          >
-            <span className={`w-2 h-2 rounded-full ${dbConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
-            <span className="truncate">{dbConnected ? '已连接' : '打开数据库'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleOpenDatabase}
+              className="flex-1 flex items-center gap-2 px-3 py-2 text-xs rounded-md bg-gray-50 hover:bg-gray-100 transition-colors text-gray-700 min-w-0"
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${dbConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
+              <span className="truncate">{dbConnected ? '已连接' : '打开数据库'}</span>
+            </button>
+            <button
+              onClick={handleOpenDatabase}
+              title="切换数据源"
+              className="flex items-center justify-center w-8 h-8 rounded-md bg-gray-50 hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700 shrink-0"
+            >
+              <FolderSync size={14} />
+            </button>
+          </div>
         </div>
       </nav>
 

@@ -136,7 +136,7 @@ function Backup() {
             <div className="ml-13 space-y-2 text-sm">
               <div className="flex items-center gap-2 text-gray-600">
                 <HardDrive size={14} className="text-gray-400" />
-                <span>备份目录: ~/opencode-backups/</span>
+                <span>备份目录: ~/.DBScope-OC/backups/</span>
               </div>
             </div>
           </div>
@@ -211,7 +211,7 @@ function Backup() {
                     <th className="text-right px-4 py-3 font-medium text-gray-500 w-28">大小</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-500 w-44">创建时间</th>
                     <th className="text-center px-4 py-3 font-medium text-gray-500 w-20">压缩</th>
-                    <th className="text-right px-4 py-3 font-medium text-gray-500 w-36">操作</th>
+                    <th className="text-right px-4 py-3 font-medium text-gray-500 w-40">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -245,14 +245,14 @@ function Backup() {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleOpenRestore(backup)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-green-700 bg-green-50 border border-green-200 rounded hover:bg-green-100 transition-colors"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded hover:bg-green-100 transition-colors"
                           >
                             <RotateCcw size={12} />
                             恢复
                           </button>
                           <button
                             onClick={() => handleOpenDelete(backup)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
                           >
                             <Trash2 size={12} />
                             删除

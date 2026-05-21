@@ -28,7 +28,8 @@ import {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const PAGE_SIZE = 50
+const DEFAULT_PAGE_SIZE = 20
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 
 const SORT_OPTIONS = [
   { value: 'time_updated', label: '最近活跃' },
@@ -57,6 +58,10 @@ function Sessions() {
   const [sortBy, setSortBy] = useState('time_updated')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    const saved = localStorage.getItem('dbscope-page-size')
+    return saved ? parseInt(saved, 10) : DEFAULT_PAGE_SIZE
+  })
 
   // Detail panel state
   const [selectedSession, setSelectedSession] = useState<SessionDetailDTO | null>(null)
@@ -89,7 +94,7 @@ function Sessions() {
       sortBy,
       sortOrder,
       page,
-      pageSize: PAGE_SIZE,
+      pageSize,
     }
 
     setLoading(true)
@@ -103,7 +108,7 @@ function Sessions() {
         setTotal(0)
       })
       .finally(() => setLoading(false))
-  }, [debouncedSearch, projectId, sortBy, sortOrder, page])
+  }, [debouncedSearch, projectId, sortBy, sortOrder, page, pageSize])
 
   // ─── Load projects list ──────────────────────────────────────────────────
 
@@ -157,9 +162,15 @@ function Sessions() {
 
   // ─── Pagination helpers ──────────────────────────────────────────────────
 
-  const totalPages = Math.ceil(total / PAGE_SIZE)
-  const startIdx = (page - 1) * PAGE_SIZE + 1
-  const endIdx = Math.min(page * PAGE_SIZE, total)
+  const totalPages = Math.ceil(total / pageSize)
+  const startIdx = (page - 1) * pageSize + 1
+  const endIdx = Math.min(page * pageSize, total)
+
+  const handlePageSizeChange = useCallback((newSize: number) => {
+    setPageSize(newSize)
+    localStorage.setItem('dbscope-page-size', String(newSize))
+    setPage(1)
+  }, [])
 
   const goToPage = useCallback(
     (p: number) => {
@@ -236,7 +247,7 @@ function Sessions() {
               <option value="">全部项目</option>
               {projects.map((p) => (
                 <option key={p} value={p}>
-                  {p}
+                  {p.split('/').pop() || p}
                 </option>
               ))}
             </select>
@@ -281,6 +292,7 @@ function Sessions() {
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-gray-50">
               <tr className="border-b border-gray-200">
+                <th className="w-12 px-4 py-3 text-center font-medium text-gray-500">#</th>
                 <th className="py-3 pr-4 text-left font-medium text-gray-500">标题</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">消息数</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">数据大小</th>
@@ -298,6 +310,7 @@ function Sessions() {
                     idx % 2 === 1 ? 'bg-gray-50/50' : ''
                   } ${selectedSession?.id === session.id ? 'bg-blue-50' : ''}`}
                 >
+                  <td className="px-4 py-3 text-center text-gray-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
                   <td className="max-w-xs truncate py-3 pr-4 font-medium text-gray-900" title={session.title || '无标题'}>
                     {session.title || '无标题'}
                   </td>
@@ -307,8 +320,8 @@ function Sessions() {
                     {formatNumber(session.tokens_input + session.tokens_output)}
                   </td>
                   <td className="px-4 py-3 text-right text-gray-600">{formatRelativeTime(session.time_updated)}</td>
-                  <td className="max-w-[200px] truncate pl-4 py-3 text-gray-500" title={session.project_id || '-'}>
-                    {session.project_id || '-'}
+                  <td className="max-w-[200px] truncate pl-4 py-3 text-gray-500" title={session.directory || session.project_id || '-'}>
+                    {session.directory ? session.directory.split('/').pop() || session.directory : (session.project_id || '-')}
                   </td>
                 </tr>
               ))}
@@ -320,9 +333,24 @@ function Sessions() {
       {/* Pagination */}
       {total > 0 && (
         <div className="shrink-0 flex items-center justify-between border-t border-gray-200 bg-white px-6 py-3">
-          <span className="text-sm text-gray-500">
-            显示 {startIdx}-{endIdx} / 共 {formatNumber(total)} 条
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500">
+              显示 {startIdx}-{endIdx} / 共 {formatNumber(total)} 条
+            </span>
+            <div className="flex items-center gap-1.5 text-sm text-gray-500">
+              <span>每页</span>
+              <select
+                value={pageSize}
+                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                className="appearance-none rounded border border-gray-300 bg-white px-2 py-0.5 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+              <span>条</span>
+            </div>
+          </div>
 
           <div className="flex items-center gap-2">
             <button
