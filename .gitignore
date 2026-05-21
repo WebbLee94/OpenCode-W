@@ -55,3 +55,6 @@ test-data/test.db
 
 # TypeScript
 *.tsbuildinfo
+
+# Trae
+.trae
