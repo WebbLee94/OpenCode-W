@@ -1,0 +1,57 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+dist-ssr
+dist-electron
+out
+release
+build
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Testing
+test-data/*.db
+test-data/test.db
+
+# Electron specific
+*.dmg
+*.exe
+*.deb
+*.rpm
+*.AppImage
+*.zip
+*.tar.gz
+*.asar
+
+# Cache
+.cache
+.eslintcache
+.stylelintcache
+
+# TypeScript
+*.tsbuildinfo
