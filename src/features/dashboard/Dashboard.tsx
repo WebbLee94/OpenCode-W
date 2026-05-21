@@ -18,8 +18,8 @@ import {
   DollarSign,
   Zap,
   RefreshCw,
-  HardDrive,
-  ArrowDownToLine,
+  Sparkles,
+  FileCheck,
   Loader2,
   AlertCircle,
   Unplug,
@@ -255,30 +255,42 @@ function Dashboard() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleVacuum}
-            disabled={actionLoading !== null}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 border border-blue-300 rounded-md hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {actionLoading === 'vacuum' ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <HardDrive size={14} />
-            )}
-            一键 VACUUM
-          </button>
-          <button
-            onClick={handleCheckpoint}
-            disabled={actionLoading !== null}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-600 border border-amber-300 rounded-md hover:bg-amber-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {actionLoading === 'checkpoint' ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <ArrowDownToLine size={14} />
-            )}
-            WAL Checkpoint
-          </button>
+          <div className="relative group">
+            <button
+              onClick={handleVacuum}
+              disabled={actionLoading !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 border border-blue-300 rounded-md hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {actionLoading === 'vacuum' ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Sparkles size={14} />
+              )}
+              一键 VACUUM
+            </button>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-pre-line z-50 w-64 text-center shadow-lg">
+              清理数据库碎片，回收已删除数据占用的空间{'\n'}{'\n'}适用场景：删除会话/消息后，数据库文件未变小时
+              <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45" />
+            </div>
+          </div>
+          <div className="relative group">
+            <button
+              onClick={handleCheckpoint}
+              disabled={actionLoading !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-600 border border-amber-300 rounded-md hover:bg-amber-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {actionLoading === 'checkpoint' ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <FileCheck size={14} />
+              )}
+              WAL Checkpoint
+            </button>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-pre-line z-50 w-64 text-center shadow-lg">
+              将待写入的变更合并到主数据库{'\n'}{'\n'}适用场景：备份前执行，或 WAL 文件过大时
+              <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45" />
+            </div>
+          </div>
           <button
             onClick={loadAllData}
             disabled={loading}
