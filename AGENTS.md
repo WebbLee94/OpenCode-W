@@ -1,7 +1,7 @@
-# AGENTS.md - OpenCode DB Manager 项目指南
+# AGENTS.md - DBScope-OC 项目指南
 
 ## 项目概述
-OpenCode DB Manager 是一款 Electron 桌面应用，用于可视化管理 OpenCode 的 SQLite 数据库。
+DBScope-OC 是一款 Electron 桌面应用，用于可视化管理 OpenCode 的 SQLite 数据库。
 
 ## 技术架构
 - **主进程** (`electron/`): Node.js + better-sqlite3 + TypeScript，负责数据库操作和 IPC
@@ -11,7 +11,7 @@ OpenCode DB Manager 是一款 Electron 桌面应用，用于可视化管理 Open
 
 ## 目录结构
 ```
-opencode-db-manager/
+DBScope-OC/
 ├── electron/
 │   ├── main.ts            # 主进程入口
 │   ├── database.ts        # DatabaseManager 单例
@@ -84,6 +84,36 @@ SELECT json_extract(data, '$.type') as type FROM part
 - ❌ 不在渲染进程直接访问 better-sqlite3
 - ❌ 不将 preload 输出为 `.mjs` 文件（Electron 不支持 ESM preload）
 - ❌ 不启用 `renderer: {}` 配置（会干扰 contextBridge）
+
+---
+
+## Git 提交规范
+
+### 提交类型（Conventional Commits）
+
+```
+feat:     新功能
+fix:      修复 Bug
+refactor: 重构（不改变功能）
+test:     测试相关
+docs:     文档更新
+chore:    构建/工具链调整
+perf:     性能优化
+
+注意：
+ - 所有提交优先考虑中文
+ - 提交信息应简洁明了，避免使用复杂的术语
+ - 提交信息应聚焦于"为什么"而非"做了什么"
+```
+
+### ⚠️ 重要约束
+
+- **NEVER** 未经用户明确要求执行 `git push`
+- **NEVER** 修改已推送的提交（`git commit --amend` 在未推送时可谨慎使用）
+- **NEVER** 使用 `git push --force`
+- 提交信息应聚焦于"为什么"而非"做了什么"
+
+---
 
 ## 原生模块说明
 

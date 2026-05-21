@@ -1,4 +1,4 @@
-# OpenCode DB Manager
+# DBScope-OC
 
 > OpenCode 数据库可视化管理工具 - 轻松管理你的 OpenCode 会话数据
 
@@ -61,7 +61,7 @@ npm run build
 ## 📁 项目结构
 
 ```
-opencode-db-manager/
+DBScope-OC/
 ├── electron/           # 主进程代码
 │   ├── main.ts        # 主进程入口
 │   ├── database.ts    # DatabaseManager 单例
@@ -78,13 +78,13 @@ opencode-db-manager/
 
 ## 📚 文档
 
-详细文档请参阅 [docs/](file:///Users/webb/dev/workspace_private/my-talk/opencode-db-manager/docs) 目录：
+详细文档请参阅 [docs/](docs) 目录：
 
-- [架构设计](file:///Users/webb/dev/workspace_private/my-talk/opencode-db-manager/docs/01-架构设计.md)
-- [数据访问层](file:///Users/webb/dev/workspace_private/my-talk/opencode-db-manager/docs/02-数据访问层.md)
-- [技术栈](file:///Users/webb/dev/workspace_private/my-talk/opencode-db-manager/docs/03-技术栈.md)
-- [功能模块](file:///Users/webb/dev/workspace_private/my-talk/opencode-db-manager/docs/04-功能模块)
-- [使用手册](file:///Users/webb/dev/workspace_private/my-talk/opencode-db-manager/docs/05-使用手册.md)
+- [架构设计](docs/01-架构设计.md)
+- [数据访问层](docs/02-数据访问层.md)
+- [技术栈](docs/03-技术栈.md)
+- [功能模块](docs/04-功能模块)
+- [使用手册](docs/05-使用手册.md)
 
 ## 💡 常见问题
 

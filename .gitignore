@@ -46,3 +46,6 @@ test-data/test.db
 
 # vite
 .vite
+
+# opencode
+.sisyphus
