@@ -9,7 +9,7 @@
 
 ## 📖 简介
 
-OpenCode DB Manager 是一款桌面应用，用于可视化管理 OpenCode 的 SQLite 数据库。支持查看数据库统计、浏览会话和消息、安全清理历史数据、备份恢复数据库。
+DBScope-OC 是一款桌面应用，用于可视化管理 OpenCode 的 SQLite 数据库。支持查看数据库统计、浏览会话和消息、安全清理历史数据、备份恢复数据库。
 
 ## ✨ 功能特性
 
@@ -30,8 +30,8 @@ OpenCode DB Manager 是一款桌面应用，用于可视化管理 OpenCode 的 S
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/JieYueGo/opencode-db-manager.git
-cd opencode-db-manager
+git clone https://github.com/JieYueGo/DBScope-OC.git
+cd DBScope-OC
 
 # 2. 安装依赖
 npm install
