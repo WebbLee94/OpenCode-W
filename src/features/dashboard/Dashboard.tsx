@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import type {
   DatabaseStats,
   TokenStats,
@@ -51,53 +51,124 @@ const SKILL_COLORS = [
   '#6d28d9', '#4f46e5',
 ]
 
+// ── Module-level cache ─────────────────────────────────────────────
+interface DashboardCache {
+  dbStats: DatabaseStats | null
+  tokenStats: TokenStats | null
+  toolRanking: ToolRanking[]
+  skillUsage: SkillUsage[]
+  trends: TrendDataPoint[]
+}
+
+let dashboardCache: DashboardCache | null = null
+
 // ── Dashboard ──────────────────────────────────────────────────────
 function Dashboard() {
-  const [dbStats, setDbStats] = useState<DatabaseStats | null>(null)
-  const [tokenStats, setTokenStats] = useState<TokenStats | null>(null)
-  const [toolRanking, setToolRanking] = useState<ToolRanking[]>([])
-  const [skillUsage, setSkillUsage] = useState<SkillUsage[]>([])
-  const [trends, setTrends] = useState<TrendDataPoint[]>([])
+  const [dbStats, setDbStats] = useState<DatabaseStats | null>(dashboardCache?.dbStats ?? null)
+  const [tokenStats, setTokenStats] = useState<TokenStats | null>(dashboardCache?.tokenStats ?? null)
+  const [toolRanking, setToolRanking] = useState<ToolRanking[]>(dashboardCache?.toolRanking ?? [])
+  const [skillUsage, setSkillUsage] = useState<SkillUsage[]>(dashboardCache?.skillUsage ?? [])
+  const [trends, setTrends] = useState<TrendDataPoint[]>(dashboardCache?.trends ?? [])
 
   const [connected, setConnected] = useState(false)
   const [dbPath, setDbPath] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!dashboardCache)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
-  // ── Load all dashboard data ──────────────────────────────────────
-  const loadAllData = useCallback(async () => {
+  const hasLoadedRef = useRef(!!dashboardCache)
+
+  // ── Load fast data (overview + tokens) ───────────────────────────
+  const loadFastData = useCallback(async () => {
+    const [stats, tokens] = await Promise.all([
+      invoke<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW),
+      invoke<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS),
+    ])
+    setDbStats(stats)
+    setTokenStats(tokens)
+    return { stats, tokens }
+  }, [])
+
+  // ── Load slow data (tools + skills + trends) ─────────────────────
+  const loadSlowData = useCallback(async () => {
+    const [tools, skills, trendData] = await Promise.all([
+      invoke<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING),
+      invoke<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE),
+      invoke<TrendDataPoint[]>(IPC_CHANNELS.DASHBOARD_TRENDS),
+    ])
+    setToolRanking(tools ?? [])
+    setSkillUsage(skills ?? [])
+    setTrends(trendData ?? [])
+    return { tools: tools ?? [], skills: skills ?? [], trendData: trendData ?? [] }
+  }, [])
+
+  // ── Load all data with async groups ──────────────────────────────
+  const loadAllData = useCallback(async (forceRefresh = false) => {
+    // Use cache if available and not forcing refresh
+    if (dashboardCache && !forceRefresh) {
+      setDbStats(dashboardCache.dbStats)
+      setTokenStats(dashboardCache.tokenStats)
+      setToolRanking(dashboardCache.toolRanking)
+      setSkillUsage(dashboardCache.skillUsage)
+      setTrends(dashboardCache.trends)
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     setError(null)
     try {
-      const [stats, tokens, tools, skills, trendData] = await Promise.all([
-        invoke<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW),
-        invoke<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS),
-        invoke<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING),
-        invoke<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE),
-        invoke<TrendDataPoint[]>(IPC_CHANNELS.DASHBOARD_TRENDS),
-      ])
-      setDbStats(stats)
-      setTokenStats(tokens)
-      setToolRanking(tools ?? [])
-      setSkillUsage(skills ?? [])
-      setTrends(trendData ?? [])
+      // Fast group first
+      const fastResult = await loadFastData()
+      setLoading(false)
+
+      // Slow group after
+      const slowResult = await loadSlowData()
+
+      // Update cache
+      dashboardCache = {
+        dbStats: fastResult.stats,
+        tokenStats: fastResult.tokens,
+        toolRanking: slowResult.tools,
+        skillUsage: slowResult.skills,
+        trends: slowResult.trendData,
+      }
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
-    } finally {
       setLoading(false)
     }
-  }, [])
+  }, [loadFastData, loadSlowData])
+
+  // ── Refresh handler (force reload) ───────────────────────────────
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      const fastResult = await loadFastData()
+      const slowResult = await loadSlowData()
+      dashboardCache = {
+        dbStats: fastResult.stats,
+        tokenStats: fastResult.tokens,
+        toolRanking: slowResult.tools,
+        skillUsage: slowResult.skills,
+        trends: slowResult.trendData,
+      }
+    } catch (err) {
+      setError((err as Error).message || 'Failed to refresh dashboard data')
+    } finally {
+      setRefreshing(false)
+    }
+  }, [loadFastData, loadSlowData])
 
   // ── Initial connection check ─────────────────────────────────────
   useEffect(() => {
+    if (hasLoadedRef.current) return
     async function init() {
       try {
         const health = await invoke<{ ok: boolean }>(IPC_CHANNELS.DATABASE_HEALTH)
         if (health.ok) {
           setConnected(true)
-          // Try to get current path from health check context
-          const pathResult = await invoke(IPC_CHANNELS.APP_GET_PLATFORM) // placeholder; we just mark connected
+          const pathResult = await invoke(IPC_CHANNELS.APP_GET_PLATFORM)
           void pathResult
           await loadAllData()
         } else {
@@ -121,7 +192,8 @@ function Dashboard() {
       if (result.success) {
         setConnected(true)
         setDbPath(result.path ?? filePath)
-        await loadAllData()
+        dashboardCache = null
+        await loadAllData(true)
       } else {
         setError(result.error ?? 'Failed to open database')
       }
@@ -136,7 +208,8 @@ function Dashboard() {
     try {
       const result = await invoke<{ before: number; after: number; freed: number }>(IPC_CHANNELS.DATABASE_VACUUM)
       alert(`VACUUM 完成! 释放空间: ${formatBytes(result.freed)}`)
-      await loadAllData()
+      dashboardCache = null
+      await loadAllData(true)
     } catch (err) {
       alert(`VACUUM 失败: ${(err as Error).message}`)
     } finally {
@@ -150,7 +223,8 @@ function Dashboard() {
     try {
       await invoke(IPC_CHANNELS.DATABASE_CHECKPOINT)
       alert('WAL Checkpoint 完成!')
-      await loadAllData()
+      dashboardCache = null
+      await loadAllData(true)
     } catch (err) {
       alert(`Checkpoint 失败: ${(err as Error).message}`)
     } finally {
@@ -205,7 +279,7 @@ function Dashboard() {
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to Load Data</h2>
           <p className="text-gray-500 mb-4 text-sm">{error}</p>
           <button
-            onClick={loadAllData}
+            onClick={() => loadAllData(true)}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
           >
             Retry
@@ -292,11 +366,11 @@ function Dashboard() {
             </div>
           </div>
           <button
-            onClick={loadAllData}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-600 border border-green-300 rounded-md hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
             刷新
           </button>
         </div>
