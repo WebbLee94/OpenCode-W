@@ -143,10 +143,10 @@ export function registerHandlers(): void {
       // Get tool ranking - type is inside data JSON
       const toolRows = dbManager.rawQuery<Record<string, unknown>>(
         `SELECT
-          json_extract(data, '$.tool_name') as toolName,
+          json_extract(data, '$.tool') as toolName,
           COUNT(*) as count
         FROM part
-        WHERE session_id = ? AND json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool_name') IS NOT NULL
+        WHERE session_id = ? AND json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') IS NOT NULL
         GROUP BY toolName
         ORDER BY count DESC`,
         [sessionId]
@@ -159,9 +159,9 @@ export function registerHandlers(): void {
 
       // Get skill list - type is inside data JSON
       const skillRows = dbManager.rawQuery<Record<string, unknown>>(
-        `SELECT DISTINCT json_extract(data, '$.skill_name') as skillName
+        `SELECT DISTINCT json_extract(data, '$.state.input.name') as skillName
         FROM part
-        WHERE session_id = ? AND json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool_name') = 'skill' AND json_extract(data, '$.skill_name') IS NOT NULL`,
+        WHERE session_id = ? AND json_extract(data, '$.type') = 'tool' AND json_extract(data, '$.tool') = 'skill' AND json_extract(data, '$.state.input.name') IS NOT NULL`,
         [sessionId]
       )
 
