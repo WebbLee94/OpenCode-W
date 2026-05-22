@@ -118,6 +118,7 @@ export interface MessageDTO {
   role: 'user' | 'assistant' | 'tool' | 'system';
   data_size: number;       // bytes
   time_created: number;    // ms timestamp
+  content?: string;        // truncated preview (max 300 chars)
 }
 
 export interface MessageDetailDTO extends MessageDTO {
