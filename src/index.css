@@ -1,2 +1,14 @@
 @import "tailwindcss";
 @import "highlight.js/styles/github.css";
+
+@theme {
+  --color-brand-50: #EFF6FF;
+  --color-brand-100: #DBEAFE;
+  --color-brand-300: #93C5FD;
+  --color-brand-400: #818CF8;
+  --color-brand-500: #3B82F6;
+  --color-brand-600: #6366F1;
+  --color-brand-700: #8B5CF6;
+  --color-brand-800: #4338CA;
+  --color-brand-900: #312E81;
+}

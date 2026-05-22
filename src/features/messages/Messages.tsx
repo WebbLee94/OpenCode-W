@@ -29,7 +29,7 @@ interface RoleConfig {
 }
 
 const ROLE_CONFIG: Record<string, RoleConfig> = {
-  user: { label: 'User', icon: User, badgeClass: 'bg-blue-100 text-blue-700', bgClass: 'bg-blue-50' },
+  user: { label: 'User', icon: User, badgeClass: 'bg-brand-100 text-brand-700', bgClass: 'bg-brand-50' },
   assistant: { label: 'Assistant', icon: Bot, badgeClass: 'bg-green-100 text-green-700', bgClass: 'bg-green-50' },
   tool: { label: 'Tool', icon: Wrench, badgeClass: 'bg-orange-100 text-orange-700', bgClass: 'bg-orange-50' },
   system: { label: 'System', icon: FileText, badgeClass: 'bg-gray-100 text-gray-700', bgClass: 'bg-gray-50' },
@@ -47,7 +47,7 @@ interface PartTypeConfig {
 
 const PART_TYPE_CONFIG: Record<string, PartTypeConfig> = {
   text: { label: 'text', emoji: '\uD83D\uDCDD', badgeClass: 'bg-green-100 text-green-700' },
-  tool: { label: 'tool', emoji: '\uD83D\uDD27', badgeClass: 'bg-blue-100 text-blue-700' },
+  tool: { label: 'tool', emoji: '\uD83D\uDD27', badgeClass: 'bg-brand-100 text-brand-700' },
   reasoning: { label: 'reasoning', emoji: '\uD83E\uDDE0', badgeClass: 'bg-orange-100 text-orange-700' },
   'step-start': { label: 'step-start', emoji: '\u25B6', badgeClass: 'bg-gray-100 text-gray-600' },
   'step-finish': { label: 'step-finish', emoji: '\u2705', badgeClass: 'bg-gray-100 text-gray-600' },
@@ -121,7 +121,7 @@ function ToolPartDetail({ part }: { part: PartDTO }) {
       {/* Tool name */}
       <div className="flex items-center gap-2">
         <span className="text-gray-500 font-medium">Tool:</span>
-        <span className="font-mono text-blue-600">{part.toolName || '-'}</span>
+        <span className="font-mono text-brand-600">{part.toolName || '-'}</span>
         <StatusBadge status={part.status} />
       </div>
 
@@ -143,7 +143,7 @@ function ToolPartDetail({ part }: { part: PartDTO }) {
             {part.output.length > 500 && (
               <button
                 onClick={() => setOutputExpanded(!outputExpanded)}
-                className="text-xs text-blue-500 hover:text-blue-700 underline"
+                className="text-xs text-brand-500 hover:text-brand-700 underline"
               >
                 {outputExpanded ? '收起' : '展开全部'}
               </button>
@@ -311,7 +311,7 @@ function Messages() {
 
     if (detail.role === 'user') {
       return (
-        <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-gray-800 whitespace-pre-wrap">
+        <div className="p-4 bg-brand-50 border border-brand-100 rounded-lg text-sm text-gray-800 whitespace-pre-wrap">
           {detail.content}
         </div>
       )
@@ -380,7 +380,7 @@ function Messages() {
                       onClick={() => loadDetail(msg.id)}
                       className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
                         isSelected
-                          ? 'bg-blue-50 border-l-2 border-l-blue-500'
+                          ? 'bg-brand-50 border-l-2 border-l-brand-500'
                           : 'hover:bg-gray-50 border-l-2 border-l-transparent'
                       }`}
                     >
@@ -474,7 +474,7 @@ function Messages() {
                         onClick={() => setPartFilter(f)}
                         className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
                           partFilter === f
-                            ? 'bg-blue-500 text-white border-blue-500'
+                            ? 'bg-brand-500 text-white border-brand-500'
                             : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
                         }`}
                       >

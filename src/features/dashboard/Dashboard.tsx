@@ -266,7 +266,7 @@ function Dashboard() {
           )}
           <button
             onClick={handleConnect}
-            className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            className="px-5 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors font-medium"
           >
             Connect Database
           </button>
@@ -285,7 +285,7 @@ function Dashboard() {
           <p className="text-gray-500 mb-4 text-sm">{error}</p>
           <button
             onClick={() => loadAllData(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            className="px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors text-sm"
           >
             Retry
           </button>
@@ -338,7 +338,7 @@ function Dashboard() {
             <button
               onClick={handleVacuum}
               disabled={actionLoading !== null}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 border border-blue-300 rounded-md hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-brand-600 border border-brand-300 rounded-md hover:bg-brand-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {actionLoading === 'vacuum' ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -380,7 +380,7 @@ function Dashboard() {
         <div className="grid grid-cols-4 gap-4">
           {[1,2,3,4].map(i => (
             <div key={i} className="bg-white rounded-lg border border-gray-200 p-5 flex items-center justify-center h-24">
-              <Loader2 size={20} className="text-blue-400 animate-spin" />
+              <Loader2 size={20} className="text-brand-400 animate-spin" />
             </div>
           ))}
         </div>
@@ -414,7 +414,7 @@ function Dashboard() {
         <div className="grid grid-cols-4 gap-4">
           {[1,2,3,4].map(i => (
             <div key={i} className="bg-white rounded-lg border border-gray-200 p-5 flex items-center justify-center h-24">
-              <Loader2 size={20} className="text-blue-400 animate-spin" />
+              <Loader2 size={20} className="text-brand-400 animate-spin" />
             </div>
           ))}
         </div>
@@ -449,7 +449,7 @@ function Dashboard() {
         <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
           {fastLoading && !tokenStats && (
             <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
-              <Loader2 size={20} className="text-blue-400 animate-spin" />
+              <Loader2 size={20} className="text-brand-400 animate-spin" />
             </div>
           )}
           <h3 className="text-sm font-medium text-gray-700 mb-4">Token 分布</h3>
@@ -487,7 +487,7 @@ function Dashboard() {
                 <TokenMetricRow
                   label="输入Token"
                   value={formatNumber(tokenStats.inputTokens)}
-                  color="bg-blue-500"
+                  color="bg-brand-500"
                 />
                 <TokenMetricRow
                   label="输出Token"
@@ -517,7 +517,7 @@ function Dashboard() {
         <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
           {slowLoading && !toolData.length && (
             <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
-              <Loader2 size={20} className="text-blue-400 animate-spin" />
+              <Loader2 size={20} className="text-brand-400 animate-spin" />
             </div>
           )}
           <h3 className="text-sm font-medium text-gray-700 mb-4">工具使用排行 TOP 10</h3>
@@ -554,7 +554,7 @@ function Dashboard() {
         <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
           {slowLoading && !skillData.length && (
             <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
-              <Loader2 size={20} className="text-blue-400 animate-spin" />
+              <Loader2 size={20} className="text-brand-400 animate-spin" />
             </div>
           )}
           <h3 className="text-sm font-medium text-gray-700 mb-4">技能使用分布</h3>
@@ -592,7 +592,7 @@ function Dashboard() {
         <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
           {slowLoading && !trendData.length && (
             <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
-              <Loader2 size={20} className="text-blue-400 animate-spin" />
+              <Loader2 size={20} className="text-brand-400 animate-spin" />
             </div>
           )}
           <h3 className="text-sm font-medium text-gray-700 mb-4">增长趋势 (近30天)</h3>

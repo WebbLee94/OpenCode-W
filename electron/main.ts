@@ -24,6 +24,8 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 
 let mainWindow: BrowserWindow | null = null
 
+app.setName('DBScope-OC')
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -31,7 +33,9 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: '',
-    icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
+    icon: VITE_DEV_SERVER_URL
+      ? path.join(process.env.APP_ROOT, 'build', 'icon.png')
+      : undefined, // Packaged app uses icon from Info.plist automatically
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -102,6 +106,16 @@ function registerIpcHandlers() {
 }
 
 app.whenReady().then(() => {
+  // macOS: set Dock icon in dev mode (only PNG, and only if file exists)
+  if (process.platform === 'darwin' && VITE_DEV_SERVER_URL) {
+    try {
+      const iconPath = path.join(process.env.APP_ROOT, 'build', 'icon.png')
+      if (fs.existsSync(iconPath)) {
+        app.dock.setIcon(iconPath)
+      }
+    } catch { /* ignore */ }
+  }
+
   // macOS About panel
   app.setAboutPanelOptions({
     applicationName: 'DBScope-OC',
@@ -109,28 +123,29 @@ app.whenReady().then(() => {
     credits: 'by WEBB',
   })
 
+  // Register IPC handlers first (before window creation)
+  registerIpcHandlers()
+
+  // Create window (must succeed even if DB fails)
   createWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 
-  registerIpcHandlers()
-
-  // Try to auto-open the default opencode.db
+  // Try to auto-open the default opencode.db (non-blocking)
   const homeDir = os.homedir()
   const defaultDbPath = path.join(homeDir, '.local', 'share', 'opencode', 'opencode.db')
-  // Also check for test database
   const testDbPath = path.join(process.env.APP_ROOT!, 'test-data', 'test.db')
 
-  if (fs.existsSync(defaultDbPath)) {
-    try {
+  try {
+    if (fs.existsSync(defaultDbPath)) {
       DatabaseManager.open(defaultDbPath)
-    } catch { /* ignore */ }
-  } else if (fs.existsSync(testDbPath)) {
-    try {
+    } else if (fs.existsSync(testDbPath)) {
       DatabaseManager.open(testDbPath)
-    } catch { /* ignore */ }
+    }
+  } catch (err) {
+    console.error('Failed to auto-open database:', err)
   }
 })
 

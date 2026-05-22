@@ -124,8 +124,8 @@ function Backup() {
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-3 mb-3">
-              <div className="flex items-center justify-center w-10 h-10 bg-blue-100 rounded-lg">
-                <Download size={20} className="text-blue-600" />
+              <div className="flex items-center justify-center w-10 h-10 bg-brand-100 rounded-lg">
+                <Download size={20} className="text-brand-600" />
               </div>
               <div>
                 <h3 className="text-lg font-medium text-gray-900">创建备份</h3>
@@ -144,7 +144,7 @@ function Backup() {
           <button
             onClick={handleCreateBackup}
             disabled={creating}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
           >
             {creating ? (
               <>
@@ -184,7 +184,7 @@ function Backup() {
           <h3 className="text-lg font-medium text-gray-900">备份列表</h3>
           <button
             onClick={loadBackups}
-            className="text-sm text-blue-600 hover:text-blue-800"
+            className="text-sm text-brand-600 hover:text-brand-800"
           >
             刷新
           </button>
@@ -234,7 +234,7 @@ function Backup() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         {backup.compressed ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-brand-100 text-brand-700">
                             gzip
                           </span>
                         ) : (
@@ -285,7 +285,7 @@ function Backup() {
                 <div className="flex justify-center">
                   <button
                     onClick={handleCloseRestoreModal}
-                    className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    className="px-5 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors"
                   >
                     关闭
                   </button>
@@ -330,20 +330,20 @@ function Backup() {
                       加载预览...
                     </div>
                   ) : restoreModal.preview ? (
-                    <div className="bg-blue-50 rounded-lg p-4 mb-4">
-                      <h4 className="text-sm font-medium text-blue-800 mb-2">备份内容</h4>
+                    <div className="bg-brand-50 rounded-lg p-4 mb-4">
+                      <h4 className="text-sm font-medium text-brand-800 mb-2">备份内容</h4>
                       <div className="grid grid-cols-3 gap-3">
                         <div className="text-center">
-                          <div className="text-lg font-bold text-blue-700">{formatNumber(restoreModal.preview.sessionCount)}</div>
-                          <div className="text-xs text-blue-600">会话</div>
+                          <div className="text-lg font-bold text-brand-700">{formatNumber(restoreModal.preview.sessionCount)}</div>
+                          <div className="text-xs text-brand-600">会话</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-lg font-bold text-blue-700">{formatNumber(restoreModal.preview.messageCount)}</div>
-                          <div className="text-xs text-blue-600">消息</div>
+                          <div className="text-lg font-bold text-brand-700">{formatNumber(restoreModal.preview.messageCount)}</div>
+                          <div className="text-xs text-brand-600">消息</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-lg font-bold text-blue-700">{formatNumber(restoreModal.preview.partCount)}</div>
-                          <div className="text-xs text-blue-600">Part</div>
+                          <div className="text-lg font-bold text-brand-700">{formatNumber(restoreModal.preview.partCount)}</div>
+                          <div className="text-xs text-brand-600">Part</div>
                         </div>
                       </div>
                     </div>

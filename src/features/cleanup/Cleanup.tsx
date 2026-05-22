@@ -199,7 +199,7 @@ function Cleanup() {
             key={value}
             className={`flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-all ${
               strategy === value
-                ? 'border-blue-500 bg-blue-50'
+                ? 'border-brand-500 bg-brand-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
           >
@@ -211,7 +211,7 @@ function Cleanup() {
               onChange={() => setStrategy(value)}
               className="mt-1"
             />
-            <Icon size={20} className={strategy === value ? 'text-blue-600' : 'text-gray-400'} />
+            <Icon size={20} className={strategy === value ? 'text-brand-600' : 'text-gray-400'} />
             <div className="flex-1">
               <div className="font-medium text-gray-900">{label}</div>
               <div className="text-sm text-gray-500">{description}</div>
@@ -225,7 +225,7 @@ function Cleanup() {
                         min={1}
                         value={days}
                         onChange={e => setDays(Math.max(1, parseInt(e.target.value) || 1))}
-                        className="w-20 px-2 py-1 border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-20 px-2 py-1 border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-brand-500"
                       />
                       <span className="text-gray-700">天前的会话</span>
                     </div>
@@ -238,7 +238,7 @@ function Cleanup() {
                         min={1}
                         value={sizeMB}
                         onChange={e => setSizeMB(Math.max(1, parseInt(e.target.value) || 1))}
-                        className="w-20 px-2 py-1 border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-20 px-2 py-1 border border-gray-300 rounded text-center focus:outline-none focus:ring-2 focus:ring-brand-500"
                       />
                       <span className="text-gray-700">MB 的会话</span>
                     </div>
@@ -249,7 +249,7 @@ function Cleanup() {
                       <select
                         value={projectId}
                         onChange={e => setProjectId(e.target.value)}
-                        className="flex-1 max-w-xs px-2 py-1 border border-gray-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 max-w-xs px-2 py-1 border border-gray-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                       >
                         <option value="">-- 请选择项目 --</option>
                         {projects.map(p => (
@@ -266,7 +266,7 @@ function Cleanup() {
                         value={customWhere}
                         onChange={e => setCustomWhere(e.target.value)}
                         placeholder="例如: s.time_created < 1700000000000"
-                        className="w-full px-3 py-2 border border-gray-300 rounded font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded font-mono text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
                       />
                       <p className="mt-1 text-xs text-gray-400">
                         表别名: s=session, 使用 s. 前缀引用 session 表字段
@@ -284,7 +284,7 @@ function Cleanup() {
         <button
           onClick={handleNextToPreview}
           disabled={!isStrategyValid() || loadingPreview}
-          className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loadingPreview ? '加载中...' : (
             <>
@@ -349,7 +349,7 @@ function Cleanup() {
                     setExcludedIds(new Set(preview.sessions.map(s => s.id)))
                   }
                 }}
-                className="text-xs text-blue-600 hover:text-blue-800"
+                className="text-xs text-brand-600 hover:text-brand-800"
               >
                 {excludedIds.size === preview.sessions.length ? '全选' : '全不选'}
               </button>
@@ -476,7 +476,7 @@ function Cleanup() {
           <div className="flex justify-center">
             <button
               onClick={handleReset}
-              className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors"
             >
               <RotateCcw size={16} />
               返回首页
@@ -617,9 +617,9 @@ function Cleanup() {
                   <div
                     className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${
                       isCompleted
-                        ? 'bg-blue-600 border-blue-600 text-white'
+                        ? 'bg-brand-600 border-brand-600 text-white'
                         : isActive
-                          ? 'bg-blue-50 border-blue-500 text-blue-600'
+                          ? 'bg-brand-50 border-brand-500 text-brand-600'
                           : 'bg-gray-100 border-gray-300 text-gray-400'
                     }`}
                   >
@@ -627,7 +627,7 @@ function Cleanup() {
                   </div>
                   <span
                     className={`mt-1.5 text-xs font-medium ${
-                      isActive ? 'text-blue-600' : isCompleted ? 'text-blue-600' : 'text-gray-400'
+                      isActive ? 'text-brand-600' : isCompleted ? 'text-brand-600' : 'text-gray-400'
                     }`}
                   >
                     {label}
@@ -636,7 +636,7 @@ function Cleanup() {
                 {idx < stepLabels.length - 1 && (
                   <div
                     className={`w-20 h-0.5 mx-2 mb-5 ${
-                      isCompleted ? 'bg-blue-600' : 'bg-gray-300'
+                      isCompleted ? 'bg-brand-600' : 'bg-gray-300'
                     }`}
                   />
                 )}

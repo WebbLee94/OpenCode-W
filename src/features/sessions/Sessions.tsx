@@ -221,7 +221,7 @@ function Sessions() {
               placeholder="搜索会话标题..."
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
             {search && (
               <button
@@ -242,7 +242,7 @@ function Sessions() {
                 setProjectId(e.target.value)
                 setPage(1)
               }}
-              className="w-full appearance-none rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full appearance-none rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             >
               <option value="">全部项目</option>
               {projects.map((p) => (
@@ -261,7 +261,7 @@ function Sessions() {
               setSortBy(e.target.value)
               setPage(1)
             }}
-            className="min-w-[130px] appearance-none rounded-md border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="min-w-[130px] appearance-none rounded-md border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           >
             {SORT_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -306,9 +306,9 @@ function Sessions() {
                 <tr
                   key={session.id}
                   onClick={() => openDetail(session.id)}
-                  className={`cursor-pointer border-b border-gray-100 transition-colors hover:bg-blue-50 ${
+                  className={`cursor-pointer border-b border-gray-100 transition-colors hover:bg-brand-50 ${
                     idx % 2 === 1 ? 'bg-gray-50/50' : ''
-                  } ${selectedSession?.id === session.id ? 'bg-blue-50' : ''}`}
+                  } ${selectedSession?.id === session.id ? 'bg-brand-50' : ''}`}
                 >
                   <td className="px-4 py-3 text-center text-gray-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
                   <td className="max-w-xs truncate py-3 pr-4 font-medium text-gray-900" title={session.title || '无标题'}>
@@ -342,7 +342,7 @@ function Sessions() {
               <select
                 value={pageSize}
                 onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                className="appearance-none rounded border border-gray-300 bg-white px-2 py-0.5 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="appearance-none rounded border border-gray-300 bg-white px-2 py-0.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               >
                 {PAGE_SIZE_OPTIONS.map((size) => (
                   <option key={size} value={size}>{size}</option>
@@ -371,7 +371,7 @@ function Sessions() {
                   const v = parseInt(e.target.value, 10)
                   if (!isNaN(v)) goToPage(v)
                 }}
-                className="w-14 rounded-md border border-gray-300 px-2 py-1 text-center text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-14 rounded-md border border-gray-300 px-2 py-1 text-center text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
               <span className="text-sm text-gray-500">/ {totalPages}</span>
             </div>
@@ -545,7 +545,7 @@ function Sessions() {
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => navigate(`/sessions/${selectedSession.id}/messages`)}
-                  className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+                  className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
                 >
                   <MessageSquare size={16} />
                   查看消息
