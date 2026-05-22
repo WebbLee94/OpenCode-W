@@ -284,6 +284,54 @@ function Dashboard() {
     }
   }, [loadAllData])
 
+  // ── Trend data with comparison ──────────────────────────────────
+  const trendData = useMemo(() => {
+    if (!trendComparison?.current) return []
+    return trendComparison.current.map((t) => ({
+      ...t,
+      date: t.date.slice(5), // "MM-DD"
+    }))
+  }, [trendComparison])
+
+  const previousTrendData = useMemo(() => {
+    if (!trendComparison?.previous || !showComparison) return []
+    return trendComparison.previous.map((t) => ({
+      ...t,
+      date: t.date.slice(5),
+    }))
+  }, [trendComparison, showComparison])
+
+  // Merge current + previous for Recharts
+  const mergedTrendData = useMemo(() => {
+    if (previousTrendData.length === 0) return trendData
+    // Build a map from date to previous values
+    const prevMap = new Map(previousTrendData.map((p) => [p.date, p]))
+    return trendData.map((cur) => {
+      const prev = prevMap.get(cur.date)
+      return {
+        date: cur.date,
+        newSessions: cur.newSessions,
+        sizeGrowth: cur.sizeGrowth,
+        prevNewSessions: prev?.newSessions ?? 0,
+        prevSizeGrowth: prev?.sizeGrowth ?? 0,
+      }
+    })
+  }, [trendData, previousTrendData])
+
+  // ── Time range change handler ──────────────────────────────────
+  const handleTimePresetChange = useCallback((days: TimePreset) => {
+    setTimePreset(days)
+    const tr = computeTimeRange(days)
+    setTimeRange(tr)
+    dashboardCache = null
+  }, [])
+
+  // ── GroupBy change handler ─────────────────────────────────────
+  const handleGroupByChange = useCallback((gb: GroupBy) => {
+    setGroupBy(gb)
+    dashboardCache = null
+  }, [])
+
   // ── Not connected view ───────────────────────────────────────────
   if (!connected && !loading) {
     return (
@@ -349,54 +397,6 @@ function Dashboard() {
     name: s.skillName.length > 16 ? s.skillName.slice(0, 14) + '...' : s.skillName,
     count: s.count,
   }))
-
-  // ── Trend data with comparison ──────────────────────────────────
-  const trendData = useMemo(() => {
-    if (!trendComparison?.current) return []
-    return trendComparison.current.map((t) => ({
-      ...t,
-      date: t.date.slice(5), // "MM-DD"
-    }))
-  }, [trendComparison])
-
-  const previousTrendData = useMemo(() => {
-    if (!trendComparison?.previous || !showComparison) return []
-    return trendComparison.previous.map((t) => ({
-      ...t,
-      date: t.date.slice(5),
-    }))
-  }, [trendComparison, showComparison])
-
-  // Merge current + previous for Recharts
-  const mergedTrendData = useMemo(() => {
-    if (previousTrendData.length === 0) return trendData
-    // Build a map from date to previous values
-    const prevMap = new Map(previousTrendData.map((p) => [p.date, p]))
-    return trendData.map((cur) => {
-      const prev = prevMap.get(cur.date)
-      return {
-        date: cur.date,
-        newSessions: cur.newSessions,
-        sizeGrowth: cur.sizeGrowth,
-        prevNewSessions: prev?.newSessions ?? 0,
-        prevSizeGrowth: prev?.sizeGrowth ?? 0,
-      }
-    })
-  }, [trendData, previousTrendData])
-
-  // ── Time range change handler ──────────────────────────────────
-  const handleTimePresetChange = useCallback((days: TimePreset) => {
-    setTimePreset(days)
-    const tr = computeTimeRange(days)
-    setTimeRange(tr)
-    dashboardCache = null
-  }, [])
-
-  // ── GroupBy change handler ─────────────────────────────────────
-  const handleGroupByChange = useCallback((gb: GroupBy) => {
-    setGroupBy(gb)
-    dashboardCache = null
-  }, [])
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
