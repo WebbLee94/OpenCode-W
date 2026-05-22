@@ -1,12 +1,24 @@
 appId: com.dbscope.oc
 productName: DBScope-OC
+npmRebuild: true
+icon: build/icon.png
 directories:
   output: dist
 files:
-  - dist
   - dist-electron
+  - dist/index.html
+  - dist/assets/**/*
+  - dist/brand/**/*
+  - "!dist/mac-arm64"
+  - "!dist/*.dmg"
+  - "!dist/*.zip"
+  - "!dist/*.blockmap"
+  - "!dist/builder-effective-config.yaml"
 mac:
   target:
     - dmg
     - zip
   category: public.app-category.developer-tools
+  icon: build/icon.icns
+win:
+  icon: build/icon.ico
