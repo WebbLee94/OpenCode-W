@@ -2,12 +2,35 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import rehypeHighlight from 'rehype-highlight'
+import hljs from 'highlight.js/lib/core'
+import ts from 'highlight.js/lib/languages/typescript'
+import js from 'highlight.js/lib/languages/javascript'
+import python from 'highlight.js/lib/languages/python'
+import json from 'highlight.js/lib/languages/json'
+import bash from 'highlight.js/lib/languages/bash'
+import sql from 'highlight.js/lib/languages/sql'
+import css from 'highlight.js/lib/languages/css'
+import html from 'highlight.js/lib/languages/xml'
 import { ArrowLeft, User, Bot, Wrench, ChevronDown, ChevronRight, Loader2, Filter, FileText } from 'lucide-react'
 import type { MessageDTO, MessageDetailDTO, PartDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
+
+// Register highlight.js languages
+hljs.registerLanguage('typescript', ts)
+hljs.registerLanguage('javascript', js)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('sql', sql)
+hljs.registerLanguage('css', css)
+hljs.registerLanguage('html', html)
+// Also register common aliases
+hljs.registerLanguage('ts', ts)
+hljs.registerLanguage('js', js)
+hljs.registerLanguage('sh', bash)
+hljs.registerLanguage('shell', bash)
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -105,7 +128,37 @@ function SizeIndicator({ bytes }: { bytes: number }) {
 function MarkdownContent({ content }: { content: string }) {
   return (
     <div className="prose prose-sm prose-gray max-w-none">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          code({ className, children, ...props }) {
+            const match = /language-(\w+)/.exec(className || '')
+            const codeStr = String(children).replace(/\n$/, '')
+
+            // Block code (has language class or is multi-line)
+            if (match || codeStr.includes('\n')) {
+              let highlighted: string
+              try {
+                if (match) {
+                  highlighted = hljs.highlight(codeStr, { language: match[1] }).value
+                } else {
+                  highlighted = hljs.highlightAuto(codeStr).value
+                }
+              } catch {
+                highlighted = codeStr
+              }
+              return (
+                <pre className="hljs">
+                  <code className={className} dangerouslySetInnerHTML={{ __html: highlighted }} {...props} />
+                </pre>
+              )
+            }
+
+            // Inline code — no highlighting
+            return <code className={className} {...props}>{children}</code>
+          },
+        }}
+      >
         {content}
       </ReactMarkdown>
     </div>
