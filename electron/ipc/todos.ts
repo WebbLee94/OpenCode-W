@@ -28,12 +28,16 @@ export function registerHandlers(): void {
           conditions.push('t.priority = ?')
           params.push(filter.priority)
         }
+        if (filter?.projectId) {
+          conditions.push('s.project_id = ?')
+          params.push(filter.projectId)
+        }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
         // Count total
         const countRow = dbManager.rawGet<{ cnt: number }>(
-          `SELECT COUNT(*) as cnt FROM todo t ${whereClause}`,
+          `SELECT COUNT(*) as cnt FROM todo t JOIN session s ON t.session_id = s.id ${whereClause}`,
           params
         )
         const total = countRow?.cnt ?? 0
