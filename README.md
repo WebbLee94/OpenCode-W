@@ -13,6 +13,8 @@ DBScope-OC 是一款桌面应用，用于可视化管理 OpenCode 的 SQLite 数
 
 ## ✨ 功能特性
 
+![Dashboard](docs/images/dashboard.png)
+
 - 📊 **首页仪表盘** - 数据库大小、会话数、Token 统计、工具排行、技能分布、增长趋势
 - 💬 **会话浏览** - 搜索、筛选、排序、分页、详情面板
 - 📝 **消息查看器** - Markdown 渲染、Part 明细、Tool 展开、Token 分解
@@ -118,8 +120,8 @@ npm run rebuild-native
 
 ## 👥 作者
 
-- **WEBB** - [WEBB](https://github.com/daxiong294)
+- **Webb Lee** - [Webb Lee](https://github.com/webbLee94)
 
 ---
 
-Made with ❤️ by [WEBB](https://github.com/daxiong294)
+Made with ❤️ by [Webb Lee](https://github.com/webbLee94)
