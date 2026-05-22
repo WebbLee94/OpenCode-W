@@ -3,9 +3,9 @@
 > OpenCode 数据库可视化管理工具 - 轻松管理你的 OpenCode 会话数据
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Electron](https://img.shields.io/badge/Electron-32.0.0-blue.svg)](https://www.electronjs.org/)
-[![React](https://img.shields.io/badge/React-19.2.1-61dafb.svg)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7.3-blue.svg)](https://www.typescriptlang.org/)
+[![Electron](https://img.shields.io/badge/Electron-30.0.1-blue.svg)](https://www.electronjs.org/)
+[![React](https://img.shields.io/badge/React-18.2.0-61dafb.svg)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.2.2-blue.svg)](https://www.typescriptlang.org/)
 [![OpenCode](https://img.shields.io/badge/OpenCode-%E2%86%92-blueviolet.svg)](https://github.com/anomalyco/opencode)
 
 ## 📖 简介
