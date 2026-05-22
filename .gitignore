@@ -52,4 +52,5 @@ test-data/test.db
 # opencode
 .sisyphus
 .superpowers
+superpowers/
 AGENTS.md
