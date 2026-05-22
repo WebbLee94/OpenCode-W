@@ -1,8 +1,16 @@
 {
   "name": "DBScope-OC",
-  "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0",
   "type": "module",
+  "license": "MIT",
+  "author": "WEBB",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JieYueGo/DBScope-OC"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
