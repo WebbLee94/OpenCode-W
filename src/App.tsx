@@ -99,7 +99,7 @@ function Layout() {
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
-      <nav className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0">
+      <nav className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0 overflow-visible">
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center gap-2">
             <img src={logoSvg} alt="DBScope-OC" className="w-6 h-6" />
