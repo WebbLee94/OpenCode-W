@@ -52,6 +52,12 @@ export interface TrendDataPoint {
   messageCount: number;
 }
 
+// Time range filter
+export interface TimeRange {
+  startDate: string;  // ISO "2026-05-01"
+  endDate: string;    // ISO "2026-05-22"
+}
+
 // Session DTOs
 export interface SessionDTO {
   id: string;
@@ -84,6 +90,8 @@ export interface SessionFilter {
   sortOrder?: 'asc' | 'desc';
   page?: number;
   pageSize?: number;
+  startDate?: string;
+  endDate?: string;
 }
 
 // Message DTOs
