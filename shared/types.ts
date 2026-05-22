@@ -52,6 +52,23 @@ export interface TrendDataPoint {
   messageCount: number;
 }
 
+// Trend comparison (current vs previous period)
+export interface TrendComparison {
+  current: TrendDataPoint[];
+  previous: TrendDataPoint[];
+}
+
+// Token group data point (for grouped token stats)
+export interface TokenGroupDataPoint {
+  period: string;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cacheRead: number;
+  cacheWrite: number;
+  estimatedCost: number;
+}
+
 // Time range filter
 export interface TimeRange {
   startDate: string;  // ISO "2026-05-01"
