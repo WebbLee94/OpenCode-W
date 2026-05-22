@@ -91,6 +91,7 @@ function Dashboard() {
   const [toolRanking, setToolRanking] = useState<ToolRanking[]>(dashboardCache?.toolRanking ?? [])
   const [skillUsage, setSkillUsage] = useState<SkillUsage[]>(dashboardCache?.skillUsage ?? [])
   const [trendComparison, setTrendComparison] = useState<TrendComparison | null>(dashboardCache?.trendComparison ?? null)
+  const [tokenGroupData, setTokenGroupData] = useState<TokenGroupDataPoint[]>(dashboardCache?.tokenGroupData ?? [])
 
   // Time range & grouping state
   const [timePreset, setTimePreset] = useState<TimePreset>(30)
@@ -113,14 +114,16 @@ function Dashboard() {
   // ── Load fast data (overview + tokens) ───────────────────────────
   const loadFastData = useCallback(async (tr: TimeRange, gb: GroupBy) => {
     setFastLoading(true)
-    const [stats, tokens] = await Promise.all([
+    const [stats, tokens, groupData] = await Promise.all([
       invokeSafe<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW, tr),
-      invokeSafe<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS, tr, gb),
+      invokeSafe<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS, tr),         // no groupBy → TokenStats
+      invokeSafe<TokenGroupDataPoint[]>(IPC_CHANNELS.DASHBOARD_TOKENS, tr, gb),  // with groupBy → grouped data
     ])
     setDbStats(stats)
     setTokenStats(tokens)
+    setTokenGroupData(groupData)
     setFastLoading(false)
-    return { stats, tokens }
+    return { stats, tokens, groupData }
   }, [])
 
   // ── Load slow data (tools + skills + trends) ─────────────────────
@@ -147,6 +150,7 @@ function Dashboard() {
       setToolRanking(dashboardCache.toolRanking)
       setSkillUsage(dashboardCache.skillUsage)
       setTrendComparison(dashboardCache.trendComparison)
+      setTokenGroupData(dashboardCache.tokenGroupData)
       setTimeRange(dashboardCache.timeRange)
       setGroupBy(dashboardCache.groupBy)
       setFastLoading(false)
@@ -166,7 +170,7 @@ function Dashboard() {
       dashboardCache = {
         dbStats: fastResult.stats,
         tokenStats: fastResult.tokens,
-        tokenGroupData: [],
+        tokenGroupData: fastResult.groupData,
         toolRanking: slowResult.tools,
         skillUsage: slowResult.skills,
         trendComparison: slowResult.trendComp,
@@ -187,7 +191,7 @@ function Dashboard() {
       dashboardCache = {
         dbStats: fastResult.stats,
         tokenStats: fastResult.tokens,
-        tokenGroupData: [],
+        tokenGroupData: fastResult.groupData,
         toolRanking: slowResult.tools,
         skillUsage: slowResult.skills,
         trendComparison: slowResult.trendComp,
@@ -543,12 +547,12 @@ function Dashboard() {
           />
           <StatCard
             label="估算成本"
-            value={`$${tokenStats.estimatedCost.toFixed(2)}`}
+            value={`$${(tokenStats.estimatedCost ?? 0).toFixed(2)}`}
             icon={<DollarSign size={20} />}
           />
           <StatCard
             label="缓存命中率"
-            value={`${tokenStats.cacheHitRate.toFixed(1)}%`}
+            value={`${(tokenStats.cacheHitRate ?? 0).toFixed(1)}%`}
             icon={<Zap size={20} />}
           />
         </div>
@@ -634,7 +638,7 @@ function Dashboard() {
                 <div className="border-t border-gray-100 pt-2 mt-2">
                   <TokenMetricRow
                     label="缓存命中率"
-                    value={`${tokenStats.cacheHitRate.toFixed(1)}%`}
+                    value={`${(tokenStats.cacheHitRate ?? 0).toFixed(1)}%`}
                     color="bg-amber-500"
                   />
                 </div>
@@ -642,6 +646,24 @@ function Dashboard() {
             </div>
           ) : (
             <p className="text-sm text-gray-400 text-center py-8">暂无Token数据</p>
+          )}
+          {tokenGroupData.length > 0 && (
+            <div className="mt-4 h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={tokenGroupData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="period" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip
+                    contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                    formatter={(value: number) => formatNumber(value)}
+                  />
+                  <Line type="monotone" dataKey="inputTokens" name="输入" stroke="#3B82F6" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="outputTokens" name="输出" stroke="#10B981" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="reasoningTokens" name="推理" stroke="#8B5CF6" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </div>
 
