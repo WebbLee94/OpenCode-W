@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -224,6 +224,13 @@ function Messages() {
 
   // Session title (from first message or ID)
   const [sessionTitle, setSessionTitle] = useState('')
+  const sessionTitleSetRef = useRef(false)
+
+  // Initialize session title when sessionId changes
+  useEffect(() => {
+    sessionTitleSetRef.current = false
+    setSessionTitle('')
+  }, [sessionId])
 
   // ---- Load message list ----
   const loadMessages = useCallback(async (p: number) => {
@@ -239,17 +246,17 @@ function Messages() {
       setTotal(result.total)
       setPage(result.page)
 
-      // Derive session title from first user message
-      if (!sessionTitle && result.data.length > 0) {
-        const firstUser = result.data.find((m) => m.role === 'user')
-        setSessionTitle(firstUser ? `Session ${sessionId.slice(0, 8)}` : `Session ${sessionId?.slice(0, 8) ?? ''}`)
+      // Derive session title from first user message (only once per sessionId)
+      if (!sessionTitleSetRef.current && result.data.length > 0) {
+        sessionTitleSetRef.current = true
+        setSessionTitle(`Session ${sessionId.slice(0, 8)}`)
       }
     } catch {
       /* ignore */
     } finally {
       setListLoading(false)
     }
-  }, [sessionId, sessionTitle])
+  }, [sessionId])
 
   useEffect(() => {
     loadMessages(1)
