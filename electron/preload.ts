@@ -1,6 +1,8 @@
-// @ts-nocheck
+/// <reference types="electron" />
+
 const { contextBridge, ipcRenderer } = require('electron')
 
+/** @type {readonly string[]} */
 const ALLOWED_CHANNELS = [
   'app:getVersion', 'app:getPlatform',
   'dashboard:overview', 'dashboard:tokens', 'dashboard:toolRanking', 'dashboard:skillUsage', 'dashboard:trends',
@@ -12,19 +14,36 @@ const ALLOWED_CHANNELS = [
   'backup:create', 'backup:list', 'backup:restore', 'backup:delete', 'backup:preview',
 ]
 
-contextBridge.exposeInMainWorld('electronAPI', {
-  invoke: (channel, ...args) => {
-    if (!ALLOWED_CHANNELS.includes(channel)) {
-      throw new Error(`IPC channel not allowed: ${channel}`)
-    }
-    return ipcRenderer.invoke(channel, ...args)
-  },
-  on: (channel, callback) => {
-    if (!ALLOWED_CHANNELS.includes(channel)) {
-      throw new Error(`IPC channel not allowed: ${channel}`)
-    }
-    const subscription = (_event, ...args) => callback(...args)
-    ipcRenderer.on(channel, subscription)
-    return () => ipcRenderer.removeListener(channel, subscription)
-  },
-})
+/**
+ * @typedef {import('../shared/types').IpcResult} IpcResult
+ */
+
+/**
+ * Invoke an IPC channel with arguments.
+ * @param {string} channel - The IPC channel name
+ * @param {...*} args - Arguments to pass
+ * @returns {Promise<IpcResult>}
+ */
+function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
+  if (!ALLOWED_CHANNELS.includes(channel)) {
+    throw new Error(`IPC channel not allowed: ${channel}`)
+  }
+  return ipcRenderer.invoke(channel, ...args)
+}
+
+/**
+ * Subscribe to an IPC channel.
+ * @param {string} channel - The IPC channel name
+ * @param {function(...*): void} callback - Callback function
+ * @returns {function(): void} Unsubscribe function
+ */
+function on(channel: string, callback: (...args: unknown[]) => void): () => void {
+  if (!ALLOWED_CHANNELS.includes(channel)) {
+    throw new Error(`IPC channel not allowed: ${channel}`)
+  }
+  const subscription = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)
+  ipcRenderer.on(channel, subscription)
+  return () => ipcRenderer.removeListener(channel, subscription)
+}
+
+contextBridge.exposeInMainWorld('electronAPI', { invoke, on })
