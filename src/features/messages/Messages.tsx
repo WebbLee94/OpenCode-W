@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router'
+import { useEffect, useState, useCallback, useMemo, useRef, type ReactNode } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import hljs from 'highlight.js/lib/core'
@@ -11,8 +11,8 @@ import bash from 'highlight.js/lib/languages/bash'
 import sql from 'highlight.js/lib/languages/sql'
 import css from 'highlight.js/lib/languages/css'
 import html from 'highlight.js/lib/languages/xml'
-import { ArrowLeft, User, Bot, Wrench, ChevronDown, ChevronRight, Loader2, Filter, FileText } from 'lucide-react'
-import type { MessageDTO, MessageDetailDTO, PartDTO } from '../../../shared/types'
+import { ArrowLeft, User, Bot, Wrench, ChevronDown, ChevronRight, Loader2, Filter, FileText, Search, X } from 'lucide-react'
+import type { MessageDTO, MessageDetailDTO, PartDTO, SearchResult } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
@@ -257,6 +257,8 @@ function ReasoningDetail({ part }: { part: PartDTO }) {
 function Messages() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const highlightKeyword = searchParams.get('highlight') || ''
 
   // Message list state
   const [messages, setMessages] = useState<MessageDTO[]>([])
@@ -278,6 +280,12 @@ function Messages() {
   // Session title (from first message or ID)
   const [sessionTitle, setSessionTitle] = useState('')
   const sessionTitleSetRef = useRef(false)
+
+  // Search state
+  const [searchKeyword, setSearchKeyword] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [showSearchResults, setShowSearchResults] = useState(false)
 
   // Initialize session title when sessionId changes
   useEffect(() => {
@@ -314,6 +322,51 @@ function Messages() {
   useEffect(() => {
     loadMessages(1)
   }, [loadMessages])
+
+  // ---- Search messages ----
+  const handleSearch = useCallback(async () => {
+    if (!searchKeyword.trim()) return
+    setSearchLoading(true)
+    setShowSearchResults(true)
+    try {
+      const results = await invokeSafe<SearchResult[]>(IPC_CHANNELS.MESSAGES_SEARCH, searchKeyword.trim())
+      setSearchResults(results)
+    } catch {
+      setSearchResults([])
+    } finally {
+      setSearchLoading(false)
+    }
+  }, [searchKeyword])
+
+  // ---- Extract snippet around keyword ----
+  const extractSnippet = useCallback((content: string, keyword: string): string => {
+    const lowerContent = content.toLowerCase()
+    const lowerKeyword = keyword.toLowerCase()
+    const index = lowerContent.indexOf(lowerKeyword)
+    if (index === -1) return content.slice(0, 160)
+    const start = Math.max(0, index - 80)
+    const end = Math.min(content.length, index + keyword.length + 80)
+    return (start > 0 ? '...' : '') + content.slice(start, end) + (end < content.length ? '...' : '')
+  }, [])
+
+  // ---- Highlight keyword in text ----
+  const highlightText = useCallback((text: string, keyword: string): ReactNode => {
+    if (!keyword) return text
+    const parts: ReactNode[] = []
+    const lowerText = text.toLowerCase()
+    const lowerKeyword = keyword.toLowerCase()
+    let lastIndex = 0
+    let index = lowerText.indexOf(lowerKeyword)
+    let key = 0
+    while (index !== -1) {
+      parts.push(text.slice(lastIndex, index))
+      parts.push(<mark key={key++} className="bg-yellow-200 px-0.5 rounded">{text.slice(index, index + keyword.length)}</mark>)
+      lastIndex = index + keyword.length
+      index = lowerText.indexOf(lowerKeyword, lastIndex)
+    }
+    parts.push(text.slice(lastIndex))
+    return parts
+  }, [])
 
   // ---- Load message detail ----
   const loadDetail = useCallback(async (messageId: string) => {
@@ -364,7 +417,7 @@ function Messages() {
     if (isError) {
       return (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 whitespace-pre-wrap">
-          {detail.content}
+          {highlightKeyword ? highlightText(detail.content, highlightKeyword) : detail.content}
         </div>
       )
     }
@@ -372,12 +425,12 @@ function Messages() {
     if (detail.role === 'user') {
       return (
         <div className="p-4 bg-brand-50 border border-brand-100 rounded-lg text-sm text-gray-800 whitespace-pre-wrap">
-          {detail.content}
+          {highlightKeyword ? highlightText(detail.content, highlightKeyword) : detail.content}
         </div>
       )
     }
 
-    // Assistant / others -> Markdown
+    // Assistant / others -> Markdown (no highlight for markdown to avoid breaking HTML)
     return (
       <div className="p-4 bg-white border border-gray-200 rounded-lg">
         <MarkdownContent content={detail.content} />
@@ -402,7 +455,84 @@ function Messages() {
           {sessionTitle || `Session ${sessionId?.slice(0, 8) ?? ''}`}
         </h1>
         <span className="text-xs text-gray-400 font-mono">{sessionId}</span>
+
+        {/* Search bar */}
+        <div className="ml-auto flex items-center gap-2">
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="全文搜索消息..."
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch() }}
+              className="w-56 rounded-md border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+            {searchKeyword && (
+              <button
+                onClick={() => { setSearchKeyword(''); setSearchResults([]); setShowSearchResults(false) }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          <button
+            onClick={handleSearch}
+            disabled={searchLoading || !searchKeyword.trim()}
+            className="px-3 py-1.5 text-xs rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {searchLoading ? '搜索中...' : '搜索'}
+          </button>
+        </div>
       </div>
+
+      {/* Search results panel */}
+      {showSearchResults && (
+        <div className="border-b border-gray-200 bg-yellow-50 px-4 py-3 max-h-64 overflow-y-auto shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-gray-700">
+              搜索结果 ({searchResults.length} 条)
+            </span>
+            <button
+              onClick={() => { setShowSearchResults(false); setSearchResults([]) }}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          {searchLoading ? (
+            <div className="flex items-center justify-center py-4 text-gray-400 text-xs">
+              <Loader2 size={14} className="animate-spin mr-2" />
+              搜索中...
+            </div>
+          ) : searchResults.length === 0 ? (
+            <p className="text-xs text-gray-500 text-center py-4">未找到匹配的消息</p>
+          ) : (
+            <div className="space-y-2">
+              {searchResults.map((result) => (
+                <div
+                  key={result.id}
+                  onClick={() => navigate(`/sessions/${result.session_id}/messages?highlight=${encodeURIComponent(searchKeyword)}`)}
+                  className="p-2 bg-white rounded-md border border-gray-200 cursor-pointer hover:bg-brand-50 transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-gray-900 truncate max-w-[300px]">
+                      {result.session_title || '无标题'}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {formatRelativeTime(result.time_created)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 line-clamp-2">
+                    {highlightText(extractSnippet(result.content, searchKeyword), searchKeyword)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Split view */}
       <div className="flex flex-1 overflow-hidden">

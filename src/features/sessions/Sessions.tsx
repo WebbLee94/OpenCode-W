@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import type { SessionDTO, SessionDetailDTO, SessionFilter } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
@@ -76,7 +76,9 @@ function Sessions() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const urlSyncedRef = useRef(false)
 
   // ─── Debounced search ────────────────────────────────────────────────────
 
@@ -125,6 +127,31 @@ function Sessions() {
       })
       .catch(() => setProjects([]))
   }, [])
+
+  // ─── Sync URL params to filters (once on mount) ──────────────────────────
+
+  useEffect(() => {
+    if (urlSyncedRef.current) return
+    urlSyncedRef.current = true
+
+    const urlStart = searchParams.get('start')
+    const urlEnd = searchParams.get('end')
+    const urlProject = searchParams.get('project')
+
+    if (urlStart) setStartDate(urlStart)
+    if (urlEnd) setEndDate(urlEnd)
+    if (urlProject) setProjectId(urlProject)
+  }, [searchParams])
+
+  // ─── Sync filters to URL params ────────────────────────────────────────────
+
+  const syncFiltersToUrl = useCallback((newStartDate: string, newEndDate: string, newProjectId: string) => {
+    const params = new URLSearchParams()
+    if (newStartDate) params.set('start', newStartDate)
+    if (newEndDate) params.set('end', newEndDate)
+    if (newProjectId) params.set('project', newProjectId)
+    setSearchParams(params, { replace: true })
+  }, [setSearchParams])
 
   // ─── Load session detail ─────────────────────────────────────────────────
 
@@ -246,8 +273,10 @@ function Sessions() {
             <select
               value={projectId}
               onChange={(e) => {
-                setProjectId(e.target.value)
+                const val = e.target.value
+                setProjectId(val)
                 setPage(1)
+                syncFiltersToUrl(startDate, endDate, val)
               }}
               className="w-full appearance-none rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             >
@@ -293,8 +322,10 @@ function Sessions() {
               type="date"
               value={startDate}
               onChange={(e) => {
-                setStartDate(e.target.value)
+                const val = e.target.value
+                setStartDate(val)
                 setPage(1)
+                syncFiltersToUrl(val, endDate, projectId)
               }}
               className="rounded-md border border-gray-300 bg-white py-2 px-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               title="开始日期"
@@ -304,8 +335,10 @@ function Sessions() {
               type="date"
               value={endDate}
               onChange={(e) => {
-                setEndDate(e.target.value)
+                const val = e.target.value
+                setEndDate(val)
                 setPage(1)
+                syncFiltersToUrl(startDate, val, projectId)
               }}
               className="rounded-md border border-gray-300 bg-white py-2 px-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               title="结束日期"
@@ -316,6 +349,7 @@ function Sessions() {
                   setStartDate('')
                   setEndDate('')
                   setPage(1)
+                  syncFiltersToUrl('', '', projectId)
                 }}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
                 title="清除日期筛选"

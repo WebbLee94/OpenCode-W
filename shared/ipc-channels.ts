@@ -22,6 +22,7 @@ export const IPC_CHANNELS = {
   // Messages
   MESSAGES_LIST: 'messages:list',
   MESSAGES_DETAIL: 'messages:detail',
+  MESSAGES_SEARCH: 'messages:search',
 
   // Operations
   CLEANUP_PREVIEW: 'cleanup:preview',

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useNavigate } from 'react-router'
 import type {
   DatabaseStats,
   TokenStats,
@@ -84,6 +85,7 @@ let dashboardCache: DashboardCache | null = null
 
 // ── Dashboard ──────────────────────────────────────────────────────
 function Dashboard() {
+  const navigate = useNavigate()
   const [dbStats, setDbStats] = useState<DatabaseStats | null>(dashboardCache?.dbStats ?? null)
   const [tokenStats, setTokenStats] = useState<TokenStats | null>(dashboardCache?.tokenStats ?? null)
   const [toolRanking, setToolRanking] = useState<ToolRanking[]>(dashboardCache?.toolRanking ?? [])
@@ -593,6 +595,10 @@ function Dashboard() {
                       paddingAngle={2}
                       dataKey="value"
                       stroke="none"
+                      onClick={() => {
+                        navigate(`/sessions?start=${timeRange.startDate}&end=${timeRange.endDate}`)
+                      }}
+                      style={{ cursor: 'pointer' }}
                     >
                       {tokenPieData.map((_entry, index) => (
                         <Cell key={`cell-${index}`} fill={TOKEN_COLORS[index % TOKEN_COLORS.length]} />
@@ -735,7 +741,23 @@ function Dashboard() {
           </div>
           {trendData.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={mergedTrendData} margin={{ left: 0, right: 0, top: 5, bottom: 5 }}>
+              <LineChart
+                data={mergedTrendData}
+                margin={{ left: 0, right: 0, top: 5, bottom: 5 }}
+                onClick={(payload) => {
+                  if (payload?.activePayload?.length) {
+                    const data = payload.activePayload[0].payload
+                    // data.date is "MM-DD", need full date from trendComparison
+                    const fullDate = trendComparison?.current.find(
+                      (t) => t.date.slice(5) === data.date
+                    )?.date
+                    if (fullDate) {
+                      navigate(`/sessions?start=${fullDate}&end=${fullDate}`)
+                    }
+                  }
+                }}
+                style={{ cursor: 'pointer' }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
                 <XAxis
                   dataKey="date"
