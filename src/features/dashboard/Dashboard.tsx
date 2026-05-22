@@ -56,10 +56,11 @@ const SKILL_COLORS = [
 ]
 
 // ── Time range presets ─────────────────────────────────────────────
-type TimePreset = 7 | 30 | 90
+type TimePreset = 'all' | 7 | 30 | 90
 type GroupBy = 'day' | 'week' | 'month'
 
-function computeTimeRange(days: TimePreset): TimeRange {
+function computeTimeRange(days: TimePreset): TimeRange | undefined {
+  if (days === 'all') return undefined
   const endDate = new Date()
   const startDate = new Date()
   startDate.setDate(endDate.getDate() - days)
@@ -77,7 +78,7 @@ interface DashboardCache {
   toolRanking: ToolRanking[]
   skillUsage: SkillUsage[]
   trendComparison: TrendComparison | null
-  timeRange: TimeRange
+  timeRange: TimeRange | undefined
   groupBy: GroupBy
 }
 
@@ -95,7 +96,7 @@ function Dashboard() {
 
   // Time range & grouping state
   const [timePreset, setTimePreset] = useState<TimePreset>(30)
-  const [timeRange, setTimeRange] = useState<TimeRange>(dashboardCache?.timeRange ?? computeTimeRange(30))
+  const [timeRange, setTimeRange] = useState<TimeRange | undefined>(dashboardCache?.timeRange ?? computeTimeRange(30))
   const [groupBy, setGroupBy] = useState<GroupBy>(dashboardCache?.groupBy ?? 'day')
   const [showComparison, setShowComparison] = useState(true)
 
@@ -112,7 +113,7 @@ function Dashboard() {
   const hasLoadedRef = useRef(!!dashboardCache)
 
   // ── Load fast data (overview + tokens) ───────────────────────────
-  const loadFastData = useCallback(async (tr: TimeRange, gb: GroupBy) => {
+  const loadFastData = useCallback(async (tr: TimeRange | undefined, gb: GroupBy) => {
     setFastLoading(true)
     const [stats, tokens, groupData] = await Promise.all([
       invokeSafe<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW, tr),
@@ -127,7 +128,7 @@ function Dashboard() {
   }, [])
 
   // ── Load slow data (tools + skills + trends) ─────────────────────
-  const loadSlowData = useCallback(async (tr: TimeRange) => {
+  const loadSlowData = useCallback(async (tr: TimeRange | undefined) => {
     setSlowLoading(true)
     const [tools, skills, trendComp] = await Promise.all([
       invokeSafe<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, tr),
@@ -474,7 +475,7 @@ function Dashboard() {
       <div className="flex items-center gap-3">
         <span className="text-sm text-gray-500 font-medium">时间范围</span>
         <div className="inline-flex rounded-md border border-gray-300 overflow-hidden">
-          {([7, 30, 90] as TimePreset[]).map((days) => (
+          {(['all', 7, 30, 90] as TimePreset[]).map((days) => (
             <button
               key={days}
               onClick={() => handleTimePresetChange(days)}
@@ -484,7 +485,7 @@ function Dashboard() {
                   : 'bg-white text-gray-600 hover:bg-gray-50'
               }`}
             >
-              {days}天
+              {days === 'all' ? '全部' : `${days}天`}
             </button>
           ))}
         </div>
@@ -551,8 +552,8 @@ function Dashboard() {
             icon={<DollarSign size={20} />}
           />
           <StatCard
-            label="缓存命中率"
-            value={`${(tokenStats.cacheHitRate ?? 0).toFixed(1)}%`}
+            label="缓存复用率"
+            value={`${(tokenStats.cacheReuseRate ?? 0).toFixed(1)}%`}
             icon={<Zap size={20} />}
           />
         </div>
@@ -600,7 +601,7 @@ function Dashboard() {
                       dataKey="value"
                       stroke="none"
                       onClick={() => {
-                        navigate(`/sessions?start=${timeRange.startDate}&end=${timeRange.endDate}`)
+                        if (timeRange) navigate(`/sessions?start=${timeRange.startDate}&end=${timeRange.endDate}`)
                       }}
                       style={{ cursor: 'pointer' }}
                     >
@@ -637,8 +638,8 @@ function Dashboard() {
                 />
                 <div className="border-t border-gray-100 pt-2 mt-2">
                   <TokenMetricRow
-                    label="缓存命中率"
-                    value={`${(tokenStats.cacheHitRate ?? 0).toFixed(1)}%`}
+                    label="缓存复用率"
+                    value={`${(tokenStats.cacheReuseRate ?? 0).toFixed(1)}%`}
                     color="bg-amber-500"
                   />
                 </div>
@@ -750,7 +751,7 @@ function Dashboard() {
             </div>
           )}
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-gray-700">增长趋势 (近{timePreset}天)</h3>
+            <h3 className="text-sm font-medium text-gray-700">增长趋势{timePreset === 'all' ? '' : ` (近${timePreset}天)`}</h3>
             <label className="inline-flex items-center gap-2 cursor-pointer">
               <span className="text-xs text-gray-500">对比上期</span>
               <input

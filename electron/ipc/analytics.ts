@@ -186,18 +186,21 @@ export function registerHandlers(): void {
       dateFilter.params
     )
 
-    const totalInput = row?.inputTokens ?? 0
+    const inputTokens = row?.inputTokens ?? 0
+    const outputTokens = row?.outputTokens ?? 0
+    const reasoningTokens = row?.reasoningTokens ?? 0
     const cacheRead = row?.cacheRead ?? 0
-    const cacheHitRate = totalInput > 0 ? (cacheRead / totalInput) * 100 : 0
+    const totalTokens = inputTokens + outputTokens + reasoningTokens
+    const cacheReuseRate = totalTokens > 0 ? (cacheRead / totalTokens) * 100 : 0
 
     const tokenStats: TokenStats = {
-      inputTokens: totalInput,
-      outputTokens: row?.outputTokens ?? 0,
-      reasoningTokens: row?.reasoningTokens ?? 0,
+      inputTokens,
+      outputTokens,
+      reasoningTokens,
       cacheRead,
       cacheWrite: row?.cacheWrite ?? 0,
       estimatedCost: row?.estimatedCost ?? 0,
-      cacheHitRate: Math.round(cacheHitRate * 100) / 100,
+      cacheReuseRate: Math.round(cacheReuseRate * 100) / 100,
     }
 
     return { success: true, data: tokenStats }

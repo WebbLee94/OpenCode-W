@@ -29,7 +29,7 @@ export interface TokenStats {
   cacheRead: number;
   cacheWrite: number;
   estimatedCost: number;
-  cacheHitRate: number;    // percentage
+  cacheReuseRate: number;    // percentage
 }
 
 // Tool ranking
@@ -224,6 +224,7 @@ export interface TodoFilter {
   search?: string;
   status?: string;
   priority?: string;
+  projectId?: string;
   page?: number;
   pageSize?: number;
 }

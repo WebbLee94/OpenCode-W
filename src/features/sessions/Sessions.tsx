@@ -588,8 +588,8 @@ function Sessions() {
                     {selectedSession.tokenStats.estimatedCost > 0 && (
                       <div className="mt-2 text-xs text-gray-500">
                         预估费用: ${selectedSession.tokenStats.estimatedCost.toFixed(4)}
-                        {selectedSession.tokenStats.cacheHitRate > 0 && (
-                          <span className="ml-3">缓存命中率: {selectedSession.tokenStats.cacheHitRate.toFixed(1)}%</span>
+                        {selectedSession.tokenStats.cacheReuseRate > 0 && (
+                          <span className="ml-3">缓存复用率: {selectedSession.tokenStats.cacheReuseRate.toFixed(1)}%</span>
                         )}
                       </div>
                     )}

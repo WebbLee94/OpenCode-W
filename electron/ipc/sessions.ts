@@ -145,18 +145,21 @@ export function registerHandlers(): void {
         [sessionId]
       )
 
-      const totalInput = tokenStatsRow?.inputTokens ?? 0
+      const inputTokens = tokenStatsRow?.inputTokens ?? 0
+      const outputTokens = tokenStatsRow?.outputTokens ?? 0
+      const reasoningTokens = tokenStatsRow?.reasoningTokens ?? 0
       const cacheRead = tokenStatsRow?.cacheRead ?? 0
-      const cacheHitRate = totalInput > 0 ? (cacheRead / totalInput) * 100 : 0
+      const totalTokens = inputTokens + outputTokens + reasoningTokens
+      const cacheReuseRate = totalTokens > 0 ? (cacheRead / totalTokens) * 100 : 0
 
       const tokenStats: TokenStats = {
-        inputTokens: tokenStatsRow?.inputTokens ?? 0,
-        outputTokens: tokenStatsRow?.outputTokens ?? 0,
-        reasoningTokens: tokenStatsRow?.reasoningTokens ?? 0,
+        inputTokens,
+        outputTokens,
+        reasoningTokens,
         cacheRead,
         cacheWrite: tokenStatsRow?.cacheWrite ?? 0,
         estimatedCost: tokenStatsRow?.estimatedCost ?? 0,
-        cacheHitRate: Math.round(cacheHitRate * 100) / 100,
+        cacheReuseRate: Math.round(cacheReuseRate * 100) / 100,
       }
 
       // Get tool ranking - type is inside data JSON
