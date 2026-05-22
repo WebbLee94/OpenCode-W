@@ -58,7 +58,7 @@ export class DatabaseManager {
     return this.currentPath
   }
 
-  healthCheck(): { ok: boolean; pageCount: number; freelistPages: number; walSize: number } {
+  healthCheck(): { ok: boolean; pageCount: number; freelistPages: number; walSize: number; error?: string } {
     const db = this.getDb()
     try {
       const integrity = db.prepare('PRAGMA integrity_check').get() as { integrity_check: string }
@@ -72,7 +72,7 @@ export class DatabaseManager {
         try {
           walSize = fs.existsSync(walPath) ? fs.statSync(walPath).size : 0
         } catch {
-          /* ignore */
+          /* WAL file may not exist, that's fine */
         }
       }
 
@@ -82,43 +82,57 @@ export class DatabaseManager {
         freelistPages: freelistCount,
         walSize,
       }
-    } catch {
-      return { ok: false, pageCount: 0, freelistPages: 0, walSize: 0 }
+    } catch (error) {
+      return { ok: false, pageCount: 0, freelistPages: 0, walSize: 0, error: (error as Error).message }
     }
   }
 
-  getStats(): DatabaseStats {
+  getStats(): DatabaseStats & { error?: string } {
     const db = this.getDb()
     let dbSize = 0
     let walSize = 0
+    let sizeError: string | undefined
 
     if (this.currentPath) {
       try {
         dbSize = fs.statSync(this.currentPath).size
         const walPath = this.currentPath + '-wal'
         walSize = fs.existsSync(walPath) ? fs.statSync(walPath).size : 0
-      } catch {
-        /* ignore */
+      } catch (error) {
+        sizeError = (error as Error).message
       }
     }
 
-    const sessionCount = (db.prepare('SELECT COUNT(*) as cnt FROM session').get() as { cnt: number }).cnt
-    const projectCount = (
-      db.prepare(
-        "SELECT COUNT(DISTINCT project_id) as cnt FROM session WHERE project_id IS NOT NULL AND project_id != ''"
-      ).get() as { cnt: number }
-    ).cnt
-    const partCount = (db.prepare('SELECT COUNT(*) as cnt FROM part').get() as { cnt: number }).cnt
-    const freelistCount = (db.prepare('PRAGMA freelist_count').get() as { freelist_count: number }).freelist_count
-    const pageSize = (db.prepare('PRAGMA page_size').get() as { page_size: number }).page_size
+    try {
+      const sessionCount = (db.prepare('SELECT COUNT(*) as cnt FROM session').get() as { cnt: number }).cnt
+      const projectCount = (
+        db.prepare(
+          "SELECT COUNT(DISTINCT project_id) as cnt FROM session WHERE project_id IS NOT NULL AND project_id != ''"
+        ).get() as { cnt: number }
+      ).cnt
+      const partCount = (db.prepare('SELECT COUNT(*) as cnt FROM part').get() as { cnt: number }).cnt
+      const freelistCount = (db.prepare('PRAGMA freelist_count').get() as { freelist_count: number }).freelist_count
+      const pageSize = (db.prepare('PRAGMA page_size').get() as { page_size: number }).page_size
 
-    return {
-      dbSize,
-      sessionCount,
-      projectCount,
-      partCount,
-      freelistSize: freelistCount * pageSize,
-      walSize,
+      return {
+        dbSize,
+        sessionCount,
+        projectCount,
+        partCount,
+        freelistSize: freelistCount * pageSize,
+        walSize,
+        error: sizeError,
+      }
+    } catch (error) {
+      return {
+        dbSize,
+        sessionCount: 0,
+        projectCount: 0,
+        partCount: 0,
+        freelistSize: 0,
+        walSize,
+        error: (error as Error).message,
+      }
     }
   }
 
