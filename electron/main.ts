@@ -146,6 +146,7 @@ app.whenReady().then(() => {
     }
   } catch (err) {
     console.error('Failed to auto-open database:', err)
+    dialog.showErrorBox('数据库打开失败', `自动打开数据库时出错：${(err as Error).message}`)
   }
 })
 

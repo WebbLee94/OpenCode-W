@@ -9,6 +9,7 @@ function Backup() {
   // Backup list
   const [backups, setBackups] = useState<BackupDTO[]>([])
   const [loading, setLoading] = useState(true)
+  const [listError, setListError] = useState<string | null>(null)
 
   // Create backup
   const [creating, setCreating] = useState(false)
@@ -21,18 +22,20 @@ function Backup() {
   })
 
   // Delete confirmation modal
-  const [deleteModal, setDeleteModal] = useState<{ open: boolean; backup: BackupDTO | null; deleting: boolean }>({
-    open: false, backup: null, deleting: false,
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; backup: BackupDTO | null; deleting: boolean; error: string | null }>({
+    open: false, backup: null, deleting: false, error: null,
   })
 
   // Load backups on mount
   const loadBackups = async () => {
     setLoading(true)
+    setListError(null)
     try {
       const list = await invoke<BackupDTO[]>(IPC_CHANNELS.BACKUP_LIST)
       setBackups(list)
     } catch (err) {
       console.error('Failed to load backups:', err)
+      setListError((err as Error).message || '加载备份列表失败')
     } finally {
       setLoading(false)
     }
@@ -93,26 +96,26 @@ function Backup() {
 
   // Open delete modal
   const handleOpenDelete = (backup: BackupDTO) => {
-    setDeleteModal({ open: true, backup, deleting: false })
+    setDeleteModal({ open: true, backup, deleting: false, error: null })
   }
 
   // Confirm delete
   const handleConfirmDelete = async () => {
     if (!deleteModal.backup) return
-    setDeleteModal(prev => ({ ...prev, deleting: true }))
+    setDeleteModal(prev => ({ ...prev, deleting: true, error: null }))
     try {
       await invoke(IPC_CHANNELS.BACKUP_DELETE, deleteModal.backup.fileName)
-      setDeleteModal({ open: false, backup: null, deleting: false })
+      setDeleteModal({ open: false, backup: null, deleting: false, error: null })
       loadBackups()
     } catch (err) {
       console.error('Failed to delete backup:', err)
-      setDeleteModal(prev => ({ ...prev, deleting: false }))
+      setDeleteModal(prev => ({ ...prev, deleting: false, error: (err as Error).message || '删除备份失败' }))
     }
   }
 
   // Close delete modal
   const handleCloseDeleteModal = () => {
-    setDeleteModal({ open: false, backup: null, deleting: false })
+    setDeleteModal({ open: false, backup: null, deleting: false, error: null })
   }
 
   return (
@@ -189,6 +192,13 @@ function Backup() {
             刷新
           </button>
         </div>
+
+        {listError && (
+          <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg mb-4 text-sm text-red-800">
+            <AlertTriangle size={16} className="shrink-0" />
+            {listError}
+          </div>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center py-12 text-gray-400">
@@ -421,6 +431,13 @@ function Backup() {
                   <p className="text-gray-500 mt-1">
                     文件大小: {formatBytes(deleteModal.backup.fileSize)}
                   </p>
+                </div>
+              )}
+
+              {deleteModal.error && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg mb-4 text-sm text-red-800">
+                  <AlertTriangle size={16} className="shrink-0" />
+                  {deleteModal.error}
                 </div>
               )}
             </div>

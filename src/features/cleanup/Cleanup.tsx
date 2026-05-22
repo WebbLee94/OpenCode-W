@@ -36,6 +36,7 @@ function Cleanup() {
   const [result, setResult] = useState<CleanupResultDTO | null>(null)
   const [confirmed, setConfirmed] = useState(false)
   const [countdown, setCountdown] = useState(3)
+  const [actionError, setActionError] = useState<string | null>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Load projects on mount
@@ -90,6 +91,7 @@ function Cleanup() {
   const handleNextToPreview = async () => {
     if (!isStrategyValid()) return
     setLoadingPreview(true)
+    setActionError(null)
     setExcludedIds(new Set())
     try {
       const filter = buildFilter()
@@ -100,6 +102,7 @@ function Cleanup() {
       setStep(2)
     } catch (err) {
       console.error('Failed to load preview:', err)
+      setActionError((err as Error).message || '加载预览失败')
     } finally {
       setLoadingPreview(false)
     }
@@ -161,12 +164,14 @@ function Cleanup() {
   const handleExecute = async () => {
     if (!confirmed || countdown > 0) return
     setExecuting(true)
+    setActionError(null)
     try {
       const filter = buildFilter()
       const res = await invoke<CleanupResultDTO>(IPC_CHANNELS.CLEANUP_EXECUTE, filter)
       setResult(res)
     } catch (err) {
       console.error('Cleanup failed:', err)
+      setActionError((err as Error).message || '清理操作失败')
     } finally {
       setExecuting(false)
     }
@@ -281,6 +286,12 @@ function Cleanup() {
       </div>
 
       <div className="flex justify-end">
+        {actionError && step === 1 && (
+          <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 mr-4">
+            <AlertTriangle size={16} className="shrink-0" />
+            {actionError}
+          </div>
+        )}
         <button
           onClick={handleNextToPreview}
           disabled={!isStrategyValid() || loadingPreview}
@@ -541,6 +552,13 @@ function Cleanup() {
             <div className="text-sm text-red-600">删除的数据将无法恢复，请确保已备份数据库</div>
           </div>
         </div>
+
+        {actionError && (
+          <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg mb-6 text-sm text-red-800">
+            <AlertTriangle size={16} className="shrink-0" />
+            {actionError}
+          </div>
+        )}
 
         {/* Confirmation checkbox */}
         <label className="flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-lg mb-6 cursor-pointer hover:bg-gray-50">
