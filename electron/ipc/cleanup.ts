@@ -3,6 +3,19 @@ import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import type { CleanupPreviewDTO, CleanupResultDTO, CleanupFilter, SessionDTO } from '../../shared/types'
 import dbManager from '../database'
 
+const DANGEROUS_PATTERNS = [
+  /;/, /\bDROP\b/i, /\bDELETE\b/i, /\bINSERT\b/i,
+  /\bUPDATE\b/i, /\bALTER\b/i, /--/, /\/\*/,
+]
+
+const ALLOWED_PATTERN = /^(?:[\s\w.'"(),%0-9]|AND|OR|LIKE|IN|NOT|IS|NULL|=|!=|>=|<=|<>|>|<)+$/i
+
+function validateCustomWhere(clause: string): boolean {
+  if (DANGEROUS_PATTERNS.some(p => p.test(clause))) return false
+  if (!ALLOWED_PATTERN.test(clause)) return false
+  return true
+}
+
 function mapSessionRow(row: Record<string, unknown>): SessionDTO {
   const timeCreated = typeof row.time_created === 'string'
     ? new Date(row.time_created).getTime()
@@ -57,6 +70,9 @@ function buildCleanupWhereClause(filter: CleanupFilter): { sql: string; params: 
     }
     case 'custom': {
       if (filter.customWhere) {
+        if (!validateCustomWhere(filter.customWhere)) {
+          throw new Error('Invalid custom WHERE clause')
+        }
         conditions.push(filter.customWhere)
       }
       break
@@ -78,11 +94,12 @@ export function registerHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.CLEANUP_PREVIEW,
     (_event, filter: CleanupFilter) => {
-      const { sql: whereClause, params } = buildCleanupWhereClause(filter)
+      try {
+        const { sql: whereClause, params } = buildCleanupWhereClause(filter)
 
-      // Get matching sessions
-      const rows = dbManager.rawQuery<Record<string, unknown>>(
-        `SELECT
+        // Get matching sessions
+        const rows = dbManager.rawQuery<Record<string, unknown>>(
+          `SELECT
           s.*,
           COALESCE(msg_cnt.cnt, 0) as msg_count,
           (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0)) as total_tokens,
@@ -91,122 +108,129 @@ export function registerHandlers(): void {
         LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id
         LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id
         ${whereClause}`,
-        params
-      )
+          params
+        )
 
-      const sessions: SessionDTO[] = rows.map(mapSessionRow)
-      const sessionIds = sessions.map(s => s.id)
+        const sessions: SessionDTO[] = rows.map(mapSessionRow)
+        const sessionIds = sessions.map(s => s.id)
 
-      if (sessionIds.length === 0) {
-        const preview: CleanupPreviewDTO = {
-          sessionCount: 0,
-          messageCount: 0,
-          partCount: 0,
-          estimatedSize: 0,
-          sessions: [],
+        if (sessionIds.length === 0) {
+          const preview: CleanupPreviewDTO = {
+            sessionCount: 0,
+            messageCount: 0,
+            partCount: 0,
+            estimatedSize: 0,
+            sessions: [],
+          }
+          return preview
         }
+
+        const placeholders = sessionIds.map(() => '?').join(',')
+
+        const messageCount = (
+          dbManager.rawGet<{ cnt: number }>(
+            `SELECT COUNT(*) as cnt FROM message WHERE session_id IN (${placeholders})`,
+            sessionIds
+          )?.cnt ?? 0
+        )
+
+        const partCount = (
+          dbManager.rawGet<{ cnt: number }>(
+            `SELECT COUNT(*) as cnt FROM part WHERE session_id IN (${placeholders})`,
+            sessionIds
+          )?.cnt ?? 0
+        )
+
+        const estimatedSize = (
+          dbManager.rawGet<{ total: number | null }>(
+            `SELECT COALESCE(SUM(LENGTH(data)), 0) as total FROM part WHERE session_id IN (${placeholders})`,
+            sessionIds
+          )?.total ?? 0
+        )
+
+        const preview: CleanupPreviewDTO = {
+          sessionCount: sessions.length,
+          messageCount,
+          partCount,
+          estimatedSize,
+          sessions,
+        }
+
         return preview
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
       }
-
-      const placeholders = sessionIds.map(() => '?').join(',')
-
-      const messageCount = (
-        dbManager.rawGet<{ cnt: number }>(
-          `SELECT COUNT(*) as cnt FROM message WHERE session_id IN (${placeholders})`,
-          sessionIds
-        )?.cnt ?? 0
-      )
-
-      const partCount = (
-        dbManager.rawGet<{ cnt: number }>(
-          `SELECT COUNT(*) as cnt FROM part WHERE session_id IN (${placeholders})`,
-          sessionIds
-        )?.cnt ?? 0
-      )
-
-      const estimatedSize = (
-        dbManager.rawGet<{ total: number | null }>(
-          `SELECT COALESCE(SUM(LENGTH(data)), 0) as total FROM part WHERE session_id IN (${placeholders})`,
-          sessionIds
-        )?.total ?? 0
-      )
-
-      const preview: CleanupPreviewDTO = {
-        sessionCount: sessions.length,
-        messageCount,
-        partCount,
-        estimatedSize,
-        sessions,
-      }
-
-      return preview
     }
   )
 
   ipcMain.handle(
     IPC_CHANNELS.CLEANUP_EXECUTE,
     (_event, filter: CleanupFilter) => {
-      const { sql: whereClause, params } = buildCleanupWhereClause(filter)
+      try {
+        const { sql: whereClause, params } = buildCleanupWhereClause(filter)
 
-      // Get matching session IDs
-      const rows = dbManager.rawQuery<{ id: string }>(
-        `SELECT id FROM session s ${whereClause}`,
-        params
-      )
+        // Get matching session IDs
+        const rows = dbManager.rawQuery<{ id: string }>(
+          `SELECT id FROM session s ${whereClause}`,
+          params
+        )
 
-      const sessionIds = rows.map(r => r.id)
+        const sessionIds = rows.map(r => r.id)
 
-      if (sessionIds.length === 0) {
-        const result: CleanupResultDTO = {
-          deletedSessions: 0,
-          deletedMessages: 0,
-          deletedParts: 0,
-          freedBytes: 0,
-          vacuumBefore: 0,
-          vacuumAfter: 0,
+        if (sessionIds.length === 0) {
+          const result: CleanupResultDTO = {
+            deletedSessions: 0,
+            deletedMessages: 0,
+            deletedParts: 0,
+            freedBytes: 0,
+            vacuumBefore: 0,
+            vacuumAfter: 0,
+          }
+          return result
         }
-        return result
-      }
 
-      const placeholders = sessionIds.map(() => '?').join(',')
+        const placeholders = sessionIds.map(() => '?').join(',')
 
-      // Get size before deletion
-      const sizeBefore = (
-        dbManager.rawGet<{ total: number | null }>(
-          `SELECT COALESCE(SUM(LENGTH(data)), 0) as total FROM part WHERE session_id IN (${placeholders})`,
+        // Get size before deletion
+        const sizeBefore = (
+          dbManager.rawGet<{ total: number | null }>(
+            `SELECT COALESCE(SUM(LENGTH(data)), 0) as total FROM part WHERE session_id IN (${placeholders})`,
+            sessionIds
+          )?.total ?? 0
+        )
+
+        // Delete in order: parts -> messages -> sessions (respect foreign keys)
+        const deletedParts = dbManager.run(
+          `DELETE FROM part WHERE session_id IN (${placeholders})`,
           sessionIds
-        )?.total ?? 0
-      )
+        ).changes
 
-      // Delete in order: parts -> messages -> sessions (respect foreign keys)
-      const deletedParts = dbManager.run(
-        `DELETE FROM part WHERE session_id IN (${placeholders})`,
-        sessionIds
-      ).changes
+        const deletedMessages = dbManager.run(
+          `DELETE FROM message WHERE session_id IN (${placeholders})`,
+          sessionIds
+        ).changes
 
-      const deletedMessages = dbManager.run(
-        `DELETE FROM message WHERE session_id IN (${placeholders})`,
-        sessionIds
-      ).changes
+        const deletedSessions = dbManager.run(
+          `DELETE FROM session WHERE id IN (${placeholders})`,
+          sessionIds
+        ).changes
 
-      const deletedSessions = dbManager.run(
-        `DELETE FROM session WHERE id IN (${placeholders})`,
-        sessionIds
-      ).changes
+        // Vacuum to reclaim space
+        const vacuumResult = dbManager.vacuum()
 
-      // Vacuum to reclaim space
-      const vacuumResult = dbManager.vacuum()
+        const result: CleanupResultDTO = {
+          deletedSessions,
+          deletedMessages,
+          deletedParts,
+          freedBytes: sizeBefore,
+          vacuumBefore: vacuumResult.before,
+          vacuumAfter: vacuumResult.after,
+        }
 
-      const result: CleanupResultDTO = {
-        deletedSessions,
-        deletedMessages,
-        deletedParts,
-        freedBytes: sizeBefore,
-        vacuumBefore: vacuumResult.before,
-        vacuumAfter: vacuumResult.after,
+        return result
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
       }
-
-      return result
     }
   )
 }
