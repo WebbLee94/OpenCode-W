@@ -10,7 +10,7 @@ export function registerHandlers(): void {
     (_event, filter?: TodoFilter): IpcResult<{ data: TodoDTO[]; total: number; page: number; pageSize: number }> => {
       try {
         const page = filter?.page ?? 1
-        const pageSize = Math.min(filter?.pageSize ?? 50, 200)
+        const pageSize = Math.min(filter?.pageSize ?? 20, 200)
         const offset = (page - 1) * pageSize
 
         const conditions: string[] = []
