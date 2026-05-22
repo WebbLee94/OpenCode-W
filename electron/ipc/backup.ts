@@ -135,6 +135,18 @@ export function registerHandlers(): void {
       // Save current path for rollback
       const previousPath = dbManager.getCurrentPath()
 
+      // Create a temporary safety backup before restore (transaction-like safety)
+      let safetyBackupPath: string | null = null
+      if (previousPath && fs.existsSync(previousPath)) {
+        try {
+          const safetyTimestamp = new Date().toISOString().replace(/[:.]/g, '-')
+          safetyBackupPath = path.join(BACKUP_DIR, `safety-${safetyTimestamp}.db`)
+          fs.copyFileSync(previousPath, safetyBackupPath)
+        } catch {
+          // Best effort - proceed even if safety backup fails
+        }
+      }
+
       // Close current database
       dbManager.closeAll()
 
