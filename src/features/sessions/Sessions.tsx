@@ -13,6 +13,7 @@ import {
   Trash2,
   ArrowUpDown,
   FolderOpen,
+  AlertTriangle,
 } from 'lucide-react'
 import {
   PieChart,
@@ -70,6 +71,7 @@ function Sessions() {
 
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const navigate = useNavigate()
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -143,6 +145,7 @@ function Sessions() {
 
   const handleDelete = useCallback(
     (sessionId: string) => {
+      setDeleteError(null)
       invoke(IPC_CHANNELS.SESSIONS_DELETE, sessionId)
         .then(() => {
           closeDetail()
@@ -152,8 +155,8 @@ function Sessions() {
           setSessions((prev) => prev.filter((s) => s.id !== sessionId))
           setTotal((t) => t - 1)
         })
-        .catch(() => {
-          // placeholder: show error
+        .catch((err) => {
+          setDeleteError((err as Error).message || '删除会话失败')
         })
         .finally(() => setDeleteConfirm(null))
     },
@@ -573,6 +576,12 @@ function Sessions() {
             <p className="text-sm text-gray-600 mb-6">
               确定要删除此会话吗？此操作将删除该会话的所有消息和 Part 数据，且不可恢复。
             </p>
+            {deleteError && (
+              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg mb-4 text-sm text-red-800">
+                <AlertTriangle size={16} className="shrink-0" />
+                {deleteError}
+              </div>
+            )}
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDeleteConfirm(null)}
