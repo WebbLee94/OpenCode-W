@@ -2,6 +2,10 @@ appId: com.dbscope.oc
 productName: DBScope-OC
 npmRebuild: true
 icon: build/icon.png
+asar: true
+asarUnpack:
+  - "**/*.node"
+  - "node_modules/better-sqlite3/**"
 directories:
   output: dist
 files:
@@ -20,5 +24,7 @@ mac:
     - zip
   category: public.app-category.developer-tools
   icon: build/icon.icns
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
 win:
   icon: build/icon.ico

@@ -8,6 +8,8 @@ dist-electron
 out
 release
 build
+!build/icon.*
+!build/entitlements.mac.plist
 
 # Environment files
 .env
