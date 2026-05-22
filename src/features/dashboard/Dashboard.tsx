@@ -7,7 +7,7 @@ import type {
   TrendDataPoint,
 } from '@shared/types'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
-import { invoke } from '@/lib/ipc'
+import { invokeSafe } from '@/lib/ipc'
 import {
   Database,
   MessageSquare,
@@ -86,8 +86,8 @@ function Dashboard() {
   const loadFastData = useCallback(async () => {
     setFastLoading(true)
     const [stats, tokens] = await Promise.all([
-      invoke<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW),
-      invoke<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS),
+      invokeSafe<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW),
+      invokeSafe<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS),
     ])
     setDbStats(stats)
     setTokenStats(tokens)
@@ -99,9 +99,9 @@ function Dashboard() {
   const loadSlowData = useCallback(async () => {
     setSlowLoading(true)
     const [tools, skills, trendData] = await Promise.all([
-      invoke<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING),
-      invoke<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE),
-      invoke<TrendDataPoint[]>(IPC_CHANNELS.DASHBOARD_TRENDS),
+      invokeSafe<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING),
+      invokeSafe<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE),
+      invokeSafe<TrendDataPoint[]>(IPC_CHANNELS.DASHBOARD_TRENDS),
     ])
     setToolRanking(tools ?? [])
     setSkillUsage(skills ?? [])
@@ -184,7 +184,7 @@ function Dashboard() {
       }
       // No cache — do health check then load data
       try {
-        const health = await invoke<{ ok: boolean }>(IPC_CHANNELS.DATABASE_HEALTH)
+        const health = await invokeSafe<{ ok: boolean }>(IPC_CHANNELS.DATABASE_HEALTH)
         if (health.ok) {
           setConnected(true)
           await loadAllData()
@@ -203,17 +203,12 @@ function Dashboard() {
   // ── Connect to a database ────────────────────────────────────────
   const handleConnect = useCallback(async () => {
     try {
-      const filePath = await invoke<string | null>(IPC_CHANNELS.DIALOG_OPEN_FILE)
-      if (!filePath) return
-      const result = await invoke<{ success: boolean; path?: string; error?: string }>(IPC_CHANNELS.DATABASE_OPEN, filePath)
-      if (result.success) {
-        setConnected(true)
-        setDbPath(result.path ?? filePath)
-        dashboardCache = null
-        await loadAllData(true)
-      } else {
-        setError(result.error ?? 'Failed to open database')
-      }
+      const filePath = await invokeSafe<string>(IPC_CHANNELS.DIALOG_OPEN_FILE)
+      const result = await invokeSafe<{ path: string }>(IPC_CHANNELS.DATABASE_OPEN, filePath)
+      setConnected(true)
+      setDbPath(result.path ?? filePath)
+      dashboardCache = null
+      await loadAllData(true)
     } catch (err) {
       setError((err as Error).message)
     }
@@ -223,7 +218,7 @@ function Dashboard() {
   const handleVacuum = useCallback(async () => {
     setActionLoading('vacuum')
     try {
-      const result = await invoke<{ before: number; after: number; freed: number }>(IPC_CHANNELS.DATABASE_VACUUM)
+      const result = await invokeSafe<{ before: number; after: number; freed: number }>(IPC_CHANNELS.DATABASE_VACUUM)
       alert(`VACUUM 完成! 释放空间: ${formatBytes(result.freed)}`)
       dashboardCache = null
       await loadAllData(true)
@@ -238,7 +233,7 @@ function Dashboard() {
   const handleCheckpoint = useCallback(async () => {
     setActionLoading('checkpoint')
     try {
-      await invoke(IPC_CHANNELS.DATABASE_CHECKPOINT)
+      await invokeSafe(IPC_CHANNELS.DATABASE_CHECKPOINT)
       alert('WAL Checkpoint 完成!')
       dashboardCache = null
       await loadAllData(true)

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { BackupDTO, BackupPreviewDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
-import { invoke } from '../../lib/ipc'
+import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatNumber, formatRelativeTime } from '../../lib/format'
 import { HardDrive, Archive, Trash2, RotateCcw, Download, Upload, AlertTriangle, Check, X, Clock } from 'lucide-react'
 
@@ -31,7 +31,7 @@ function Backup() {
     setLoading(true)
     setListError(null)
     try {
-      const list = await invoke<BackupDTO[]>(IPC_CHANNELS.BACKUP_LIST)
+      const list = await invokeSafe<BackupDTO[]>(IPC_CHANNELS.BACKUP_LIST)
       setBackups(list)
     } catch (err) {
       console.error('Failed to load backups:', err)
@@ -51,7 +51,7 @@ function Backup() {
     setCreateResult(null)
     setCreateError(null)
     try {
-      const result = await invoke<BackupDTO>(IPC_CHANNELS.BACKUP_CREATE)
+      const result = await invokeSafe<BackupDTO>(IPC_CHANNELS.BACKUP_CREATE)
       setCreateResult(result)
       loadBackups()
     } catch (err) {
@@ -65,7 +65,7 @@ function Backup() {
   const handleOpenRestore = async (backup: BackupDTO) => {
     setRestoreModal({ open: true, backup, preview: null, loading: true, restoring: false, success: false, error: null })
     try {
-      const preview = await invoke<BackupPreviewDTO>(IPC_CHANNELS.BACKUP_PREVIEW, backup.fileName)
+      const preview = await invokeSafe<BackupPreviewDTO>(IPC_CHANNELS.BACKUP_PREVIEW, backup.fileName)
       setRestoreModal(prev => ({ ...prev, preview, loading: false }))
     } catch (err) {
       setRestoreModal(prev => ({ ...prev, loading: false, error: (err as Error).message }))
@@ -77,13 +77,9 @@ function Backup() {
     if (!restoreModal.backup) return
     setRestoreModal(prev => ({ ...prev, restoring: true }))
     try {
-      const result = await invoke<{ success: boolean; path?: string; error?: string }>(IPC_CHANNELS.BACKUP_RESTORE, restoreModal.backup.filePath)
-      if (result.success) {
-        setRestoreModal(prev => ({ ...prev, restoring: false, success: true }))
-        loadBackups()
-      } else {
-        setRestoreModal(prev => ({ ...prev, restoring: false, error: result.error ?? '恢复失败' }))
-      }
+      await invokeSafe<{ path: string }>(IPC_CHANNELS.BACKUP_RESTORE, restoreModal.backup.filePath)
+      setRestoreModal(prev => ({ ...prev, restoring: false, success: true }))
+      loadBackups()
     } catch (err) {
       setRestoreModal(prev => ({ ...prev, restoring: false, error: (err as Error).message }))
     }
@@ -104,7 +100,7 @@ function Backup() {
     if (!deleteModal.backup) return
     setDeleteModal(prev => ({ ...prev, deleting: true, error: null }))
     try {
-      await invoke(IPC_CHANNELS.BACKUP_DELETE, deleteModal.backup.fileName)
+      await invokeSafe(IPC_CHANNELS.BACKUP_DELETE, deleteModal.backup.fileName)
       setDeleteModal({ open: false, backup: null, deleting: false, error: null })
       loadBackups()
     } catch (err) {

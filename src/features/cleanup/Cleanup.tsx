@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import type { CleanupPreviewDTO, CleanupFilter, CleanupResultDTO, CleanupStrategy } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
-import { invoke } from '../../lib/ipc'
+import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatNumber } from '../../lib/format'
 import { Shield, AlertTriangle, Check, Clock, HardDrive, FolderOpen, Code, ChevronRight, ChevronLeft, Trash2, RotateCcw } from 'lucide-react'
 
@@ -41,7 +41,7 @@ function Cleanup() {
 
   // Load projects on mount
   useEffect(() => {
-    invoke<string[]>(IPC_CHANNELS.SESSIONS_PROJECTS)
+    invokeSafe<string[]>(IPC_CHANNELS.SESSIONS_PROJECTS)
       .then((res) => {
         setProjects(res)
       })
@@ -97,7 +97,7 @@ function Cleanup() {
       const filter = buildFilter()
       // Clear excludedIds for the initial preview
       const previewFilter: CleanupFilter = { ...filter, excludedSessionIds: [] }
-      const res = await invoke<CleanupPreviewDTO>(IPC_CHANNELS.CLEANUP_PREVIEW, previewFilter)
+      const res = await invokeSafe<CleanupPreviewDTO>(IPC_CHANNELS.CLEANUP_PREVIEW, previewFilter)
       setPreview(res)
       setStep(2)
     } catch (err) {
@@ -167,7 +167,7 @@ function Cleanup() {
     setActionError(null)
     try {
       const filter = buildFilter()
-      const res = await invoke<CleanupResultDTO>(IPC_CHANNELS.CLEANUP_EXECUTE, filter)
+      const res = await invokeSafe<CleanupResultDTO>(IPC_CHANNELS.CLEANUP_EXECUTE, filter)
       setResult(res)
     } catch (err) {
       console.error('Cleanup failed:', err)

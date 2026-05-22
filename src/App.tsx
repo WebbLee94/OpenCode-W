@@ -7,7 +7,7 @@ import Cleanup from './features/cleanup/Cleanup'
 import Backup from './features/backup/Backup'
 import { LayoutDashboard, MessageSquare, Trash2, HardDrive, ChevronRight, FolderSync } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
-import { invoke, isElectron } from '@/lib/ipc'
+import { invokeSafe, isElectron } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 
 const navItems = [
@@ -65,7 +65,7 @@ function Layout() {
       return
     }
     try {
-      const health = await invoke<{ ok: boolean }>(IPC_CHANNELS.DATABASE_HEALTH)
+      const health = await invokeSafe<{ ok: boolean }>(IPC_CHANNELS.DATABASE_HEALTH)
       setDbConnected(health.ok)
     } catch {
       setDbConnected(false)
@@ -78,15 +78,11 @@ function Layout() {
 
   const handleOpenDatabase = async () => {
     try {
-      const filePath = await invoke<string | null>(IPC_CHANNELS.DIALOG_OPEN_FILE)
-      if (filePath) {
-        const result = await invoke<{ success: boolean }>(IPC_CHANNELS.DATABASE_OPEN, filePath)
-        if (result.success) {
-          setDbConnected(true)
-          setDbPath(filePath)
-          window.location.reload()
-        }
-      }
+      const filePath = await invokeSafe<string>(IPC_CHANNELS.DIALOG_OPEN_FILE)
+      const result = await invokeSafe<{ path: string }>(IPC_CHANNELS.DATABASE_OPEN, filePath)
+      setDbConnected(true)
+      setDbPath(result.path)
+      window.location.reload()
     } catch (err) {
       console.error('Failed to open database:', err)
     }

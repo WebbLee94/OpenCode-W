@@ -6,7 +6,7 @@ import rehypeHighlight from 'rehype-highlight'
 import { ArrowLeft, User, Bot, Wrench, ChevronDown, ChevronRight, Loader2, Filter, FileText } from 'lucide-react'
 import type { MessageDTO, MessageDetailDTO, PartDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
-import { invoke } from '../../lib/ipc'
+import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
 
 // ---------------------------------------------------------------------------
@@ -237,7 +237,7 @@ function Messages() {
     if (!sessionId) return
     setListLoading(true)
     try {
-      const result = await invoke<{ data: MessageDTO[]; total: number; page: number }>(IPC_CHANNELS.MESSAGES_LIST, {
+      const result = await invokeSafe<{ data: MessageDTO[]; total: number; page: number }>(IPC_CHANNELS.MESSAGES_LIST, {
         sessionId,
         page: p,
         pageSize: PAGE_SIZE,
@@ -268,7 +268,7 @@ function Messages() {
     setSelectedId(messageId)
     setExpandedParts(new Set())
     try {
-      const result = await invoke<MessageDetailDTO | null>(IPC_CHANNELS.MESSAGES_DETAIL, messageId)
+      const result = await invokeSafe<MessageDetailDTO | null>(IPC_CHANNELS.MESSAGES_DETAIL, messageId)
       setDetail(result)
     } catch {
       setDetail(null)

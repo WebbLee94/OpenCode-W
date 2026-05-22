@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import type { SessionDTO, SessionDetailDTO, SessionFilter } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
-import { invoke } from '../../lib/ipc'
+import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatNumber, formatRelativeTime } from '../../lib/format'
 import {
   Search,
@@ -100,7 +100,7 @@ function Sessions() {
     }
 
     setLoading(true)
-    invoke<{ data: SessionDTO[]; total: number; page: number; pageSize: number }>(IPC_CHANNELS.SESSIONS_LIST, filter)
+    invokeSafe<{ data: SessionDTO[]; total: number; page: number; pageSize: number }>(IPC_CHANNELS.SESSIONS_LIST, filter)
       .then((result) => {
         setSessions(result.data)
         setTotal(result.total)
@@ -115,7 +115,7 @@ function Sessions() {
   // ─── Load projects list ──────────────────────────────────────────────────
 
   useEffect(() => {
-    invoke<string[]>(IPC_CHANNELS.SESSIONS_PROJECTS)
+    invokeSafe<string[]>(IPC_CHANNELS.SESSIONS_PROJECTS)
       .then((result) => {
         setProjects(result)
       })
@@ -128,7 +128,7 @@ function Sessions() {
     setDetailLoading(true)
     setPanelOpen(true)
     setSelectedSession(null)
-    invoke<SessionDetailDTO>(IPC_CHANNELS.SESSIONS_DETAIL, sessionId)
+    invokeSafe<SessionDetailDTO | null>(IPC_CHANNELS.SESSIONS_DETAIL, sessionId)
       .then((result) => {
         setSelectedSession(result)
       })
@@ -146,7 +146,7 @@ function Sessions() {
   const handleDelete = useCallback(
     (sessionId: string) => {
       setDeleteError(null)
-      invoke(IPC_CHANNELS.SESSIONS_DELETE, sessionId)
+      invokeSafe(IPC_CHANNELS.SESSIONS_DELETE, sessionId)
         .then(() => {
           closeDetail()
           // Reload current page
