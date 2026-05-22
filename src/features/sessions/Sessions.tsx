@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import type { SessionDTO, SessionDetailDTO, SessionFilter } from '../../../shared/types'
+import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShareDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
-import { formatBytes, formatNumber, formatRelativeTime } from '../../lib/format'
+import { formatBytes, formatNumber, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
 import {
   Search,
   ChevronLeft,
@@ -14,6 +14,11 @@ import {
   ArrowUpDown,
   FolderOpen,
   AlertTriangle,
+  Eye,
+  EyeOff,
+  Copy,
+  Share2,
+  ClipboardList,
 } from 'lucide-react'
 import {
   PieChart,
@@ -74,6 +79,14 @@ function Sessions() {
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // Todos state (Session detail panel)
+  const [sessionTodos, setSessionTodos] = useState<TodoDTO[]>([])
+  const [todoFilter, setTodoFilter] = useState<'all' | 'pending' | 'in_progress' | 'completed'>('all')
+
+  // Session share state
+  const [sessionShare, setSessionShare] = useState<SessionShareDTO | null>(null)
+  const [showSecret, setShowSecret] = useState(false)
 
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -159,12 +172,25 @@ function Sessions() {
     setDetailLoading(true)
     setPanelOpen(true)
     setSelectedSession(null)
+    setSessionTodos([])
+    setSessionShare(null)
+    setShowSecret(false)
     invokeSafe<SessionDetailDTO | null>(IPC_CHANNELS.SESSIONS_DETAIL, sessionId)
       .then((result) => {
         setSelectedSession(result)
       })
       .catch(() => setSelectedSession(null))
       .finally(() => setDetailLoading(false))
+
+    // Load todos for this session
+    invokeSafe<TodoDTO[]>(IPC_CHANNELS.TODOS_BY_SESSION, sessionId)
+      .then((result) => setSessionTodos(result))
+      .catch(() => setSessionTodos([]))
+
+    // Load share info for this session
+    invokeSafe<SessionShareDTO | null>(IPC_CHANNELS.SESSION_SHARE_GET, sessionId)
+      .then((result) => setSessionShare(result))
+      .catch(() => setSessionShare(null))
   }, [])
 
   const closeDetail = useCallback(() => {
@@ -619,6 +645,117 @@ function Sessions() {
                   <p className="text-sm text-gray-400">暂无 Skill 使用</p>
                 )}
               </div>
+
+              {/* Todos Tab */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <ClipboardList size={16} className="text-gray-500" />
+                  <h5 className="text-sm font-medium text-gray-700">
+                    待办列表{sessionTodos.length > 0 ? ` (${sessionTodos.length})` : ''}
+                  </h5>
+                </div>
+                <div className="flex gap-1.5 mb-3">
+                  {(['all', 'pending', 'in_progress', 'completed'] as const).map((tab) => {
+                    const labels: Record<string, string> = { all: '全部', pending: '待处理', in_progress: '进行中', completed: '已完成' }
+                    const counts: Record<string, number> = {
+                      all: sessionTodos.length,
+                      pending: sessionTodos.filter(t => t.status === 'pending').length,
+                      in_progress: sessionTodos.filter(t => t.status === 'in_progress').length,
+                      completed: sessionTodos.filter(t => t.status === 'completed').length,
+                    }
+                    return (
+                      <button
+                        key={tab}
+                        onClick={() => setTodoFilter(tab)}
+                        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                          todoFilter === tab
+                            ? 'bg-brand-50 text-brand-700'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {labels[tab]} {counts[tab] > 0 ? counts[tab] : ''}
+                      </button>
+                    )
+                  })}
+                </div>
+                {(() => {
+                  const filtered = todoFilter === 'all'
+                    ? sessionTodos
+                    : sessionTodos.filter(t => t.status === todoFilter)
+                  return filtered.length > 0 ? (
+                    <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                      {filtered.map((todo) => (
+                        <div key={`${todo.session_id}-${todo.position}`} className="flex items-start gap-2 px-3 py-2 bg-gray-50 rounded-md text-sm">
+                          <span className={`shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                            todo.priority === 'high' ? 'bg-red-100 text-red-700' :
+                            todo.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-green-100 text-green-700'
+                          }`}>
+                            {todo.priority === 'high' ? '高' : todo.priority === 'medium' ? '中' : '低'}
+                          </span>
+                          <span className={`shrink-0 text-xs ${
+                            todo.status === 'pending' ? 'text-gray-500' :
+                            todo.status === 'in_progress' ? 'text-blue-600' :
+                            todo.status === 'completed' ? 'text-green-600' :
+                            'text-red-500'
+                          }`}>
+                            {todo.status === 'pending' ? '⏳' : todo.status === 'in_progress' ? '🔄' : todo.status === 'completed' ? '✅' : '🚫'}
+                          </span>
+                          <span className="text-gray-700" title={todo.content}>
+                            {truncateText(todo.content, 120)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400">当前会话无待办记录</p>
+                  )
+                })()}
+              </div>
+
+              {/* Session Share Info */}
+              {sessionShare && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Share2 size={16} className="text-gray-500" />
+                    <h5 className="text-sm font-medium text-gray-700">分享信息</h5>
+                  </div>
+                  <div className="bg-gray-50 rounded-md p-3 space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 text-gray-500 w-16">链接</span>
+                      <span className="text-brand-600 break-all flex-1">{sessionShare.url}</span>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(sessionShare.url)}
+                        className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors"
+                        title="复制链接"
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 text-gray-500 w-16">分享 ID</span>
+                      <span className="text-gray-700 break-all">{sessionShare.id}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 text-gray-500 w-16">创建时间</span>
+                      <span className="text-gray-700">{formatDateTime(sessionShare.time_created)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 text-gray-500 w-16">密钥</span>
+                      <span className="text-gray-700 font-mono text-xs">
+                        {showSecret ? sessionShare.secret : '********'}
+                      </span>
+                      <button
+                        onClick={() => setShowSecret(v => !v)}
+                        className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors"
+                        title={showSecret ? '隐藏密钥' : '显示密钥'}
+                      >
+                        {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex gap-3 pt-2">
