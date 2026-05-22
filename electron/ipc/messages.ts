@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import type { MessageDTO, MessageDetailDTO, MessageFilter, PartDTO } from '../../shared/types'
+import type { MessageDTO, MessageDetailDTO, MessageFilter, PartDTO, IpcResult } from '../../shared/types'
 import dbManager from '../database'
 
 function parsePartData(row: Record<string, unknown>): PartDTO {
@@ -88,7 +88,8 @@ function parsePartData(row: Record<string, unknown>): PartDTO {
 export function registerHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.MESSAGES_LIST,
-    (_event, filter: MessageFilter) => {
+    (_event, filter: MessageFilter): IpcResult<{ data: MessageDTO[]; total: number; page: number; pageSize: number }> => {
+      try {
       const page = filter?.page ?? 1
       const pageSize = filter?.pageSize ?? 50
       const offset = (page - 1) * pageSize
@@ -121,24 +122,31 @@ export function registerHandlers(): void {
       }))
 
       return {
-        data: messages,
-        total,
-        page,
-        pageSize,
+        success: true,
+        data: {
+          data: messages,
+          total,
+          page,
+          pageSize,
+        },
+      }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
       }
     }
   )
 
   ipcMain.handle(
     IPC_CHANNELS.MESSAGES_DETAIL,
-    (_event, messageId: string) => {
+    (_event, messageId: string): IpcResult<MessageDetailDTO | null> => {
+      try {
       // Get message
       const row = dbManager.rawGet<Record<string, unknown>>(
         'SELECT * FROM message WHERE id = ?',
         [messageId]
       )
 
-      if (!row) return null
+      if (!row) return { success: true, data: null }
 
       // Parse content from data field
       let content = ''
@@ -182,7 +190,10 @@ export function registerHandlers(): void {
 
       message.parts = partRows.map(parsePartData)
 
-      return message
+      return { success: true, data: message }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
     }
   )
 }

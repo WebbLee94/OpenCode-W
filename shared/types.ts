@@ -1,3 +1,8 @@
+// IPC response wrapper type
+export type IpcResult<T = unknown> =
+  | { success: true; data: T }
+  | { success: false; error: string }
+
 // DTO type definitions shared between main and renderer processes
 
 // Database statistics

@@ -10,6 +10,7 @@ import * as cleanupIpc from './ipc/cleanup'
 import * as analyticsIpc from './ipc/analytics'
 import * as backupIpc from './ipc/backup'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
+import type { IpcResult } from '../shared/types'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -57,34 +58,46 @@ function createWindow() {
 
 function registerIpcHandlers() {
   // App info
-  ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())
-  ipcMain.handle(IPC_CHANNELS.APP_GET_PLATFORM, () => process.platform)
+  ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, (): IpcResult<string> => {
+    return { success: true, data: app.getVersion() }
+  })
+  ipcMain.handle(IPC_CHANNELS.APP_GET_PLATFORM, (): IpcResult<string> => {
+    return { success: true, data: process.platform }
+  })
 
   // Database operations
-  ipcMain.handle(IPC_CHANNELS.DATABASE_OPEN, async (_event, dbPath: string) => {
+  ipcMain.handle(IPC_CHANNELS.DATABASE_OPEN, async (_event, dbPath: string): Promise<IpcResult<{ path: string }>> => {
     try {
       DatabaseManager.open(dbPath)
-      return { success: true, path: dbPath }
+      return { success: true, data: { path: dbPath } }
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.DATABASE_HEALTH, () => {
+  ipcMain.handle(IPC_CHANNELS.DATABASE_HEALTH, (): IpcResult<{ ok: boolean; pageCount: number; freelistPages: number; walSize: number }> => {
     try {
-      return DatabaseManager.healthCheck()
+      return { success: true, data: DatabaseManager.healthCheck() }
     } catch {
-      return { ok: false, pageCount: 0, freelistPages: 0, walSize: 0 }
+      return { success: true, data: { ok: false, pageCount: 0, freelistPages: 0, walSize: 0 } }
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.DATABASE_VACUUM, () => {
-    return DatabaseManager.vacuum()
+  ipcMain.handle(IPC_CHANNELS.DATABASE_VACUUM, (): IpcResult<{ before: number; after: number; freed: number }> => {
+    try {
+      return { success: true, data: DatabaseManager.vacuum() }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
   })
 
-  ipcMain.handle(IPC_CHANNELS.DATABASE_CHECKPOINT, () => {
-    DatabaseManager.checkpoint()
-    return { success: true }
+  ipcMain.handle(IPC_CHANNELS.DATABASE_CHECKPOINT, (): IpcResult<true> => {
+    try {
+      DatabaseManager.checkpoint()
+      return { success: true, data: true }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
   })
 
   // Register feature IPC handlers
@@ -95,13 +108,17 @@ function registerIpcHandlers() {
   backupIpc.registerHandlers()
 
   // Open file dialog for database
-  ipcMain.handle(IPC_CHANNELS.DIALOG_OPEN_FILE, async () => {
-    const result = await dialog.showOpenDialog(mainWindow!, {
-      properties: ['openFile'],
-      filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite', 'sqlite3'] }],
-    })
-    if (result.canceled || result.filePaths.length === 0) return null
-    return result.filePaths[0]
+  ipcMain.handle(IPC_CHANNELS.DIALOG_OPEN_FILE, async (): Promise<IpcResult<string>> => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow!, {
+        properties: ['openFile'],
+        filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite', 'sqlite3'] }],
+      })
+      if (result.canceled || result.filePaths.length === 0) return { success: false, error: 'User cancelled' }
+      return { success: true, data: result.filePaths[0] }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
   })
 }
 

@@ -1,19 +1,19 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import type { DatabaseStats, TokenStats, ToolRanking, SkillUsage, TrendDataPoint } from '../../shared/types'
+import type { DatabaseStats, TokenStats, ToolRanking, SkillUsage, TrendDataPoint, IpcResult } from '../../shared/types'
 import dbManager from '../database'
 
 export function registerHandlers(): void {
-  ipcMain.handle(IPC_CHANNELS.DASHBOARD_OVERVIEW, () => {
+  ipcMain.handle(IPC_CHANNELS.DASHBOARD_OVERVIEW, (): IpcResult<DatabaseStats> => {
     try {
       const stats: DatabaseStats = dbManager.getStats()
-      return { success: true as const, data: stats }
+      return { success: true, data: stats }
     } catch (error) {
-      return { success: false as const, error: (error as Error).message }
+      return { success: false, error: (error as Error).message }
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.DASHBOARD_TOKENS, () => {
+  ipcMain.handle(IPC_CHANNELS.DASHBOARD_TOKENS, (): IpcResult<TokenStats> => {
     try {
     const row = dbManager.rawGet<Record<string, number>>(
       `SELECT
@@ -40,13 +40,13 @@ export function registerHandlers(): void {
       cacheHitRate: Math.round(cacheHitRate * 100) / 100,
     }
 
-    return { success: true as const, data: tokenStats }
+    return { success: true, data: tokenStats }
     } catch (error) {
-      return { success: false as const, error: (error as Error).message }
+      return { success: false, error: (error as Error).message }
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, () => {
+  ipcMain.handle(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, (): IpcResult<ToolRanking[]> => {
     try {
     // type is inside data JSON, not a column
     const rows = dbManager.rawQuery<Record<string, unknown>>(
@@ -65,13 +65,13 @@ export function registerHandlers(): void {
       count: r.count as number,
     }))
 
-    return { success: true as const, data: ranking }
+    return { success: true, data: ranking }
     } catch (error) {
-      return { success: false as const, error: (error as Error).message }
+      return { success: false, error: (error as Error).message }
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.DASHBOARD_SKILL_USAGE, () => {
+  ipcMain.handle(IPC_CHANNELS.DASHBOARD_SKILL_USAGE, (): IpcResult<SkillUsage[]> => {
     try {
     // type is inside data JSON, not a column
     const rows = dbManager.rawQuery<Record<string, unknown>>(
@@ -91,13 +91,13 @@ export function registerHandlers(): void {
       count: r.count as number,
     }))
 
-    return { success: true as const, data: usage }
+    return { success: true, data: usage }
     } catch (error) {
-      return { success: false as const, error: (error as Error).message }
+      return { success: false, error: (error as Error).message }
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.DASHBOARD_TRENDS, () => {
+  ipcMain.handle(IPC_CHANNELS.DASHBOARD_TRENDS, (): IpcResult<TrendDataPoint[]> => {
     try {
     // time_created is integer milliseconds - convert to date
     const sessionRows = dbManager.rawQuery<Record<string, unknown>>(
@@ -162,9 +162,9 @@ export function registerHandlers(): void {
       point.sizeGrowth = cumulativeSize
     }
 
-    return { success: true as const, data: sortedDates.map(d => trendMap.get(d)!) }
+    return { success: true, data: sortedDates.map(d => trendMap.get(d)!) }
     } catch (error) {
-      return { success: false as const, error: (error as Error).message }
+      return { success: false, error: (error as Error).message }
     }
   })
 }

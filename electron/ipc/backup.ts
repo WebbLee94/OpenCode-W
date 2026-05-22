@@ -1,6 +1,6 @@
 import { ipcMain, dialog } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import type { BackupDTO, BackupPreviewDTO } from '../../shared/types'
+import type { BackupDTO, BackupPreviewDTO, IpcResult } from '../../shared/types'
 import dbManager from '../database'
 import Database from 'better-sqlite3'
 import fs from 'node:fs'
@@ -57,10 +57,11 @@ function getBackupFiles(): BackupDTO[] {
 }
 
 export function registerHandlers(): void {
-  ipcMain.handle(IPC_CHANNELS.BACKUP_CREATE, async () => {
+  ipcMain.handle(IPC_CHANNELS.BACKUP_CREATE, async (): Promise<IpcResult<BackupDTO>> => {
+    try {
     const dbPath = dbManager.getCurrentPath()
     if (!dbPath) {
-      throw new Error('No database currently open')
+      return { success: false, error: 'No database currently open' }
     }
 
     ensureBackupDir()
@@ -92,16 +93,24 @@ export function registerHandlers(): void {
       compressed: false,
     }
 
-    return backup
+    return { success: true, data: backup }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
   })
 
-  ipcMain.handle(IPC_CHANNELS.BACKUP_LIST, () => {
-    return getBackupFiles()
+  ipcMain.handle(IPC_CHANNELS.BACKUP_LIST, (): IpcResult<BackupDTO[]> => {
+    try {
+      return { success: true, data: getBackupFiles() }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
   })
 
   ipcMain.handle(
     IPC_CHANNELS.BACKUP_RESTORE,
-    async (_event, filePath?: string) => {
+    async (_event, filePath?: string): Promise<IpcResult<{ path: string }>> => {
+      try {
       let backupPath: string
 
       if (filePath) {
@@ -115,12 +124,12 @@ export function registerHandlers(): void {
           properties: ['openFile'],
         })
 
-        if (canceled || filePaths.length === 0) return { success: false }
+        if (canceled || filePaths.length === 0) return { success: false, error: 'User cancelled' }
         backupPath = filePaths[0]
       }
 
       if (!fs.existsSync(backupPath)) {
-        throw new Error('Backup file not found')
+        return { success: false, error: 'Backup file not found' }
       }
 
       // Close current database
@@ -129,7 +138,10 @@ export function registerHandlers(): void {
       // Open the backup as the new database
       try {
         dbManager.open(backupPath)
-        return { success: true, path: backupPath }
+        return { success: true, data: { path: backupPath } }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
       } catch (error) {
         return { success: false, error: (error as Error).message }
       }
@@ -138,17 +150,18 @@ export function registerHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.BACKUP_DELETE,
-    (_event, fileName: string) => {
+    (_event, fileName: string): IpcResult<true> => {
+      try {
       const filePath = path.join(BACKUP_DIR, fileName)
 
       // Security check: ensure the file is within the backup directory
       const resolvedPath = path.resolve(filePath)
       if (!resolvedPath.startsWith(path.resolve(BACKUP_DIR))) {
-        throw new Error('Invalid backup file path')
+        return { success: false, error: 'Invalid backup file path' }
       }
 
       if (!fs.existsSync(resolvedPath)) {
-        throw new Error('Backup file not found')
+        return { success: false, error: 'Backup file not found' }
       }
 
       fs.unlinkSync(resolvedPath)
@@ -159,23 +172,27 @@ export function registerHandlers(): void {
       if (fs.existsSync(walPath)) fs.unlinkSync(walPath)
       if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath)
 
-      return { success: true }
+      return { success: true, data: true }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
     }
   )
 
   ipcMain.handle(
     IPC_CHANNELS.BACKUP_PREVIEW,
-    (_event, fileName: string) => {
+    (_event, fileName: string): IpcResult<BackupPreviewDTO> => {
+      try {
       const filePath = path.join(BACKUP_DIR, fileName)
 
       // Security check
       const resolvedPath = path.resolve(filePath)
       if (!resolvedPath.startsWith(path.resolve(BACKUP_DIR))) {
-        throw new Error('Invalid backup file path')
+        return { success: false, error: 'Invalid backup file path' }
       }
 
       if (!fs.existsSync(resolvedPath)) {
-        throw new Error('Backup file not found')
+        return { success: false, error: 'Backup file not found' }
       }
 
       const stat = fs.statSync(resolvedPath)
@@ -213,7 +230,10 @@ export function registerHandlers(): void {
         partCount,
       }
 
-      return preview
+      return { success: true, data: preview }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
     }
   )
 }

@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import type { CleanupPreviewDTO, CleanupResultDTO, CleanupFilter, SessionDTO } from '../../shared/types'
+import type { CleanupPreviewDTO, CleanupResultDTO, CleanupFilter, SessionDTO, IpcResult } from '../../shared/types'
 import dbManager from '../database'
 
 const DANGEROUS_PATTERNS = [
@@ -93,7 +93,7 @@ function buildCleanupWhereClause(filter: CleanupFilter): { sql: string; params: 
 export function registerHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.CLEANUP_PREVIEW,
-    (_event, filter: CleanupFilter) => {
+    (_event, filter: CleanupFilter): IpcResult<CleanupPreviewDTO> => {
       try {
         const { sql: whereClause, params } = buildCleanupWhereClause(filter)
 
@@ -122,7 +122,7 @@ export function registerHandlers(): void {
             estimatedSize: 0,
             sessions: [],
           }
-          return preview
+          return { success: true, data: preview }
         }
 
         const placeholders = sessionIds.map(() => '?').join(',')
@@ -156,16 +156,16 @@ export function registerHandlers(): void {
           sessions,
         }
 
-        return { success: true as const, data: preview }
+        return { success: true, data: preview }
       } catch (error) {
-        return { success: false as const, error: (error as Error).message }
+        return { success: false, error: (error as Error).message }
       }
     }
   )
 
   ipcMain.handle(
     IPC_CHANNELS.CLEANUP_EXECUTE,
-    (_event, filter: CleanupFilter) => {
+    (_event, filter: CleanupFilter): IpcResult<CleanupResultDTO> => {
       try {
         const { sql: whereClause, params } = buildCleanupWhereClause(filter)
 
@@ -186,7 +186,7 @@ export function registerHandlers(): void {
             vacuumBefore: 0,
             vacuumAfter: 0,
           }
-          return result
+          return { success: true, data: result }
         }
 
         const placeholders = sessionIds.map(() => '?').join(',')
@@ -227,9 +227,9 @@ export function registerHandlers(): void {
           vacuumAfter: vacuumResult.after,
         }
 
-        return { success: true as const, data: result }
+        return { success: true, data: result }
       } catch (error) {
-        return { success: false as const, error: (error as Error).message }
+        return { success: false, error: (error as Error).message }
       }
     }
   )
