@@ -63,6 +63,8 @@ function Sessions() {
     const saved = localStorage.getItem('dbscope-page-size')
     return saved ? parseInt(saved, 10) : DEFAULT_PAGE_SIZE
   })
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
 
   // Detail panel state
   const [selectedSession, setSelectedSession] = useState<SessionDetailDTO | null>(null)
@@ -97,6 +99,8 @@ function Sessions() {
       sortOrder,
       page,
       pageSize,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
     }
 
     setLoading(true)
@@ -110,7 +114,7 @@ function Sessions() {
         setTotal(0)
       })
       .finally(() => setLoading(false))
-  }, [debouncedSearch, projectId, sortBy, sortOrder, page, pageSize])
+  }, [debouncedSearch, projectId, sortBy, sortOrder, page, pageSize, startDate, endDate])
 
   // ─── Load projects list ──────────────────────────────────────────────────
 
@@ -282,6 +286,44 @@ function Sessions() {
             <ArrowUpDown size={14} />
             {sortOrder === 'asc' ? '升序' : '降序'}
           </button>
+
+          {/* Date range filter */}
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value)
+                setPage(1)
+              }}
+              className="rounded-md border border-gray-300 bg-white py-2 px-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              title="开始日期"
+            />
+            <span className="text-gray-400 text-sm">~</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => {
+                setEndDate(e.target.value)
+                setPage(1)
+              }}
+              className="rounded-md border border-gray-300 bg-white py-2 px-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              title="结束日期"
+            />
+            {(startDate || endDate) && (
+              <button
+                onClick={() => {
+                  setStartDate('')
+                  setEndDate('')
+                  setPage(1)
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                title="清除日期筛选"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
