@@ -12,7 +12,7 @@ function buildDateFilter(tableAlias: string, timeRange?: TimeRange): { sql: stri
   }
 }
 
-/** Query trend data for a given date range */
+/** Query trend data for a given date range using GROUP BY */
 function queryTrendData(startDate: string, endDate: string): TrendDataPoint[] {
   const sessionRows = dbManager.rawQuery<Record<string, unknown>>(
     `SELECT
@@ -33,6 +33,17 @@ function queryTrendData(startDate: string, endDate: string): TrendDataPoint[] {
     WHERE date(time_created / 1000, 'unixepoch') BETWEEN ? AND ?
     GROUP BY date
     ORDER BY date ASC`,
+    [startDate, endDate]
+  )
+
+  // Single GROUP BY query instead of N+1 per-date queries
+  const partSizeRows = dbManager.rawQuery<Record<string, unknown>>(
+    `SELECT
+      date(time_created / 1000, 'unixepoch') as date,
+      COALESCE(SUM(LENGTH(data)), 0) as partSize
+    FROM part
+    WHERE date(time_created / 1000, 'unixepoch') BETWEEN ? AND ?
+    GROUP BY date`,
     [startDate, endDate]
   )
 
@@ -63,19 +74,17 @@ function queryTrendData(startDate: string, endDate: string): TrendDataPoint[] {
     }
   }
 
+  // Apply part sizes from single GROUP BY query
+  const partSizeMap = new Map<string, number>()
+  for (const row of partSizeRows) {
+    partSizeMap.set(row.date as string, (row.partSize as number) ?? 0)
+  }
+
   let cumulativeSize = 0
   const sortedDates = [...trendMap.keys()].sort()
   for (const date of sortedDates) {
-    const point = trendMap.get(date)!
-    const daySizeRow = dbManager.rawGet<{ total: number | null }>(
-      `SELECT COALESCE(SUM(LENGTH(data)), 0) as total
-      FROM part
-      WHERE date(time_created / 1000, 'unixepoch') = ?`,
-      [date]
-    )
-    const daySize = daySizeRow?.total ?? 0
-    cumulativeSize += daySize
-    point.sizeGrowth = cumulativeSize
+    cumulativeSize += partSizeMap.get(date) ?? 0
+    trendMap.get(date)!.sizeGrowth = cumulativeSize
   }
 
   return sortedDates.map(d => trendMap.get(d)!)
@@ -276,6 +285,15 @@ export function registerHandlers(): void {
         ORDER BY date ASC`
       )
 
+      // Single GROUP BY query instead of N+1 per-date queries
+      const partSizeRows = dbManager.rawQuery<Record<string, unknown>>(
+        `SELECT
+          date(time_created / 1000, 'unixepoch') as date,
+          COALESCE(SUM(LENGTH(data)), 0) as partSize
+        FROM part
+        GROUP BY date`
+      )
+
       const trendMap = new Map<string, TrendDataPoint>()
 
       for (const row of sessionRows) {
@@ -303,19 +321,17 @@ export function registerHandlers(): void {
         }
       }
 
+      // Apply part sizes from single GROUP BY query
+      const partSizeMap = new Map<string, number>()
+      for (const row of partSizeRows) {
+        partSizeMap.set(row.date as string, (row.partSize as number) ?? 0)
+      }
+
       let cumulativeSize = 0
       const sortedDates = [...trendMap.keys()].sort()
       for (const date of sortedDates) {
-        const point = trendMap.get(date)!
-        const daySizeRow = dbManager.rawGet<{ total: number | null }>(
-          `SELECT COALESCE(SUM(LENGTH(data)), 0) as total
-          FROM part
-          WHERE date(time_created / 1000, 'unixepoch') = ?`,
-          [date]
-        )
-        const daySize = daySizeRow?.total ?? 0
-        cumulativeSize += daySize
-        point.sizeGrowth = cumulativeSize
+        cumulativeSize += partSizeMap.get(date) ?? 0
+        trendMap.get(date)!.sizeGrowth = cumulativeSize
       }
 
       return { success: true, data: sortedDates.map(d => trendMap.get(d)!) }

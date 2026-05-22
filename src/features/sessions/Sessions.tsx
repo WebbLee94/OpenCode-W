@@ -385,7 +385,7 @@ function Sessions() {
                 <tr
                   key={session.id}
                   onClick={() => openDetail(session.id)}
-                  className={`cursor-pointer border-b border-gray-100 transition-colors hover:bg-brand-50 ${
+                  className={`session-row cursor-pointer border-b border-gray-100 transition-colors hover:bg-brand-50 ${
                     idx % 2 === 1 ? 'bg-gray-50/50' : ''
                   } ${selectedSession?.id === session.id ? 'bg-brand-50' : ''}`}
                 >

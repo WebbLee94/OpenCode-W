@@ -36,7 +36,7 @@ export function registerHandlers(): void {
     (_event, filter?: SessionFilter): IpcResult<{ data: SessionDTO[]; total: number; page: number; pageSize: number }> => {
       try {
       const page = filter?.page ?? 1
-      const pageSize = filter?.pageSize ?? 50
+      const pageSize = Math.min(filter?.pageSize ?? 50, 200)
       const offset = (page - 1) * pageSize
       const sortBy = filter?.sortBy ?? 'time_updated'
       const sortOrder = filter?.sortOrder ?? 'desc'

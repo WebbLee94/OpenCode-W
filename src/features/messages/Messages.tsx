@@ -568,7 +568,7 @@ function Messages() {
                     <div
                       key={msg.id}
                       onClick={() => loadDetail(msg.id)}
-                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                      className={`message-item flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
                         isSelected
                           ? 'bg-brand-50 border-l-2 border-l-brand-500'
                           : 'hover:bg-gray-50 border-l-2 border-l-transparent'
@@ -584,12 +584,19 @@ function Messages() {
                         <Icon size={13} />
                       </span>
 
-                      {/* Size + time */}
-                      <div className="flex-1 min-w-0 flex items-center gap-2">
-                        <SizeIndicator bytes={msg.data_size} />
-                        <span className="text-xs text-gray-400">
-                          {formatRelativeTime(msg.time_created)}
-                        </span>
+                      {/* Content preview + meta */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <SizeIndicator bytes={msg.data_size} />
+                          <span className="text-xs text-gray-400">
+                            {formatRelativeTime(msg.time_created)}
+                          </span>
+                        </div>
+                        {msg.content && (
+                          <p className="text-xs text-gray-500 mt-0.5 truncate">
+                            {msg.content.length > 300 ? msg.content.slice(0, 300) + '...' : msg.content}
+                          </p>
+                        )}
                       </div>
                     </div>
                   )

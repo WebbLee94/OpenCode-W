@@ -20,11 +20,24 @@ files:
   - "!dist/builder-effective-config.yaml"
 mac:
   target:
-    - dmg
-    - zip
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
   category: public.app-category.developer-tools
   icon: build/icon.icns
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
 win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
   icon: build/icon.ico
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  category: Development
+  icon: build/icon.png

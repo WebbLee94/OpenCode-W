@@ -12,3 +12,10 @@
   --color-brand-800: #4338CA;
   --color-brand-900: #312E81;
 }
+
+/* CSS virtual rendering for large lists */
+.session-row,
+.message-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 48px;
+}

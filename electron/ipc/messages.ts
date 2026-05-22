@@ -103,7 +103,8 @@ export function registerHandlers(): void {
 
       // Query messages - role is in data JSON, not a column
       const rows = dbManager.rawQuery<Record<string, unknown>>(
-        `SELECT id, session_id, json_extract(data, '$.role') as role, LENGTH(data) as data_size, time_created
+        `SELECT id, session_id, json_extract(data, '$.role') as role, LENGTH(data) as data_size, time_created,
+                SUBSTR(COALESCE(json_extract(data, '$.content'), json_extract(data, '$.text'), ''), 1, 300) as content_preview
         FROM message
         WHERE session_id = ?
         ORDER BY time_created ASC
@@ -111,15 +112,19 @@ export function registerHandlers(): void {
         [filter.sessionId, pageSize, offset]
       )
 
-      const messages: MessageDTO[] = rows.map(row => ({
-        id: row.id as string,
-        session_id: row.session_id as string,
-        role: (row.role as MessageDTO['role']) ?? 'user',
-        data_size: (row.data_size as number) ?? 0,
-        time_created: typeof row.time_created === 'string'
-          ? new Date(row.time_created as string).getTime()
-          : (row.time_created as number),
-      }))
+      const messages: MessageDTO[] = rows.map(row => {
+        const rawContent = (row.content_preview as string) ?? ''
+        return {
+          id: row.id as string,
+          session_id: row.session_id as string,
+          role: (row.role as MessageDTO['role']) ?? 'user',
+          data_size: (row.data_size as number) ?? 0,
+          time_created: typeof row.time_created === 'string'
+            ? new Date(row.time_created as string).getTime()
+            : (row.time_created as number),
+          content: rawContent.length >= 300 ? rawContent + '...' : rawContent || undefined,
+        }
+      })
 
       return {
         success: true,
