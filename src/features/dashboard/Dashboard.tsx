@@ -40,6 +40,7 @@ import {
   Legend,
 } from 'recharts'
 import StatCard from '@/components/StatCard'
+import TooltipHint from '@/components/TooltipHint'
 import { formatBytes, formatNumber } from '@/lib/format'
 
 // ── Color palette ──────────────────────────────────────────────────
@@ -73,6 +74,8 @@ function Dashboard() {
   const [connected, setConnected] = useState(!!dashboardCache)
   const [dbPath, setDbPath] = useState<string | null>(null)
   const [loading, setLoading] = useState(!dashboardCache)
+  const [fastLoading, setFastLoading] = useState(!dashboardCache?.dbStats)
+  const [slowLoading, setSlowLoading] = useState(!dashboardCache?.toolRanking?.length && !dashboardCache?.skillUsage?.length && !dashboardCache?.trends?.length)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -81,17 +84,20 @@ function Dashboard() {
 
   // ── Load fast data (overview + tokens) ───────────────────────────
   const loadFastData = useCallback(async () => {
+    setFastLoading(true)
     const [stats, tokens] = await Promise.all([
       invoke<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW),
       invoke<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS),
     ])
     setDbStats(stats)
     setTokenStats(tokens)
+    setFastLoading(false)
     return { stats, tokens }
   }, [])
 
   // ── Load slow data (tools + skills + trends) ─────────────────────
   const loadSlowData = useCallback(async () => {
+    setSlowLoading(true)
     const [tools, skills, trendData] = await Promise.all([
       invoke<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING),
       invoke<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE),
@@ -100,6 +106,7 @@ function Dashboard() {
     setToolRanking(tools ?? [])
     setSkillUsage(skills ?? [])
     setTrends(trendData ?? [])
+    setSlowLoading(false)
     return { tools: tools ?? [], skills: skills ?? [], trendData: trendData ?? [] }
   }, [])
 
@@ -112,16 +119,15 @@ function Dashboard() {
       setToolRanking(dashboardCache.toolRanking)
       setSkillUsage(dashboardCache.skillUsage)
       setTrends(dashboardCache.trends)
-      setLoading(false)
+      setFastLoading(false)
+      setSlowLoading(false)
       return
     }
 
-    setLoading(true)
     setError(null)
     try {
       // Fast group first
       const fastResult = await loadFastData()
-      setLoading(false)
 
       // Slow group after
       const slowResult = await loadSlowData()
@@ -136,7 +142,6 @@ function Dashboard() {
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
-      setLoading(false)
     }
   }, [loadFastData, loadSlowData])
 
@@ -173,6 +178,8 @@ function Dashboard() {
         setTrends(dashboardCache.trends)
         setConnected(true)
         setLoading(false)
+        setFastLoading(false)
+        setSlowLoading(false)
         return
       }
       // No cache — do health check then load data
@@ -268,18 +275,6 @@ function Dashboard() {
     )
   }
 
-  // ── Loading view ─────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <Loader2 size={32} className="mx-auto text-blue-500 animate-spin mb-3" />
-          <p className="text-gray-500 text-sm">Loading dashboard data...</p>
-        </div>
-      </div>
-    )
-  }
-
   // ── Error view ───────────────────────────────────────────────────
   if (error && !dbStats) {
     return (
@@ -339,7 +334,7 @@ function Dashboard() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="relative group">
+          <div className="flex items-center">
             <button
               onClick={handleVacuum}
               disabled={actionLoading !== null}
@@ -352,12 +347,9 @@ function Dashboard() {
               )}
               一键 VACUUM
             </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-pre-line z-50 w-64 text-center shadow-lg">
-              清理数据库碎片，回收已删除数据占用的空间{'\n'}{'\n'}适用场景：删除会话/消息后，数据库文件未变小时
-              <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45" />
-            </div>
+            <TooltipHint text={'清理数据库碎片，回收已删除数据占用的空间\n\n适用场景：删除会话/消息后，数据库文件未变小时'} />
           </div>
-          <div className="relative group">
+          <div className="flex items-center">
             <button
               onClick={handleCheckpoint}
               disabled={actionLoading !== null}
@@ -370,10 +362,7 @@ function Dashboard() {
               )}
               WAL Checkpoint
             </button>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-pre-line z-50 w-64 text-center shadow-lg">
-              将待写入的变更合并到主数据库{'\n'}{'\n'}适用场景：备份前执行，或 WAL 文件过大时
-              <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-800 rotate-45" />
-            </div>
+            <TooltipHint text={'将待写入的变更合并到主数据库\n\n适用场景：备份前执行，或 WAL 文件过大时'} />
           </div>
           <button
             onClick={handleRefresh}
@@ -387,7 +376,15 @@ function Dashboard() {
       </div>
 
       {/* ── Overview Cards Row 1 ────────────────────────────────── */}
-      {dbStats && (
+      {fastLoading && !dbStats ? (
+        <div className="grid grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="bg-white rounded-lg border border-gray-200 p-5 flex items-center justify-center h-24">
+              <Loader2 size={20} className="text-blue-400 animate-spin" />
+            </div>
+          ))}
+        </div>
+      ) : dbStats && (
         <div className="grid grid-cols-4 gap-4">
           <StatCard
             label="总大小"
@@ -413,7 +410,15 @@ function Dashboard() {
       )}
 
       {/* ── Overview Cards Row 2 ────────────────────────────────── */}
-      {dbStats && tokenStats && (
+      {fastLoading && !tokenStats ? (
+        <div className="grid grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="bg-white rounded-lg border border-gray-200 p-5 flex items-center justify-center h-24">
+              <Loader2 size={20} className="text-blue-400 animate-spin" />
+            </div>
+          ))}
+        </div>
+      ) : dbStats && tokenStats && (
         <div className="grid grid-cols-4 gap-4">
           <StatCard
             label="WAL日志"
@@ -441,7 +446,12 @@ function Dashboard() {
       {/* ── Token Panel + Tool Ranking ──────────────────────────── */}
       <div className="grid grid-cols-2 gap-4">
         {/* Token Panel */}
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
+          {fastLoading && !tokenStats && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
+              <Loader2 size={20} className="text-blue-400 animate-spin" />
+            </div>
+          )}
           <h3 className="text-sm font-medium text-gray-700 mb-4">Token 分布</h3>
           {tokenStats && tokenPieData.length > 0 ? (
             <div className="flex items-center gap-6">
@@ -504,7 +514,12 @@ function Dashboard() {
         </div>
 
         {/* Tool Ranking */}
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
+          {slowLoading && !toolData.length && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
+              <Loader2 size={20} className="text-blue-400 animate-spin" />
+            </div>
+          )}
           <h3 className="text-sm font-medium text-gray-700 mb-4">工具使用排行 TOP 10</h3>
           {toolData.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
@@ -536,7 +551,12 @@ function Dashboard() {
       {/* ── Skill Usage + Growth Trend ──────────────────────────── */}
       <div className="grid grid-cols-2 gap-4">
         {/* Skill Usage */}
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
+          {slowLoading && !skillData.length && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
+              <Loader2 size={20} className="text-blue-400 animate-spin" />
+            </div>
+          )}
           <h3 className="text-sm font-medium text-gray-700 mb-4">技能使用分布</h3>
           {skillData.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
@@ -569,7 +589,12 @@ function Dashboard() {
         </div>
 
         {/* Growth Trend */}
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
+          {slowLoading && !trendData.length && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
+              <Loader2 size={20} className="text-blue-400 animate-spin" />
+            </div>
+          )}
           <h3 className="text-sm font-medium text-gray-700 mb-4">增长趋势 (近30天)</h3>
           {trendData.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
