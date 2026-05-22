@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import type { SessionDTO, SessionDetailDTO, SessionFilter, TokenStats, ToolRanking, IpcResult } from '../../shared/types'
+import type { SessionDTO, SessionDetailDTO, SessionFilter, SessionShareDTO, TokenStats, ToolRanking, IpcResult } from '../../shared/types'
 import dbManager from '../database'
 
 function mapSessionRow(row: Record<string, unknown>): SessionDTO {
@@ -228,6 +228,22 @@ export function registerHandlers(): void {
           deletedSessions: sessionResult.changes,
         },
       }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
+    }
+  )
+
+  // Session share — get share info for a session
+  ipcMain.handle(
+    IPC_CHANNELS.SESSION_SHARE_GET,
+    (_event, sessionId: string): IpcResult<SessionShareDTO | null> => {
+      try {
+        const row = dbManager.rawGet<SessionShareDTO>(
+          'SELECT * FROM session_share WHERE session_id = ?',
+          [sessionId]
+        )
+        return { success: true, data: row ?? null }
       } catch (error) {
         return { success: false, error: (error as Error).message }
       }
