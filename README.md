@@ -6,10 +6,13 @@
 [![Electron](https://img.shields.io/badge/Electron-32.0.0-blue.svg)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-19.2.1-61dafb.svg)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7.3-blue.svg)](https://www.typescriptlang.org/)
+[![OpenCode](https://img.shields.io/badge/OpenCode-%E2%86%92-blueviolet.svg)](https://github.com/anomalyco/opencode)
 
 ## 📖 简介
 
 DBScope-OC 是一款桌面应用，用于可视化管理 OpenCode 的 SQLite 数据库。支持查看数据库统计、浏览会话和消息、安全清理历史数据、备份恢复数据库。
+
+> 基于 [OpenCode](https://github.com/anomalyco/opencode) 构建
 
 ## ✨ 功能特性
 
