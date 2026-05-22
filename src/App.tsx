@@ -5,7 +5,9 @@ import Sessions from './features/sessions/Sessions'
 import Messages from './features/messages/Messages'
 import Cleanup from './features/cleanup/Cleanup'
 import Backup from './features/backup/Backup'
-import { LayoutDashboard, MessageSquare, Trash2, HardDrive, ChevronRight, FolderSync } from 'lucide-react'
+import Todos from './features/todos/Todos'
+import Accounts from './features/accounts/Accounts'
+import { LayoutDashboard, MessageSquare, Trash2, HardDrive, ChevronRight, FolderSync, ClipboardList, UserCircle } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { invokeSafe, isElectron } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
@@ -13,6 +15,8 @@ import { IPC_CHANNELS } from '@shared/ipc-channels'
 const navItems = [
   { to: '/', label: '首页仪表盘', icon: LayoutDashboard },
   { to: '/sessions', label: '会话浏览', icon: MessageSquare },
+  { to: '/todos', label: '待办管理', icon: ClipboardList },
+  { to: '/accounts', label: '账户管理', icon: UserCircle },
   { to: '/cleanup', label: '清理向导', icon: Trash2 },
   { to: '/backup', label: '备份恢复', icon: HardDrive },
 ]
@@ -31,6 +35,10 @@ function Breadcrumb() {
     } else {
       crumbs.push({ label: '会话浏览' })
     }
+  } else if (path.startsWith('/todos')) {
+    crumbs.push({ label: '待办管理' })
+  } else if (path.startsWith('/accounts')) {
+    crumbs.push({ label: '账户管理' })
   } else if (path.startsWith('/cleanup')) {
     crumbs.push({ label: '清理向导' })
   } else if (path.startsWith('/backup')) {
@@ -164,6 +172,8 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/sessions/:sessionId/messages" element={<Messages />} />
+          <Route path="/todos" element={<Todos />} />
+          <Route path="/accounts" element={<Accounts />} />
           <Route path="/cleanup" element={<Cleanup />} />
           <Route path="/backup" element={<Backup />} />
         </Route>
