@@ -1,10 +1,12 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import type {
   DatabaseStats,
   TokenStats,
   ToolRanking,
   SkillUsage,
-  TrendDataPoint,
+  TrendComparison,
+  TimeRange,
+  TokenGroupDataPoint,
 } from '@shared/types'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 import { invokeSafe } from '@/lib/ipc'
@@ -52,13 +54,30 @@ const SKILL_COLORS = [
   '#6d28d9', '#4f46e5',
 ]
 
+// ── Time range presets ─────────────────────────────────────────────
+type TimePreset = 7 | 30 | 90
+type GroupBy = 'day' | 'week' | 'month'
+
+function computeTimeRange(days: TimePreset): TimeRange {
+  const endDate = new Date()
+  const startDate = new Date()
+  startDate.setDate(endDate.getDate() - days)
+  return {
+    startDate: startDate.toISOString().slice(0, 10),
+    endDate: endDate.toISOString().slice(0, 10),
+  }
+}
+
 // ── Module-level cache ─────────────────────────────────────────────
 interface DashboardCache {
   dbStats: DatabaseStats | null
   tokenStats: TokenStats | null
+  tokenGroupData: TokenGroupDataPoint[]
   toolRanking: ToolRanking[]
   skillUsage: SkillUsage[]
-  trends: TrendDataPoint[]
+  trendComparison: TrendComparison | null
+  timeRange: TimeRange
+  groupBy: GroupBy
 }
 
 let dashboardCache: DashboardCache | null = null
@@ -69,13 +88,19 @@ function Dashboard() {
   const [tokenStats, setTokenStats] = useState<TokenStats | null>(dashboardCache?.tokenStats ?? null)
   const [toolRanking, setToolRanking] = useState<ToolRanking[]>(dashboardCache?.toolRanking ?? [])
   const [skillUsage, setSkillUsage] = useState<SkillUsage[]>(dashboardCache?.skillUsage ?? [])
-  const [trends, setTrends] = useState<TrendDataPoint[]>(dashboardCache?.trends ?? [])
+  const [trendComparison, setTrendComparison] = useState<TrendComparison | null>(dashboardCache?.trendComparison ?? null)
+
+  // Time range & grouping state
+  const [timePreset, setTimePreset] = useState<TimePreset>(30)
+  const [timeRange, setTimeRange] = useState<TimeRange>(dashboardCache?.timeRange ?? computeTimeRange(30))
+  const [groupBy, setGroupBy] = useState<GroupBy>(dashboardCache?.groupBy ?? 'day')
+  const [showComparison, setShowComparison] = useState(true)
 
   const [connected, setConnected] = useState(!!dashboardCache)
   const [dbPath, setDbPath] = useState<string | null>(null)
   const [loading, setLoading] = useState(!dashboardCache)
   const [fastLoading, setFastLoading] = useState(!dashboardCache?.dbStats)
-  const [slowLoading, setSlowLoading] = useState(!dashboardCache?.toolRanking?.length && !dashboardCache?.skillUsage?.length && !dashboardCache?.trends?.length)
+  const [slowLoading, setSlowLoading] = useState(!dashboardCache?.toolRanking?.length && !dashboardCache?.skillUsage?.length && !dashboardCache?.trendComparison?.current?.length)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -84,11 +109,11 @@ function Dashboard() {
   const hasLoadedRef = useRef(!!dashboardCache)
 
   // ── Load fast data (overview + tokens) ───────────────────────────
-  const loadFastData = useCallback(async () => {
+  const loadFastData = useCallback(async (tr: TimeRange, gb: GroupBy) => {
     setFastLoading(true)
     const [stats, tokens] = await Promise.all([
-      invokeSafe<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW),
-      invokeSafe<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS),
+      invokeSafe<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW, tr),
+      invokeSafe<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS, tr, gb),
     ])
     setDbStats(stats)
     setTokenStats(tokens)
@@ -97,18 +122,18 @@ function Dashboard() {
   }, [])
 
   // ── Load slow data (tools + skills + trends) ─────────────────────
-  const loadSlowData = useCallback(async () => {
+  const loadSlowData = useCallback(async (tr: TimeRange) => {
     setSlowLoading(true)
-    const [tools, skills, trendData] = await Promise.all([
-      invokeSafe<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING),
-      invokeSafe<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE),
-      invokeSafe<TrendDataPoint[]>(IPC_CHANNELS.DASHBOARD_TRENDS),
+    const [tools, skills, trendComp] = await Promise.all([
+      invokeSafe<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, tr),
+      invokeSafe<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE, tr),
+      invokeSafe<TrendComparison>(IPC_CHANNELS.DASHBOARD_TRENDS, tr),
     ])
     setToolRanking(tools ?? [])
     setSkillUsage(skills ?? [])
-    setTrends(trendData ?? [])
+    setTrendComparison(trendComp)
     setSlowLoading(false)
-    return { tools: tools ?? [], skills: skills ?? [], trendData: trendData ?? [] }
+    return { tools: tools ?? [], skills: skills ?? [], trendComp }
   }, [])
 
   // ── Load all data with async groups ──────────────────────────────
@@ -119,7 +144,9 @@ function Dashboard() {
       setTokenStats(dashboardCache.tokenStats)
       setToolRanking(dashboardCache.toolRanking)
       setSkillUsage(dashboardCache.skillUsage)
-      setTrends(dashboardCache.trends)
+      setTrendComparison(dashboardCache.trendComparison)
+      setTimeRange(dashboardCache.timeRange)
+      setGroupBy(dashboardCache.groupBy)
       setFastLoading(false)
       setSlowLoading(false)
       return
@@ -128,43 +155,49 @@ function Dashboard() {
     setError(null)
     try {
       // Fast group first
-      const fastResult = await loadFastData()
+      const fastResult = await loadFastData(timeRange, groupBy)
 
       // Slow group after
-      const slowResult = await loadSlowData()
+      const slowResult = await loadSlowData(timeRange)
 
       // Update cache
       dashboardCache = {
         dbStats: fastResult.stats,
         tokenStats: fastResult.tokens,
+        tokenGroupData: [],
         toolRanking: slowResult.tools,
         skillUsage: slowResult.skills,
-        trends: slowResult.trendData,
+        trendComparison: slowResult.trendComp,
+        timeRange,
+        groupBy,
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
     }
-  }, [loadFastData, loadSlowData])
+  }, [loadFastData, loadSlowData, timeRange, groupBy])
 
   // ── Refresh handler (force reload) ───────────────────────────────
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const fastResult = await loadFastData()
-      const slowResult = await loadSlowData()
+      const fastResult = await loadFastData(timeRange, groupBy)
+      const slowResult = await loadSlowData(timeRange)
       dashboardCache = {
         dbStats: fastResult.stats,
         tokenStats: fastResult.tokens,
+        tokenGroupData: [],
         toolRanking: slowResult.tools,
         skillUsage: slowResult.skills,
-        trends: slowResult.trendData,
+        trendComparison: slowResult.trendComp,
+        timeRange,
+        groupBy,
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to refresh dashboard data')
     } finally {
       setRefreshing(false)
     }
-  }, [loadFastData, loadSlowData])
+  }, [loadFastData, loadSlowData, timeRange, groupBy])
 
   // ── Initial connection check ─────────────────────────────────────
   useEffect(() => {
@@ -176,7 +209,9 @@ function Dashboard() {
         setTokenStats(dashboardCache.tokenStats)
         setToolRanking(dashboardCache.toolRanking)
         setSkillUsage(dashboardCache.skillUsage)
-        setTrends(dashboardCache.trends)
+        setTrendComparison(dashboardCache.trendComparison)
+        setTimeRange(dashboardCache.timeRange)
+        setGroupBy(dashboardCache.groupBy)
         setConnected(true)
         setLoading(false)
         setFastLoading(false)
@@ -315,11 +350,53 @@ function Dashboard() {
     count: s.count,
   }))
 
-  // ── Trend data (last 30 days) ────────────────────────────────────
-  const trendData = trends.slice(-30).map((t) => ({
-    ...t,
-    date: t.date.slice(5), // "MM-DD"
-  }))
+  // ── Trend data with comparison ──────────────────────────────────
+  const trendData = useMemo(() => {
+    if (!trendComparison?.current) return []
+    return trendComparison.current.map((t) => ({
+      ...t,
+      date: t.date.slice(5), // "MM-DD"
+    }))
+  }, [trendComparison])
+
+  const previousTrendData = useMemo(() => {
+    if (!trendComparison?.previous || !showComparison) return []
+    return trendComparison.previous.map((t) => ({
+      ...t,
+      date: t.date.slice(5),
+    }))
+  }, [trendComparison, showComparison])
+
+  // Merge current + previous for Recharts
+  const mergedTrendData = useMemo(() => {
+    if (previousTrendData.length === 0) return trendData
+    // Build a map from date to previous values
+    const prevMap = new Map(previousTrendData.map((p) => [p.date, p]))
+    return trendData.map((cur) => {
+      const prev = prevMap.get(cur.date)
+      return {
+        date: cur.date,
+        newSessions: cur.newSessions,
+        sizeGrowth: cur.sizeGrowth,
+        prevNewSessions: prev?.newSessions ?? 0,
+        prevSizeGrowth: prev?.sizeGrowth ?? 0,
+      }
+    })
+  }, [trendData, previousTrendData])
+
+  // ── Time range change handler ──────────────────────────────────
+  const handleTimePresetChange = useCallback((days: TimePreset) => {
+    setTimePreset(days)
+    const tr = computeTimeRange(days)
+    setTimeRange(tr)
+    dashboardCache = null
+  }, [])
+
+  // ── GroupBy change handler ─────────────────────────────────────
+  const handleGroupByChange = useCallback((gb: GroupBy) => {
+    setGroupBy(gb)
+    dashboardCache = null
+  }, [])
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
@@ -384,6 +461,26 @@ function Dashboard() {
             <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
             刷新
           </button>
+        </div>
+      </div>
+
+      {/* ── Time Range Selector ─────────────────────────────────── */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-gray-500 font-medium">时间范围</span>
+        <div className="inline-flex rounded-md border border-gray-300 overflow-hidden">
+          {([7, 30, 90] as TimePreset[]).map((days) => (
+            <button
+              key={days}
+              onClick={() => handleTimePresetChange(days)}
+              className={`px-4 py-1.5 text-sm font-medium transition-colors ${
+                timePreset === days
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {days}天
+            </button>
+          ))}
         </div>
       </div>
 
@@ -464,7 +561,24 @@ function Dashboard() {
               <Loader2 size={20} className="text-brand-400 animate-spin" />
             </div>
           )}
-          <h3 className="text-sm font-medium text-gray-700 mb-4">Token 分布</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-gray-700">Token 分布</h3>
+            <div className="inline-flex rounded-md border border-gray-200 overflow-hidden">
+              {(['day', 'week', 'month'] as GroupBy[]).map((g) => (
+                <button
+                  key={g}
+                  onClick={() => handleGroupByChange(g)}
+                  className={`px-3 py-1 text-xs font-medium transition-colors ${
+                    groupBy === g
+                      ? 'bg-brand-500 text-white'
+                      : 'bg-white text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  {g === 'day' ? '天' : g === 'week' ? '周' : '月'}
+                </button>
+              ))}
+            </div>
+          </div>
           {tokenStats && tokenPieData.length > 0 ? (
             <div className="flex items-center gap-6">
               <div className="w-40 h-40 flex-shrink-0">
@@ -607,10 +721,21 @@ function Dashboard() {
               <Loader2 size={20} className="text-brand-400 animate-spin" />
             </div>
           )}
-          <h3 className="text-sm font-medium text-gray-700 mb-4">增长趋势 (近30天)</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-gray-700">增长趋势 (近{timePreset}天)</h3>
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <span className="text-xs text-gray-500">对比上期</span>
+              <input
+                type="checkbox"
+                checked={showComparison}
+                onChange={(e) => setShowComparison(e.target.checked)}
+                className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+              />
+            </label>
+          </div>
           {trendData.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={trendData} margin={{ left: 0, right: 0, top: 5, bottom: 5 }}>
+              <LineChart data={mergedTrendData} margin={{ left: 0, right: 0, top: 5, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
                 <XAxis
                   dataKey="date"
@@ -650,14 +775,17 @@ function Dashboard() {
                   }}
                   labelStyle={{ fontWeight: 600 }}
                   formatter={(value: number, name: string) => {
-                    if (name === 'sizeGrowth') return [formatBytes(value), '数据增长']
-                    return [value, '新会话']
+                    if (name === 'sizeGrowth' || name === 'prevSizeGrowth') return [formatBytes(value), name === 'sizeGrowth' ? '数据增长' : '上期数据增长']
+                    if (name === 'newSessions' || name === 'prevNewSessions') return [value, name === 'newSessions' ? '新会话' : '上期新会话']
+                    return [value, name]
                   }}
                 />
                 <Legend
                   formatter={(value: string) => {
                     if (value === 'newSessions') return '新会话'
                     if (value === 'sizeGrowth') return '数据增长'
+                    if (value === 'prevNewSessions') return '上期新会话'
+                    if (value === 'prevSizeGrowth') return '上期数据增长'
                     return value
                   }}
                   wrapperStyle={{ fontSize: 11 }}
@@ -680,6 +808,30 @@ function Dashboard() {
                   dot={false}
                   activeDot={{ r: 3 }}
                 />
+                {showComparison && (
+                  <>
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="prevNewSessions"
+                      stroke="#9ca3af"
+                      strokeWidth={1.5}
+                      strokeDasharray="5 5"
+                      dot={false}
+                      activeDot={{ r: 2 }}
+                    />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="prevSizeGrowth"
+                      stroke="#d1d5db"
+                      strokeWidth={1.5}
+                      strokeDasharray="5 5"
+                      dot={false}
+                      activeDot={{ r: 2 }}
+                    />
+                  </>
+                )}
               </LineChart>
             </ResponsiveContainer>
           ) : (
