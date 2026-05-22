@@ -9,6 +9,9 @@ import * as messagesIpc from './ipc/messages'
 import * as cleanupIpc from './ipc/cleanup'
 import * as analyticsIpc from './ipc/analytics'
 import * as backupIpc from './ipc/backup'
+import * as todosIpc from './ipc/todos'
+import * as accountsIpc from './ipc/accounts'
+import * as eventsIpc from './ipc/events'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type { IpcResult } from '../shared/types'
 
@@ -105,6 +108,9 @@ function registerIpcHandlers() {
   cleanupIpc.registerHandlers()
   analyticsIpc.registerHandlers()
   backupIpc.registerHandlers()
+  todosIpc.registerHandlers()
+  accountsIpc.registerHandlers()
+  eventsIpc.registerHandlers()
 
   // Open file dialog for database
   ipcMain.handle(IPC_CHANNELS.DIALOG_OPEN_FILE, async (): Promise<IpcResult<string>> => {
