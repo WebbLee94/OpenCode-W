@@ -57,7 +57,7 @@ npm run build
 ## 🛠️ 技术栈
 
 - **桌面框架**: Electron
-- **前端**: React 19 + TypeScript
+- **前端**: React 18 + TypeScript
 - **数据库**: better-sqlite3
 - **样式**: Tailwind CSS
 - **图表**: Recharts
