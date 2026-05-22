@@ -132,6 +132,9 @@ export function registerHandlers(): void {
         return { success: false, error: 'Backup file not found' }
       }
 
+      // Save current path for rollback
+      const previousPath = dbManager.getCurrentPath()
+
       // Close current database
       dbManager.closeAll()
 
@@ -140,6 +143,10 @@ export function registerHandlers(): void {
         dbManager.open(backupPath)
         return { success: true, data: { path: backupPath } }
       } catch (error) {
+        // Rollback: try to reopen the previous database
+        if (previousPath) {
+          try { dbManager.open(previousPath) } catch { /* best effort */ }
+        }
         return { success: false, error: (error as Error).message }
       }
       } catch (error) {

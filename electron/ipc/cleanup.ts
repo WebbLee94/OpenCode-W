@@ -199,21 +199,33 @@ export function registerHandlers(): void {
           )?.total ?? 0
         )
 
-        // Delete in order: parts -> messages -> sessions (respect foreign keys)
-        const deletedParts = dbManager.run(
-          `DELETE FROM part WHERE session_id IN (${placeholders})`,
-          sessionIds
-        ).changes
+        // Wrap deletion in transaction
+        let deletedParts = 0
+        let deletedMessages = 0
+        let deletedSessions = 0
+        dbManager.rawRun('BEGIN TRANSACTION')
+        try {
+          // Delete in order: parts -> messages -> sessions (respect foreign keys)
+          deletedParts = dbManager.run(
+            `DELETE FROM part WHERE session_id IN (${placeholders})`,
+            sessionIds
+          ).changes
 
-        const deletedMessages = dbManager.run(
-          `DELETE FROM message WHERE session_id IN (${placeholders})`,
-          sessionIds
-        ).changes
+          deletedMessages = dbManager.run(
+            `DELETE FROM message WHERE session_id IN (${placeholders})`,
+            sessionIds
+          ).changes
 
-        const deletedSessions = dbManager.run(
-          `DELETE FROM session WHERE id IN (${placeholders})`,
-          sessionIds
-        ).changes
+          deletedSessions = dbManager.run(
+            `DELETE FROM session WHERE id IN (${placeholders})`,
+            sessionIds
+          ).changes
+
+          dbManager.rawRun('COMMIT')
+        } catch (txError) {
+          dbManager.rawRun('ROLLBACK')
+          throw txError
+        }
 
         // Vacuum to reclaim space
         const vacuumResult = dbManager.vacuum()

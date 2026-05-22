@@ -188,6 +188,11 @@ export class DatabaseManager {
     return { changes: result.changes, lastInsertRowid: result.lastInsertRowid as number }
   }
 
+  rawRun(sql: string): void {
+    const db = this.getDb()
+    db.exec(sql)
+  }
+
   closeAll(): void {
     for (const [p] of this.connections) {
       this.connections.get(p)!.close()
