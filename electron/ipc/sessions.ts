@@ -34,6 +34,7 @@ export function registerHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.SESSIONS_LIST,
     (_event, filter?: SessionFilter) => {
+      try {
       const page = filter?.page ?? 1
       const pageSize = filter?.pageSize ?? 50
       const offset = (page - 1) * pageSize
@@ -87,10 +88,16 @@ export function registerHandlers(): void {
       )
 
       return {
-        data: rows.map(mapSessionRow),
-        total,
-        page,
-        pageSize,
+        success: true as const,
+        data: {
+          data: rows.map(mapSessionRow),
+          total,
+          page,
+          pageSize,
+        },
+      }
+      } catch (error) {
+        return { success: false as const, error: (error as Error).message }
       }
     }
   )
@@ -98,6 +105,7 @@ export function registerHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.SESSIONS_DETAIL,
     (_event, sessionId: string) => {
+      try {
       // Get session base info
       const row = dbManager.rawGet<Record<string, unknown>>(
         `SELECT
@@ -112,7 +120,7 @@ export function registerHandlers(): void {
         [sessionId]
       )
 
-      if (!row) return null
+      if (!row) return { success: true as const, data: null }
 
       const session = mapSessionRow(row)
 
@@ -177,29 +185,43 @@ export function registerHandlers(): void {
         skillList,
       }
 
-      return detail
+      return { success: true as const, data: detail }
+      } catch (error) {
+        return { success: false as const, error: (error as Error).message }
+      }
     }
   )
 
   ipcMain.handle(IPC_CHANNELS.SESSIONS_PROJECTS, () => {
-    const rows = dbManager.rawQuery<{ directory: string }>(
-      "SELECT DISTINCT directory FROM session WHERE directory IS NOT NULL AND directory != '' ORDER BY directory"
-    )
-    return rows.map(r => r.directory)
+    try {
+      const rows = dbManager.rawQuery<{ directory: string }>(
+        "SELECT DISTINCT directory FROM session WHERE directory IS NOT NULL AND directory != '' ORDER BY directory"
+      )
+      return { success: true as const, data: rows.map(r => r.directory) }
+    } catch (error) {
+      return { success: false as const, error: (error as Error).message }
+    }
   })
 
   ipcMain.handle(
     IPC_CHANNELS.SESSIONS_DELETE,
     (_event, sessionId: string) => {
+      try {
       const partResult = dbManager.run('DELETE FROM part WHERE session_id = ?', [sessionId])
       const messageResult = dbManager.run('DELETE FROM message WHERE session_id = ?', [sessionId])
       const sessionResult = dbManager.run('DELETE FROM session WHERE id = ?', [sessionId])
 
       return {
-        success: sessionResult.changes > 0,
-        deletedParts: partResult.changes,
-        deletedMessages: messageResult.changes,
-        deletedSessions: sessionResult.changes,
+        success: true as const,
+        data: {
+          deleted: sessionResult.changes > 0,
+          deletedParts: partResult.changes,
+          deletedMessages: messageResult.changes,
+          deletedSessions: sessionResult.changes,
+        },
+      }
+      } catch (error) {
+        return { success: false as const, error: (error as Error).message }
       }
     }
   )

@@ -156,9 +156,9 @@ export function registerHandlers(): void {
           sessions,
         }
 
-        return preview
-      } catch (err) {
-        return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
+        return { success: true as const, data: preview }
+      } catch (error) {
+        return { success: false as const, error: (error as Error).message }
       }
     }
   )
@@ -227,9 +227,9 @@ export function registerHandlers(): void {
           vacuumAfter: vacuumResult.after,
         }
 
-        return result
-      } catch (err) {
-        return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
+        return { success: true as const, data: result }
+      } catch (error) {
+        return { success: false as const, error: (error as Error).message }
       }
     }
   )

@@ -5,11 +5,16 @@ import dbManager from '../database'
 
 export function registerHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.DASHBOARD_OVERVIEW, () => {
-    const stats: DatabaseStats = dbManager.getStats()
-    return stats
+    try {
+      const stats: DatabaseStats = dbManager.getStats()
+      return { success: true as const, data: stats }
+    } catch (error) {
+      return { success: false as const, error: (error as Error).message }
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.DASHBOARD_TOKENS, () => {
+    try {
     const row = dbManager.rawGet<Record<string, number>>(
       `SELECT
         COALESCE(SUM(tokens_input), 0) as inputTokens,
@@ -35,10 +40,14 @@ export function registerHandlers(): void {
       cacheHitRate: Math.round(cacheHitRate * 100) / 100,
     }
 
-    return tokenStats
+    return { success: true as const, data: tokenStats }
+    } catch (error) {
+      return { success: false as const, error: (error as Error).message }
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, () => {
+    try {
     // type is inside data JSON, not a column
     const rows = dbManager.rawQuery<Record<string, unknown>>(
       `SELECT
@@ -56,10 +65,14 @@ export function registerHandlers(): void {
       count: r.count as number,
     }))
 
-    return ranking
+    return { success: true as const, data: ranking }
+    } catch (error) {
+      return { success: false as const, error: (error as Error).message }
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.DASHBOARD_SKILL_USAGE, () => {
+    try {
     // type is inside data JSON, not a column
     const rows = dbManager.rawQuery<Record<string, unknown>>(
       `SELECT
@@ -78,10 +91,14 @@ export function registerHandlers(): void {
       count: r.count as number,
     }))
 
-    return usage
+    return { success: true as const, data: usage }
+    } catch (error) {
+      return { success: false as const, error: (error as Error).message }
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.DASHBOARD_TRENDS, () => {
+    try {
     // time_created is integer milliseconds - convert to date
     const sessionRows = dbManager.rawQuery<Record<string, unknown>>(
       `SELECT
@@ -145,6 +162,9 @@ export function registerHandlers(): void {
       point.sizeGrowth = cumulativeSize
     }
 
-    return sortedDates.map(d => trendMap.get(d)!)
+    return { success: true as const, data: sortedDates.map(d => trendMap.get(d)!) }
+    } catch (error) {
+      return { success: false as const, error: (error as Error).message }
+    }
   })
 }
