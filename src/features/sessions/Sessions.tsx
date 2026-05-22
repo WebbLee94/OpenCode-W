@@ -702,7 +702,7 @@ function Sessions() {
                             {todo.status === 'pending' ? '⏳' : todo.status === 'in_progress' ? '🔄' : todo.status === 'completed' ? '✅' : '🚫'}
                           </span>
                           <span className="text-gray-700" title={todo.content}>
-                            {truncateText(todo.content, 120)}
+                            <span className="text-gray-400 mr-1">[{todo.position}]</span>{truncateText(todo.content, 120)}
                           </span>
                         </div>
                       ))}

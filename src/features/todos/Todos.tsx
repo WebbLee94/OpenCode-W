@@ -11,11 +11,13 @@ import {
   X,
   ClipboardList,
   MessageSquare,
+  FolderOpen,
 } from 'lucide-react'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const DEFAULT_PAGE_SIZE = 50
+const DEFAULT_PAGE_SIZE = 20
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 
 const STATUS_OPTIONS = [
   { value: '', label: '全部状态' },
@@ -77,8 +79,13 @@ function Todos() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [status, setStatus] = useState('')
   const [priority, setPriority] = useState('')
+  const [projectId, setProjectId] = useState('')
+  const [projects, setProjects] = useState<string[]>([])
   const [page, setPage] = useState(1)
-  const [pageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [pageSize, setPageSize] = useState(() => {
+    const saved = localStorage.getItem('dbscope-todos-page-size')
+    return saved ? parseInt(saved, 10) : DEFAULT_PAGE_SIZE
+  })
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const navigate = useNavigate()
@@ -94,6 +101,14 @@ function Todos() {
     }, 300)
   }, [])
 
+  // ─── Load projects list ─────────────────────────────────────────────
+
+  useEffect(() => {
+    invokeSafe<string[]>(IPC_CHANNELS.SESSIONS_PROJECTS)
+      .then((result) => setProjects(result))
+      .catch(() => setProjects([]))
+  }, [])
+
   // ─── Load todos ───────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -101,6 +116,7 @@ function Todos() {
       search: debouncedSearch || undefined,
       status: status || undefined,
       priority: priority || undefined,
+      projectId: projectId || undefined,
       page,
       pageSize,
     }
@@ -116,7 +132,7 @@ function Todos() {
         setTotal(0)
       })
       .finally(() => setLoading(false))
-  }, [debouncedSearch, status, priority, page, pageSize])
+  }, [debouncedSearch, status, priority, projectId, page, pageSize])
 
   // ─── Pagination helpers ──────────────────────────────────────────────
 
@@ -180,6 +196,24 @@ function Todos() {
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
+
+          {/* Project filter */}
+          <div className="relative min-w-[180px]">
+            <FolderOpen size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <select
+              value={projectId}
+              onChange={(e) => { setProjectId(e.target.value); setPage(1) }}
+              className="w-full appearance-none rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              <option value="">全部项目</option>
+              {projects.map((p) => (
+                <option key={p} value={p}>
+                  {p.split('/').pop() || p}
+                </option>
+              ))}
+            </select>
+            <ChevronRight size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-gray-400" />
+          </div>
         </div>
       </div>
 
@@ -211,7 +245,7 @@ function Todos() {
                 >
                   <td className="px-4 py-3 text-center text-gray-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
                   <td className="max-w-xs py-3 pr-4 text-gray-900" title={todo.content}>
-                    {truncateText(todo.content, 120)}
+                    <span className="text-gray-400 mr-1">[{todo.position}]</span>{truncateText(todo.content, 120)}
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={todo.status} /></td>
                   <td className="px-4 py-3"><PriorityBadge priority={todo.priority} /></td>
@@ -234,9 +268,29 @@ function Todos() {
       {/* Pagination */}
       {total > 0 && (
         <div className="shrink-0 flex items-center justify-between border-t border-gray-200 bg-white px-6 py-3">
-          <span className="text-sm text-gray-500">
-            显示 {startIdx}-{endIdx} / 共 {formatNumber(total)} 条
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500">
+              显示 {startIdx}-{endIdx} / 共 {formatNumber(total)} 条
+            </span>
+            <div className="flex items-center gap-1.5 text-sm text-gray-500">
+              <span>每页</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  const newSize = Number(e.target.value)
+                  setPageSize(newSize)
+                  localStorage.setItem('dbscope-todos-page-size', String(newSize))
+                  setPage(1)
+                }}
+                className="appearance-none rounded border border-gray-300 bg-white px-2 py-0.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+              <span>条</span>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
