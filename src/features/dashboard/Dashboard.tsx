@@ -79,6 +79,7 @@ function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   const hasLoadedRef = useRef(!!dashboardCache)
 
@@ -219,11 +220,13 @@ function Dashboard() {
     setActionLoading('vacuum')
     try {
       const result = await invokeSafe<{ before: number; after: number; freed: number }>(IPC_CHANNELS.DATABASE_VACUUM)
-      alert(`VACUUM 完成! 释放空间: ${formatBytes(result.freed)}`)
+      setToast({ message: `VACUUM 完成! 释放空间: ${formatBytes(result.freed)}`, type: 'success' })
+      setTimeout(() => setToast(null), 3000)
       dashboardCache = null
       await loadAllData(true)
     } catch (err) {
-      alert(`VACUUM 失败: ${(err as Error).message}`)
+      setToast({ message: `VACUUM 失败: ${(err as Error).message}`, type: 'error' })
+      setTimeout(() => setToast(null), 3000)
     } finally {
       setActionLoading(null)
     }
@@ -234,11 +237,13 @@ function Dashboard() {
     setActionLoading('checkpoint')
     try {
       await invokeSafe(IPC_CHANNELS.DATABASE_CHECKPOINT)
-      alert('WAL Checkpoint 完成!')
+      setToast({ message: 'WAL Checkpoint 完成!', type: 'success' })
+      setTimeout(() => setToast(null), 3000)
       dashboardCache = null
       await loadAllData(true)
     } catch (err) {
-      alert(`Checkpoint 失败: ${(err as Error).message}`)
+      setToast({ message: `Checkpoint 失败: ${(err as Error).message}`, type: 'error' })
+      setTimeout(() => setToast(null), 3000)
     } finally {
       setActionLoading(null)
     }
@@ -318,6 +323,18 @@ function Dashboard() {
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
+      {/* ── Toast notification ──────────────────────────────────── */}
+      {toast && (
+        <div
+          className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium transition-opacity ${
+            toast.type === 'success'
+              ? 'bg-green-500 text-white'
+              : 'bg-red-500 text-white'
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
