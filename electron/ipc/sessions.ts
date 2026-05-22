@@ -53,6 +53,14 @@ export function registerHandlers(): void {
         conditions.push('s.directory = ?')
         params.push(filter.projectId)
       }
+      if (filter?.startDate) {
+        conditions.push('date(s.time_created / 1000, \'unixepoch\') >= ?')
+        params.push(filter.startDate)
+      }
+      if (filter?.endDate) {
+        conditions.push('date(s.time_created / 1000, \'unixepoch\') <= ?')
+        params.push(filter.endDate)
+      }
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
