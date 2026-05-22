@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import type { MessageDTO, MessageDetailDTO, MessageFilter, PartDTO, IpcResult } from '../../shared/types'
+import type { MessageDTO, MessageDetailDTO, MessageFilter, PartDTO, SearchResult, IpcResult } from '../../shared/types'
 import dbManager from '../database'
 
 function parsePartData(row: Record<string, unknown>): PartDTO {
@@ -191,6 +191,44 @@ export function registerHandlers(): void {
       message.parts = partRows.map(parsePartData)
 
       return { success: true, data: message }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.MESSAGES_SEARCH,
+    (_event, keyword: string): IpcResult<SearchResult[]> => {
+      try {
+        if (!keyword || !keyword.trim()) {
+          return { success: true, data: [] }
+        }
+
+        const sql = `
+          SELECT m.id, m.session_id,
+                 json_extract(m.data, '$.content') as content,
+                 s.title as session_title,
+                 m.time_created
+          FROM message m
+          JOIN session s ON m.session_id = s.id
+          WHERE json_extract(m.data, '$.content') LIKE ?
+          ORDER BY m.time_created DESC
+          LIMIT 100
+        `
+        const rows = dbManager.rawQuery<Record<string, unknown>>(sql, [`%${keyword}%`])
+
+        const results: SearchResult[] = rows.map(row => ({
+          id: row.id as string,
+          session_id: row.session_id as string,
+          content: (row.content as string) ?? '',
+          session_title: (row.session_title as string) ?? '',
+          time_created: typeof row.time_created === 'string'
+            ? new Date(row.time_created as string).getTime()
+            : (row.time_created as number),
+        }))
+
+        return { success: true, data: results }
       } catch (error) {
         return { success: false, error: (error as Error).message }
       }

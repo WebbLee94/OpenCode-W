@@ -131,6 +131,15 @@ export interface MessageFilter {
   pageSize?: number;
 }
 
+// Search result
+export interface SearchResult {
+  id: string;
+  session_id: string;
+  content: string;
+  session_title: string;
+  time_created: number;
+}
+
 // Part DTO
 export interface PartDTO {
   id: string;
