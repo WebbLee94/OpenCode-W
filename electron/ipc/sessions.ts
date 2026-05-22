@@ -59,6 +59,9 @@ export function registerHandlers(): void {
       const allowedSortColumns = ['time_created', 'time_updated', 'title', 'cost', 'msg_count', 'total_tokens', 'data_size', 'tokens_input', 'tokens_output']
       const safeSortBy = allowedSortColumns.includes(sortBy) ? sortBy : 'time_updated'
       const safeSortOrder = sortOrder === 'asc' ? 'ASC' : 'DESC'
+      // Computed columns (aliases) must not use s. prefix in ORDER BY
+      const computedColumns = ['msg_count', 'total_tokens', 'data_size']
+      const orderExpr = computedColumns.includes(safeSortBy) ? safeSortBy : `s.${safeSortBy}`
 
       // Count total
       const countRow = dbManager.rawGet<{ cnt: number }>(
@@ -78,7 +81,7 @@ export function registerHandlers(): void {
         LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id
         LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id
         ${whereClause}
-        ORDER BY s.${safeSortBy} ${safeSortOrder}
+        ORDER BY ${orderExpr} ${safeSortOrder}
         LIMIT ? OFFSET ?`,
         [...params, pageSize, offset]
       )
