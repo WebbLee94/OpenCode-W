@@ -207,3 +207,62 @@ export interface BackupPreviewDTO extends BackupDTO {
   messageCount: number;
   partCount: number;
 }
+
+// Todo DTOs
+export interface TodoDTO {
+  session_id: string;
+  position: number;
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  priority: 'high' | 'medium' | 'low';
+  time_created: number;
+  time_updated: number;
+  session_title: string;  // JOIN session.title
+}
+
+export interface TodoFilter {
+  search?: string;
+  status?: string;
+  priority?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+// Session Share DTO
+export interface SessionShareDTO {
+  session_id: string;
+  id: string;
+  secret: string;
+  url: string;
+  time_created: number;
+}
+
+// Account DTOs
+export interface AccountDTO {
+  id: string;
+  email: string;
+  url: string;
+  token_expiry: number | null;
+}
+
+export interface AccountStateDTO {
+  active_account_id: string | null;
+  active_org_id: string | null;
+  account_email?: string;
+  account_url?: string;
+}
+
+// Event DTOs
+export interface EventSequenceDTO {
+  aggregate_id: string;
+  seq: number;
+  owner_id: string | null;
+}
+
+export interface EventDTO {
+  id: string;
+  aggregate_id: string;
+  seq: number;
+  type: string;
+  data: string;
+}

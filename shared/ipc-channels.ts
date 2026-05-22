@@ -41,6 +41,21 @@ export const IPC_CHANNELS = {
   BACKUP_RESTORE: 'backup:restore',
   BACKUP_DELETE: 'backup:delete',
   BACKUP_PREVIEW: 'backup:preview',
+
+  // Todos
+  TODOS_LIST: 'todos:list',
+  TODOS_BY_SESSION: 'todos:bySession',
+
+  // Session Share
+  SESSION_SHARE_GET: 'session-share:get',
+
+  // Accounts
+  ACCOUNTS_LIST: 'accounts:list',
+  ACCOUNTS_ACTIVE: 'accounts:active',
+
+  // Events
+  EVENTS_LIST: 'events:list',
+  EVENTS_DETAIL: 'events:detail',
 } as const;
 
 // Whitelist of channels allowed in renderer

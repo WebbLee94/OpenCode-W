@@ -13,6 +13,10 @@ const ALLOWED_CHANNELS = [
   'database:vacuum', 'database:checkpoint', 'database:open', 'database:health',
   'dialog:openFile',
   'backup:create', 'backup:list', 'backup:restore', 'backup:delete', 'backup:preview',
+  'todos:list', 'todos:bySession',
+  'session-share:get',
+  'accounts:list', 'accounts:active',
+  'events:list', 'events:detail',
 ]
 
 /**
