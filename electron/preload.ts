@@ -2,6 +2,7 @@
 
 const { contextBridge, ipcRenderer } = require('electron')
 
+// ⚠️ 与 shared/ipc-channels.ts 保持同步 — 新增 channel 需同步更新此处
 /** @type {readonly string[]} */
 const ALLOWED_CHANNELS = [
   'app:getVersion', 'app:getPlatform',
