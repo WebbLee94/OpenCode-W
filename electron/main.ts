@@ -30,7 +30,7 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    title: 'DBScope-OC',
+    title: '',
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -102,6 +102,13 @@ function registerIpcHandlers() {
 }
 
 app.whenReady().then(() => {
+  // macOS About panel
+  app.setAboutPanelOptions({
+    applicationName: 'DBScope-OC',
+    applicationVersion: app.getVersion(),
+    credits: 'by WEBB',
+  })
+
   createWindow()
 
   app.on('activate', () => {

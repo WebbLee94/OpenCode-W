@@ -49,7 +49,7 @@ export function registerHandlers(): void {
         params.push(`%${filter.search}%`, `%${filter.search}%`)
       }
       if (filter?.projectId) {
-        conditions.push('s.project_id = ?')
+        conditions.push('s.directory = ?')
         params.push(filter.projectId)
       }
 
@@ -179,10 +179,10 @@ export function registerHandlers(): void {
   )
 
   ipcMain.handle(IPC_CHANNELS.SESSIONS_PROJECTS, () => {
-    const rows = dbManager.rawQuery<{ project_id: string }>(
-      "SELECT DISTINCT project_id FROM session WHERE project_id IS NOT NULL AND project_id != '' ORDER BY project_id"
+    const rows = dbManager.rawQuery<{ directory: string }>(
+      "SELECT DISTINCT directory FROM session WHERE directory IS NOT NULL AND directory != '' ORDER BY directory"
     )
-    return rows.map(r => r.project_id)
+    return rows.map(r => r.directory)
   })
 
   ipcMain.handle(

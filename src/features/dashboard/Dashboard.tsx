@@ -70,7 +70,7 @@ function Dashboard() {
   const [skillUsage, setSkillUsage] = useState<SkillUsage[]>(dashboardCache?.skillUsage ?? [])
   const [trends, setTrends] = useState<TrendDataPoint[]>(dashboardCache?.trends ?? [])
 
-  const [connected, setConnected] = useState(false)
+  const [connected, setConnected] = useState(!!dashboardCache)
   const [dbPath, setDbPath] = useState<string | null>(null)
   const [loading, setLoading] = useState(!dashboardCache)
   const [error, setError] = useState<string | null>(null)
@@ -164,12 +164,22 @@ function Dashboard() {
   useEffect(() => {
     if (hasLoadedRef.current) return
     async function init() {
+      // If cache exists, use it directly without health check
+      if (dashboardCache) {
+        setDbStats(dashboardCache.dbStats)
+        setTokenStats(dashboardCache.tokenStats)
+        setToolRanking(dashboardCache.toolRanking)
+        setSkillUsage(dashboardCache.skillUsage)
+        setTrends(dashboardCache.trends)
+        setConnected(true)
+        setLoading(false)
+        return
+      }
+      // No cache — do health check then load data
       try {
         const health = await invoke<{ ok: boolean }>(IPC_CHANNELS.DATABASE_HEALTH)
         if (health.ok) {
           setConnected(true)
-          const pathResult = await invoke(IPC_CHANNELS.APP_GET_PLATFORM)
-          void pathResult
           await loadAllData()
         } else {
           setConnected(false)
