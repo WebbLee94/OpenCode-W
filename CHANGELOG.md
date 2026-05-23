@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-05-23
+
+### Fixed
+
+- **Tooltip裁剪**: 修复Tooltip提示框在Dashboard区域被裁剪的问题，方向改为向下展开，z-index提升至z-50
+- **页面冻结**: Dashboard数据加载改为Promise.all并行执行，解决冷加载时UI冻结约2.5秒的问题
+- **时间范围不同步**: Dashboard缓存新增timePreset字段，修复切换页面后时间范围重置为默认值的问题
+- **Todos项目筛选空结果**: 修复项目筛选SQL条件使用project_id（数字ID）导致与directory路径不匹配的问题
+- **健康状态文本溢出**: 健康状态StatCard改为紧凑双行格式（页数+碎片页），避免长文本溢出
+- **成本显示**: 估算成本还原为USD格式（$X.XX），移除RMB换算和汇率提示
+
+### Changed
+
+- 主内容区域overflow从auto改为visible，确保Tooltip完整显示
+- StatCard组件新增children属性，支持附加内容行
+
 ## [1.0.0] - 2026-05-22
 
 ### Added
