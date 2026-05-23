@@ -10,7 +10,7 @@
 
 ## 📖 简介
 
-DBScope-OC 是一款桌面应用，用于可视化管理 OpenCode 的 SQLite 数据库。支持查看数据库统计、浏览会话和消息、安全清理历史数据、备份恢复数据库。
+DBScope-OC 是一款跨平台桌面应用，用于可视化管理 OpenCode 的 SQLite 数据库。支持数据库概览仪表盘、会话与消息浏览、待办与账户管理、安全清理、备份恢复，覆盖 OpenCode 全部核心数据表。
 
 > 基于 [OpenCode](https://github.com/anomalyco/opencode) 构建
 
@@ -18,9 +18,11 @@ DBScope-OC 是一款桌面应用，用于可视化管理 OpenCode 的 SQLite 数
 
 ![Dashboard](docs/images/dashboard.png)
 
-- 📊 **首页仪表盘** - 数据库大小、会话数、Token 统计、工具排行、技能分布、增长趋势
-- 💬 **会话浏览** - 搜索、筛选、排序、分页、详情面板
-- 📝 **消息查看器** - Markdown 渲染、Part 明细、Tool 展开、Token 分解
+- 📊 **首页仪表盘** - 时间范围选择 (7/30/90/全部)、6 行分区布局、时段对比、Token/工具/技能分析、增长趋势、并行加载
+- 💬 **会话浏览** - 搜索、日期筛选、项目筛选、排序、分页、详情面板 (Token/Tool/Skill/Todos/Share)
+- 📝 **消息查看器** - Markdown 渲染、代码语法高亮、全文搜索、跨 Session 搜索、Part 明细、Tool 展开
+- 📋 **待办管理** - 全局待办汇总、状态/优先级/项目筛选、position 前缀、分页、Session 内嵌 Tab
+- 👤 **账户管理** - 活跃账户卡片、全量账户表、Token 过期提醒、敏感字段脱敏 (access_token 不落前端)
 - 🧹 **清理向导** - 4 种策略、预览确认、3 秒倒计时安全机制
 - 💾 **备份恢复** - 一键备份、版本管理、灾难恢复
 
@@ -28,7 +30,7 @@ DBScope-OC 是一款桌面应用，用于可视化管理 OpenCode 的 SQLite 数
 
 ### 系统要求
 
-- macOS 12.0 或更高版本
+- macOS 12.0+, Windows 10+, Linux (x64)
 - Node.js 18.0 或更高版本
 
 ### 安装
@@ -61,7 +63,8 @@ npm run build
 - **数据库**: better-sqlite3
 - **样式**: Tailwind CSS
 - **图表**: Recharts
-- **构建工具**: Vite
+- **构建工具**: Vite + electron-builder
+- **跨平台**: macOS Universal (arm64+x64) / Windows NSIS (x64+arm64) / Linux AppImage+deb (x64)
 
 ## 📁 项目结构
 
@@ -72,8 +75,23 @@ DBScope-OC/
 │   ├── database.ts    # DatabaseManager 单例
 │   ├── preload.ts     # contextBridge API
 │   └── ipc/           # IPC 处理器
+│       ├── analytics.ts   # Dashboard 数据聚合
+│       ├── sessions.ts    # 会话 CRUD
+│       ├── messages.ts    # 消息查询 + 全文搜索
+│       ├── todos.ts       # 待办查询
+│       ├── accounts.ts    # 账户查询
+│       ├── events.ts      # 事件序列查询
+│       ├── cleanup.ts     # 清理操作
+│       └── backup.ts      # 备份恢复
 ├── src/               # 渲染进程代码
 │   ├── features/      # 功能模块
+│   │   ├── dashboard/     # 首页仪表盘
+│   │   ├── sessions/      # 会话浏览
+│   │   ├── messages/      # 消息查看
+│   │   ├── todos/         # 待办管理
+│   │   ├── accounts/      # 账户管理
+│   │   ├── cleanup/       # 清理向导
+│   │   └── backup/        # 备份恢复
 │   ├── components/    # 共享 UI 组件
 │   └── lib/           # 工具函数
 ├── shared/            # 共享类型和常量

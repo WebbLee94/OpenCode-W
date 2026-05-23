@@ -5,21 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.6.0] - 2026-05-23
+## [1.0.1] - 2026-05-23
+
+### Added
+
+- **Dashboard**: 时间范围选择 (7/30/90/全部)、6 行分区布局、时段对比曲线、日/周/月聚合切换、并行数据加载 (Promise.all)、缓存复用率指标
+- **模块联动**: Dashboard 图表点击 → Sessions 日期/项目筛选 → Messages 详情，全程 URL Query Params 串联
+- **Messages**: 跨 Session 全文搜索 + 关键词高亮 + 代码语法高亮 (highlight.js) + 内容预览截断
+- **Todos**: 全局待办汇总页面 + Session 详情内嵌 Tab + 状态 (待处理/进行中/已完成/取消)/优先级 (高/中/低)/项目筛选 + position 前缀 [N] + pageSize 可配置
+- **Accounts**: 活跃账户卡片 (含 Token 过期倒计时/组织信息) + 全量账户表 + 敏感字段访问态脱敏 (access_token/refresh_token 不经过 IPC)
+- **Session Share**: 详情面板条件渲染分享信息 + 密钥默认遮罩 + 可复制分享链接
+- **跨平台构建**: macOS Universal (arm64+x64) / Windows NSIS (x64+arm64) / Linux AppImage+deb (x64)；CI 四平台矩阵验证
+- **Session 增强**: 日期范围筛选、pageSize 上限 200
+- **Events IPC**: 事件序列查询通道 (无 UI，预留给后续版本)
 
 ### Fixed
 
-- **Tooltip裁剪**: 修复Tooltip提示框在Dashboard区域被裁剪的问题，方向改为向下展开，z-index提升至z-50
-- **页面冻结**: Dashboard数据加载改为Promise.all并行执行，解决冷加载时UI冻结约2.5秒的问题
-- **时间范围不同步**: Dashboard缓存新增timePreset字段，修复切换页面后时间范围重置为默认值的问题
-- **Todos项目筛选空结果**: 修复项目筛选SQL条件使用project_id（数字ID）导致与directory路径不匹配的问题
-- **健康状态文本溢出**: 健康状态StatCard改为紧凑双行格式（页数+碎片页），避免长文本溢出
-- **成本显示**: 估算成本还原为USD格式（$X.XX），移除RMB换算和汇率提示
+- 页面加载时 UI 冻结 → 快/慢数据并行加载 (Promise.all)
+- Dashboard 时间范围切换页面后重置 → 缓存 timePreset
+- Sidebar Tooltip 被主内容区 overflow 裁剪 → 方向改为下方展开 + z-index 提升
+- Todos 项目筛选返回空结果 → SQL 改用 directory 字段匹配
+- 缓存命中率公式修正 → 分母改为 totalTokens (input+output+reasoning)，语义更正为"缓存复用率"
+- 健康状态统计卡片文本溢出 → 紧凑双行格式 (页数/碎片分列)
+- 估算成本 RMB 汇率偏差 → 恢复 USD 格式 ($X.XX)
+- Dashboard 趋势查询 N+1 → GROUP BY 优化
+- Docker API 调用 → 平台守卫 (Windows/Linux 兼容)
 
 ### Changed
 
-- 主内容区域overflow从auto改为visible，确保Tooltip完整显示
-- StatCard组件新增children属性，支持附加内容行
+- Dashboard 布局重构为 6 行分区方案 (标题栏→概览卡片→时间选择→时段统计→趋势并排→分布并排)
+- Sessions/Messages 虚拟渲染 (CSS content-visibility)
+- Messages 内容预览截断至 300 字符
+- StatCard 组件支持 children 插槽 (附加内容行)
 
 ## [1.0.0] - 2026-05-22
 
