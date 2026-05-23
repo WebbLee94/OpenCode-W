@@ -12,6 +12,76 @@ function buildDateFilter(tableAlias: string, timeRange?: TimeRange): { sql: stri
   }
 }
 
+/** Query all trend data (no date range) using GROUP BY */
+function queryAllTrendData(): TrendDataPoint[] {
+  const sessionRows = dbManager.rawQuery<Record<string, unknown>>(
+    `SELECT
+      date(time_created / 1000, 'unixepoch') as date,
+      COUNT(*) as newSessions
+    FROM session
+    GROUP BY date
+    ORDER BY date ASC`
+  )
+
+  const messageRows = dbManager.rawQuery<Record<string, unknown>>(
+    `SELECT
+      date(time_created / 1000, 'unixepoch') as date,
+      COUNT(*) as messageCount
+    FROM message
+    GROUP BY date
+    ORDER BY date ASC`
+  )
+
+  const partSizeRows = dbManager.rawQuery<Record<string, unknown>>(
+    `SELECT
+      date(time_created / 1000, 'unixepoch') as date,
+      COALESCE(SUM(LENGTH(data)), 0) as partSize
+    FROM part
+    GROUP BY date`
+  )
+
+  const trendMap = new Map<string, TrendDataPoint>()
+
+  for (const row of sessionRows) {
+    const date = row.date as string
+    trendMap.set(date, {
+      date,
+      newSessions: (row.newSessions as number) ?? 0,
+      sizeGrowth: 0,
+      messageCount: 0,
+    })
+  }
+
+  for (const row of messageRows) {
+    const date = row.date as string
+    const existing = trendMap.get(date)
+    if (existing) {
+      existing.messageCount = (row.messageCount as number) ?? 0
+    } else {
+      trendMap.set(date, {
+        date,
+        newSessions: 0,
+        sizeGrowth: 0,
+        messageCount: (row.messageCount as number) ?? 0,
+      })
+    }
+  }
+
+  const partSizeMap = new Map<string, number>()
+  for (const row of partSizeRows) {
+    partSizeMap.set(row.date as string, (row.partSize as number) ?? 0)
+  }
+
+  let cumulativeSize = 0
+  const sortedDates = [...trendMap.keys()].sort()
+  for (const date of sortedDates) {
+    cumulativeSize += partSizeMap.get(date) ?? 0
+    trendMap.get(date)!.sizeGrowth = cumulativeSize
+  }
+
+  return sortedDates.map(d => trendMap.get(d)!)
+}
+
 /** Query trend data for a given date range using GROUP BY */
 function queryTrendData(startDate: string, endDate: string): TrendDataPoint[] {
   const sessionRows = dbManager.rawQuery<Record<string, unknown>>(
@@ -266,78 +336,12 @@ export function registerHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.DASHBOARD_TRENDS, (_event, timeRange?: TimeRange): IpcResult<TrendDataPoint[] | TrendComparison> => {
+  ipcMain.handle(IPC_CHANNELS.DASHBOARD_TRENDS, (_event, timeRange?: TimeRange): IpcResult<TrendComparison> => {
     try {
     if (!timeRange) {
-      // No time range: return all data as before
-      const sessionRows = dbManager.rawQuery<Record<string, unknown>>(
-        `SELECT
-          date(time_created / 1000, 'unixepoch') as date,
-          COUNT(*) as newSessions
-        FROM session
-        GROUP BY date
-        ORDER BY date ASC`
-      )
-
-      const messageRows = dbManager.rawQuery<Record<string, unknown>>(
-        `SELECT
-          date(time_created / 1000, 'unixepoch') as date,
-          COUNT(*) as messageCount
-        FROM message
-        GROUP BY date
-        ORDER BY date ASC`
-      )
-
-      // Single GROUP BY query instead of N+1 per-date queries
-      const partSizeRows = dbManager.rawQuery<Record<string, unknown>>(
-        `SELECT
-          date(time_created / 1000, 'unixepoch') as date,
-          COALESCE(SUM(LENGTH(data)), 0) as partSize
-        FROM part
-        GROUP BY date`
-      )
-
-      const trendMap = new Map<string, TrendDataPoint>()
-
-      for (const row of sessionRows) {
-        const date = row.date as string
-        trendMap.set(date, {
-          date,
-          newSessions: (row.newSessions as number) ?? 0,
-          sizeGrowth: 0,
-          messageCount: 0,
-        })
-      }
-
-      for (const row of messageRows) {
-        const date = row.date as string
-        const existing = trendMap.get(date)
-        if (existing) {
-          existing.messageCount = (row.messageCount as number) ?? 0
-        } else {
-          trendMap.set(date, {
-            date,
-            newSessions: 0,
-            sizeGrowth: 0,
-            messageCount: (row.messageCount as number) ?? 0,
-          })
-        }
-      }
-
-      // Apply part sizes from single GROUP BY query
-      const partSizeMap = new Map<string, number>()
-      for (const row of partSizeRows) {
-        partSizeMap.set(row.date as string, (row.partSize as number) ?? 0)
-      }
-
-      let cumulativeSize = 0
-      const sortedDates = [...trendMap.keys()].sort()
-      for (const date of sortedDates) {
-        cumulativeSize += partSizeMap.get(date) ?? 0
-        trendMap.get(date)!.sizeGrowth = cumulativeSize
-      }
-
-      return { success: true, data: sortedDates.map(d => trendMap.get(d)!) }
+      // No time range: query all data and return in TrendComparison format
+      const allData = queryAllTrendData()
+      return { success: true, data: { current: allData, previous: [] } as TrendComparison }
     }
 
     // With time range: return current + previous period comparison
