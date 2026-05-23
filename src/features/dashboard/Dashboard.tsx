@@ -514,9 +514,13 @@ function Dashboard() {
             />
             <StatCard
               label="健康状态"
-              value={dbHealth ? `${dbHealth.pageCount} 页 / ${dbHealth.freelistPages} 碎片页` : '-'}
+              value={dbHealth ? formatNumber(dbHealth.pageCount) : '-'}
               icon={<Heart size={20} />}
-            />
+            >
+              {dbHealth && (
+                <p className="text-xs text-gray-400 mt-0.5">{dbHealth.freelistPages} 碎片页</p>
+              )}
+            </StatCard>
           </div>
         )}
       </div>
