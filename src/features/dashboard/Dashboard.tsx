@@ -79,6 +79,7 @@ interface DashboardCache {
   skillUsage: SkillUsage[]
   trendComparison: TrendComparison | null
   timeRange: TimeRange | undefined
+  timePreset: TimePreset
   groupBy: GroupBy
 }
 
@@ -156,6 +157,7 @@ function Dashboard() {
       setTrendComparison(dashboardCache.trendComparison)
       setTokenGroupData(dashboardCache.tokenGroupData)
       setTimeRange(dashboardCache.timeRange)
+      setTimePreset(dashboardCache.timePreset)
       setGroupBy(dashboardCache.groupBy)
       setFastLoading(false)
       setSlowLoading(false)
@@ -179,6 +181,7 @@ function Dashboard() {
         skillUsage: slowResult.skills,
         trendComparison: slowResult.trendComp,
         timeRange,
+        timePreset,
         groupBy,
       }
     } catch (err) {
@@ -202,6 +205,7 @@ function Dashboard() {
         skillUsage: slowResult.skills,
         trendComparison: slowResult.trendComp,
         timeRange,
+        timePreset,
         groupBy,
       }
     } catch (err) {
@@ -223,11 +227,13 @@ function Dashboard() {
         setSkillUsage(dashboardCache.skillUsage)
         setTrendComparison(dashboardCache.trendComparison)
         setTimeRange(dashboardCache.timeRange)
+        setTimePreset(dashboardCache.timePreset)
         setGroupBy(dashboardCache.groupBy)
         setConnected(true)
         setLoading(false)
         setFastLoading(false)
         setSlowLoading(false)
+        hasLoadedRef.current = true
         return
       }
       // No cache — do health check then load data
@@ -243,6 +249,7 @@ function Dashboard() {
         setConnected(false)
       } finally {
         setLoading(false)
+        hasLoadedRef.current = true
       }
     }
     init()
