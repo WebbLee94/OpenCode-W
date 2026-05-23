@@ -43,7 +43,6 @@ import {
   Legend,
 } from 'recharts'
 import StatCard from '@/components/StatCard'
-import TooltipHint from '@/components/TooltipHint'
 import { formatBytes, formatNumber } from '@/lib/format'
 
 // ── Color palette ──────────────────────────────────────────────────
@@ -576,16 +575,11 @@ function Dashboard() {
               value={formatNumber(dbStats.partCount)}
               icon={<Layers size={20} />}
             />
-            <div className="relative">
-              <StatCard
-                label="估算成本"
-                value={`¥${((tokenStats.estimatedCost ?? 0) * 6.8).toFixed(2)}`}
-                icon={<DollarSign size={20} />}
-              />
-              <span className="absolute top-2 right-2">
-                <TooltipHint text="来源于 OpenCode API 计费数据（session.cost 列汇总），汇率按 1 USD ≈ 6.8 CNY 估算" />
-              </span>
-            </div>
+            <StatCard
+              label="估算成本"
+              value={`$${(tokenStats.estimatedCost ?? 0).toFixed(2)}`}
+              icon={<DollarSign size={20} />}
+            />
           </div>
         )}
       </div>
