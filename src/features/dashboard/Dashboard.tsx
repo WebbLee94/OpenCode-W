@@ -78,6 +78,7 @@ interface DashboardCache {
   toolRanking: ToolRanking[]
   skillUsage: SkillUsage[]
   trendComparison: TrendComparison | null
+  dbHealth: { pageCount: number; freelistPages: number } | null
   timeRange: TimeRange | undefined
   timePreset: TimePreset
   groupBy: GroupBy
@@ -110,7 +111,7 @@ function Dashboard() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
-  const [dbHealth, setDbHealth] = useState<{ pageCount: number; freelistPages: number } | null>(null)
+  const [dbHealth, setDbHealth] = useState<{ pageCount: number; freelistPages: number } | null>(dashboardCache?.dbHealth ?? null)
 
   const hasLoadedRef = useRef(!!dashboardCache)
 
@@ -156,6 +157,7 @@ function Dashboard() {
       setSkillUsage(dashboardCache.skillUsage)
       setTrendComparison(dashboardCache.trendComparison)
       setTokenGroupData(dashboardCache.tokenGroupData)
+      setDbHealth(dashboardCache.dbHealth)
       setTimeRange(dashboardCache.timeRange)
       setTimePreset(dashboardCache.timePreset)
       setGroupBy(dashboardCache.groupBy)
@@ -180,6 +182,7 @@ function Dashboard() {
         toolRanking: slowResult.tools,
         skillUsage: slowResult.skills,
         trendComparison: slowResult.trendComp,
+        dbHealth,
         timeRange,
         timePreset,
         groupBy,
@@ -204,6 +207,7 @@ function Dashboard() {
         toolRanking: slowResult.tools,
         skillUsage: slowResult.skills,
         trendComparison: slowResult.trendComp,
+        dbHealth,
         timeRange,
         timePreset,
         groupBy,
@@ -226,6 +230,7 @@ function Dashboard() {
         setToolRanking(dashboardCache.toolRanking)
         setSkillUsage(dashboardCache.skillUsage)
         setTrendComparison(dashboardCache.trendComparison)
+        setDbHealth(dashboardCache.dbHealth)
         setTimeRange(dashboardCache.timeRange)
         setTimePreset(dashboardCache.timePreset)
         setGroupBy(dashboardCache.groupBy)
@@ -359,6 +364,7 @@ function Dashboard() {
         toolRanking: slowResult.tools,
         skillUsage: slowResult.skills,
         trendComparison: slowResult.trendComp,
+        dbHealth,
         timeRange: tr,
         timePreset: days,
         groupBy,
@@ -387,6 +393,7 @@ function Dashboard() {
         toolRanking: slowResult.tools,
         skillUsage: slowResult.skills,
         trendComparison: slowResult.trendComp,
+        dbHealth,
         timeRange,
         timePreset,
         groupBy: gb,
