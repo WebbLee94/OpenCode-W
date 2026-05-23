@@ -36,7 +36,20 @@ hljs.registerLanguage('shell', bash)
 // Constants
 // ---------------------------------------------------------------------------
 
-const PAGE_SIZE = 50
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
+const DEFAULT_PAGE_SIZE = 20
+const PAGE_SIZE_STORAGE_KEY = 'dbscope-messages-page-size'
+
+function getStoredPageSize(): number {
+  try {
+    const stored = localStorage.getItem(PAGE_SIZE_STORAGE_KEY)
+    if (stored) {
+      const parsed = parseInt(stored, 10)
+      if (PAGE_SIZE_OPTIONS.includes(parsed as typeof PAGE_SIZE_OPTIONS[number])) return parsed
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_PAGE_SIZE
+}
 
 type PartTypeFilter = 'all' | 'text' | 'tool' | 'reasoning'
 
@@ -264,7 +277,14 @@ function Messages() {
   const [messages, setMessages] = useState<MessageDTO[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(getStoredPageSize)
   const [listLoading, setListLoading] = useState(true)
+
+  // Handle page size change
+  const handlePageSizeChange = useCallback((newSize: number) => {
+    setPageSize(newSize)
+    localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(newSize))
+  }, [])
 
   // Message detail state
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -301,7 +321,7 @@ function Messages() {
       const result = await invokeSafe<{ data: MessageDTO[]; total: number; page: number }>(IPC_CHANNELS.MESSAGES_LIST, {
         sessionId,
         page: p,
-        pageSize: PAGE_SIZE,
+        pageSize,
       })
       setMessages(result.data)
       setTotal(result.total)
@@ -404,7 +424,7 @@ function Messages() {
   }
 
   // ---- Pagination helpers ----
-  const totalPages = Math.ceil(total / PAGE_SIZE)
+  const totalPages = Math.ceil(total / pageSize)
 
   // ---- Content renderer ----
   const renderContent = () => {
@@ -560,7 +580,7 @@ function Messages() {
             ) : (
               <div className="divide-y divide-gray-100">
                 {messages.map((msg, idx) => {
-                  const seq = (page - 1) * PAGE_SIZE + idx + 1
+                  const seq = (page - 1) * pageSize + idx + 1
                   const isSelected = selectedId === msg.id
                   const config = ROLE_CONFIG[msg.role] ?? ROLE_CONFIG.system
                   const Icon = config.icon
@@ -608,23 +628,41 @@ function Messages() {
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 flex items-center justify-between shrink-0">
-              <button
-                onClick={() => loadMessages(page - 1)}
-                disabled={page <= 1}
-                className="px-3 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                上一页
-              </button>
-              <span className="text-xs text-gray-500">
-                {page} / {totalPages}
-              </span>
-              <button
-                onClick={() => loadMessages(page + 1)}
-                disabled={page >= totalPages}
-                className="px-3 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                下一页
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => loadMessages(page - 1)}
+                  disabled={page <= 1}
+                  className="px-3 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  上一页
+                </button>
+                <span className="text-xs text-gray-500">
+                  {page} / {totalPages}
+                </span>
+                <button
+                  onClick={() => loadMessages(page + 1)}
+                  disabled={page >= totalPages}
+                  className="px-3 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  下一页
+                </button>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-400">每页</span>
+                {PAGE_SIZE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => handlePageSizeChange(opt)}
+                    className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                      pageSize === opt
+                        ? 'bg-brand-500 text-white'
+                        : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
