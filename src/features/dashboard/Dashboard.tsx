@@ -43,6 +43,7 @@ import {
   Legend,
 } from 'recharts'
 import StatCard from '@/components/StatCard'
+import TooltipHint from '@/components/TooltipHint'
 import { formatBytes, formatNumber } from '@/lib/format'
 
 // ── Color palette ──────────────────────────────────────────────────
