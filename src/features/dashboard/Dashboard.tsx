@@ -338,18 +338,63 @@ function Dashboard() {
   }, [trendData, previousTrendData])
 
   // ── Time range change handler ──────────────────────────────────
-  const handleTimePresetChange = useCallback((days: TimePreset) => {
+  const handleTimePresetChange = useCallback(async (days: TimePreset) => {
     setTimePreset(days)
     const tr = computeTimeRange(days)
     setTimeRange(tr)
     dashboardCache = null
-  }, [])
+    // Directly load with new params (state updates are async, so pass computed values)
+    setFastLoading(true)
+    setSlowLoading(true)
+    setError(null)
+    try {
+      const [fastResult, slowResult] = await Promise.all([
+        loadFastData(tr, groupBy),
+        loadSlowData(tr),
+      ])
+      dashboardCache = {
+        dbStats: fastResult.stats,
+        tokenStats: fastResult.tokens,
+        tokenGroupData: fastResult.groupData,
+        toolRanking: slowResult.tools,
+        skillUsage: slowResult.skills,
+        trendComparison: slowResult.trendComp,
+        timeRange: tr,
+        timePreset: days,
+        groupBy,
+      }
+    } catch (err) {
+      setError((err as Error).message || 'Failed to load dashboard data')
+    }
+  }, [loadFastData, loadSlowData, groupBy])
 
   // ── GroupBy change handler ─────────────────────────────────────
-  const handleGroupByChange = useCallback((gb: GroupBy) => {
+  const handleGroupByChange = useCallback(async (gb: GroupBy) => {
     setGroupBy(gb)
     dashboardCache = null
-  }, [])
+    setFastLoading(true)
+    setSlowLoading(true)
+    setError(null)
+    try {
+      const [fastResult, slowResult] = await Promise.all([
+        loadFastData(timeRange, gb),
+        loadSlowData(timeRange),
+      ])
+      dashboardCache = {
+        dbStats: fastResult.stats,
+        tokenStats: fastResult.tokens,
+        tokenGroupData: fastResult.groupData,
+        toolRanking: slowResult.tools,
+        skillUsage: slowResult.skills,
+        trendComparison: slowResult.trendComp,
+        timeRange,
+        timePreset,
+        groupBy: gb,
+      }
+    } catch (err) {
+      setError((err as Error).message || 'Failed to load dashboard data')
+    }
+  }, [loadFastData, loadSlowData, timeRange, timePreset])
 
   // ── Not connected view ───────────────────────────────────────────
   if (!connected && !loading) {
