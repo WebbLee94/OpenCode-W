@@ -164,11 +164,11 @@ function Dashboard() {
 
     setError(null)
     try {
-      // Fast group first
-      const fastResult = await loadFastData(timeRange, groupBy)
-
-      // Slow group after
-      const slowResult = await loadSlowData(timeRange)
+      // Run fast and slow data loading in parallel to prevent UI freeze
+      const [fastResult, slowResult] = await Promise.all([
+        loadFastData(timeRange, groupBy),
+        loadSlowData(timeRange),
+      ])
 
       // Update cache
       dashboardCache = {
@@ -190,8 +190,10 @@ function Dashboard() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const fastResult = await loadFastData(timeRange, groupBy)
-      const slowResult = await loadSlowData(timeRange)
+      const [fastResult, slowResult] = await Promise.all([
+        loadFastData(timeRange, groupBy),
+        loadSlowData(timeRange),
+      ])
       dashboardCache = {
         dbStats: fastResult.stats,
         tokenStats: fastResult.tokens,
