@@ -29,7 +29,7 @@ export function registerHandlers(): void {
           params.push(filter.priority)
         }
         if (filter?.projectId) {
-          conditions.push('s.project_id = ?')
+          conditions.push('s.directory = ?')
           params.push(filter.projectId)
         }
 
