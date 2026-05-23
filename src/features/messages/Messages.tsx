@@ -337,7 +337,7 @@ function Messages() {
     } finally {
       setListLoading(false)
     }
-  }, [sessionId])
+  }, [sessionId, pageSize])
 
   useEffect(() => {
     loadMessages(1)
