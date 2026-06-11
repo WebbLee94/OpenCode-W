@@ -8,6 +8,10 @@ import type {
   TrendComparison,
   TimeRange,
   TokenGroupDataPoint,
+  ProjectStatsItem,
+  WorkspaceStatsItem,
+  ModelRankingItem,
+  ProviderStatsItem,
 } from '@shared/types'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 import { invokeSafe } from '@/lib/ipc'
@@ -96,6 +100,10 @@ function Dashboard() {
   const [skillUsage, setSkillUsage] = useState<SkillUsage[]>(dashboardCache?.skillUsage ?? [])
   const [trendComparison, setTrendComparison] = useState<TrendComparison | null>(dashboardCache?.trendComparison ?? null)
   const [tokenGroupData, setTokenGroupData] = useState<TokenGroupDataPoint[]>(dashboardCache?.tokenGroupData ?? [])
+  const [projectStats, setProjectStats] = useState<ProjectStatsItem[]>([])
+  const [workspaceStats, setWorkspaceStats] = useState<WorkspaceStatsItem[]>([])
+  const [modelRanking, setModelRanking] = useState<ModelRankingItem[]>([])
+  const [providerStats, setProviderStats] = useState<ProviderStatsItem[]>([])
 
   // Time range & grouping state
   const [timePreset, setTimePreset] = useState<TimePreset>(30)
@@ -153,16 +161,24 @@ function Dashboard() {
   // ── Load slow data (tools + skills + trends) ─────────────────────
   const loadSlowData = useCallback(async (tr: TimeRange | undefined) => {
     setSlowLoading(true)
-    const [tools, skills, trendComp] = await Promise.all([
+    const [tools, skills, trendComp, projects, workspaces, models, providers] = await Promise.all([
       invokeSafe<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, tr),
       invokeSafe<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE, tr),
       invokeSafe<TrendComparison>(IPC_CHANNELS.DASHBOARD_TRENDS, tr),
+      invokeSafe<ProjectStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROJECTS, tr),
+      invokeSafe<WorkspaceStatsItem[]>(IPC_CHANNELS.DASHBOARD_WORKSPACES),
+      invokeSafe<ModelRankingItem[]>(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, tr),
+      invokeSafe<ProviderStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, tr),
     ])
     setToolRanking(tools ?? [])
     setSkillUsage(skills ?? [])
     setTrendComparison(trendComp)
+    setProjectStats(projects ?? [])
+    setWorkspaceStats(workspaces ?? [])
+    setModelRanking(models ?? [])
+    setProviderStats(providers ?? [])
     setSlowLoading(false)
-    return { tools: tools ?? [], skills: skills ?? [], trendComp }
+    return { tools: tools ?? [], skills: skills ?? [], trendComp, projects: projects ?? [], workspaces: workspaces ?? [], models: models ?? [], providers: providers ?? [] }
   }, [])
 
   // ── Load all data with async groups ──────────────────────────────
@@ -682,6 +698,56 @@ function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* ── Route B: ROW 4.5 项目与工作区统计 ──────────────────────── */}
+      {(projectStats.length > 0 || workspaceStats.length > 0) && (
+        <div>
+          <p className="text-xs text-gray-400 font-medium mb-2">📂 项目与工作区统计</p>
+          <div className="grid grid-cols-4 gap-3 mb-3">
+            <div className="bg-white border border-gray-200 rounded-lg p-3">
+              <div className="text-xs text-gray-400">项目数</div>
+              <div className="text-lg font-semibold text-gray-900">{projectStats.length}</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg p-3">
+              <div className="text-xs text-gray-400">工作区数</div>
+              <div className="text-lg font-semibold text-gray-900">{workspaceStats.length}</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg p-3">
+              <div className="text-xs text-gray-400">项目总会话</div>
+              <div className="text-lg font-semibold text-gray-900">{projectStats.reduce((s, p) => s + p.sessionCount, 0).toLocaleString()}</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg p-3">
+              <div className="text-xs text-gray-400">总使用时长 (h)</div>
+              <div className="text-lg font-semibold text-gray-900">{workspaceStats.reduce((s, w) => s + w.totalTimeHours, 0).toFixed(0)}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Route B: ROW 4.7 模型 & Provider 统计 ───────────────────── */}
+      {modelRanking.length > 0 && (
+        <div>
+          <p className="text-xs text-gray-400 font-medium mb-2">🤖 模型 & Provider 统计</p>
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            {modelRanking.slice(0, 5).map(m => (
+              <div key={m.model} className="bg-white border border-gray-200 rounded-lg p-3">
+                <div className="text-xs text-gray-400 truncate">{m.model}</div>
+                <div className="text-lg font-semibold text-gray-900">{m.sessionCount.toLocaleString()}</div>
+                <div className="text-xs text-gray-500">{m.tokenCount.toLocaleString()} tokens · ${m.totalCost.toFixed(2)}</div>
+              </div>
+            ))}
+          </div>
+          {providerStats.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {providerStats.map(p => (
+                <span key={p.provider} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                  {p.provider}: {p.sessionCount.toLocaleString()} 会话 · ${p.totalCost.toFixed(2)}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── ROW 5: Token 分布 + 增长趋势 ────────────────────────── */}
       <div>
