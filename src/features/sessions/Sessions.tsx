@@ -145,8 +145,10 @@ const listRef = useRef<HTMLDivElement>(null)
     }
 
     setLoading(true)
+    console.log('[Sessions] Fetching:', { page, pageSize, projectId: projectId || 'all', sortBy, startDate: startDate || 'none', endDate: endDate || 'none' })
     invokeSafe<{ data: SessionDTO[]; total: number; page: number; pageSize: number }>(IPC_CHANNELS.SESSIONS_LIST, filter)
       .then((result) => {
+        console.log('[Sessions] OK:', result.data?.length, 'rows, total:', result.total)
         setSessions(result.data)
         setTotal(result.total)
       })
