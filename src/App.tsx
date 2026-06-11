@@ -7,9 +7,8 @@ import Cleanup from './features/cleanup/Cleanup'
 import Backup from './features/backup/Backup'
 import Todos from './features/todos/Todos'
 import Accounts from './features/accounts/Accounts'
-import Events from './features/events/Events'
 import Shares from './features/shares/Shares'
-import { LayoutDashboard, MessageSquare, Trash2, HardDrive, ChevronRight, FolderSync, ClipboardList, UserCircle, Activity, Share2 } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Trash2, HardDrive, ChevronRight, FolderSync, ClipboardList, UserCircle, Share2 } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { invokeSafe, isElectron } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
@@ -22,7 +21,6 @@ const navItems = [
   { to: '/accounts', label: '账户管理', icon: UserCircle },
   { to: '/cleanup', label: '清理向导', icon: Trash2 },
   { to: '/backup', label: '备份恢复', icon: HardDrive },
-  { to: '/events', label: '事件溯源', icon: Activity },
   { to: '/shares', label: '分享管理', icon: Share2 },
 ]
 
@@ -182,7 +180,6 @@ function App() {
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/cleanup" element={<Cleanup />} />
             <Route path="/backup" element={<Backup />} />
-          <Route path="/events" element={<Events />} />
           <Route path="/shares" element={<Shares />} />
           </Route>
         </Routes>
