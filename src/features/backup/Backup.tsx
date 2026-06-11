@@ -28,9 +28,9 @@ function Backup() {
 
   // ─── Auto-backup config ────────────────────────────────────────────────
   const [backupCfg, setBackupCfg] = useState({ enabled: false, frequency: 'daily' as string, maxCount: 10, maxAgeDays: 30 })
-  useEffect(() => { (window as any).electronAPI?.backupConfigGet?.().then((c: any) => { if (c) setBackupCfg(c) }) }, [])
+  useEffect(() => { window.electronAPI?.backupConfigGet?.().then((c) => { if (c) setBackupCfg(c) }) }, [])
   function updateCfg(key: string, val: any) {
-    setBackupCfg(p => { const n = { ...p, [key]: val }; (window as any).electronAPI?.backupConfigSet?.(n); return n })
+    setBackupCfg(p => { const n = { ...p, [key]: val }; window.electronAPI?.backupConfigSet?.(n); return n })
   }
 
   // ─── Load backups on mount ──────────────────────────────────────────────

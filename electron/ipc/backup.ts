@@ -66,7 +66,13 @@ export function registerHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.BACKUP_AUTO_CHECK, async () => {
     const cfg = readBackupConfig().backup
     if (cfg.enabled && cfg.frequency === 'onOpen') {
-      try { ensureBackupDir(); const ts = Date.now(); fs.copyFileSync(dbManager.getCurrentPath()!, path.join(BACKUP_DIR, `auto-${ts}.db`)); enforceRetentionPolicy(); return { success: true } }
+      try {
+        const dbPath = dbManager.getCurrentPath()
+        if (!dbPath) return { success: false, error: 'No database open' }
+        ensureBackupDir(); const ts = Date.now()
+        fs.copyFileSync(dbPath, path.join(BACKUP_DIR, `auto-${ts}.db`))
+        enforceRetentionPolicy(); return { success: true }
+      }
       catch(e: any) { return { success: false, error: e.message } }
     }
     return { success: true }
@@ -308,7 +314,13 @@ function startScheduler() {
   if (cfg.frequency === 'onOpen') return
   const interval = cfg.frequency === 'weekly' ? 604800000 : 86400000
   backupTimer = setInterval(() => {
-    try { ensureBackupDir(); fs.copyFileSync(dbManager.getCurrentPath()!, path.join(BACKUP_DIR, `auto-${Date.now()}.db`)); enforceRetentionPolicy() } catch {}
+    try {
+      const dbPath = dbManager.getCurrentPath()
+      if (!dbPath) return
+      ensureBackupDir()
+      fs.copyFileSync(dbPath, path.join(BACKUP_DIR, `auto-${Date.now()}.db`))
+      enforceRetentionPolicy()
+    } catch (e) { console.error('Auto backup failed:', e) }
   }, interval)
 }
 export { startScheduler }
