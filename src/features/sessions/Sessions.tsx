@@ -206,6 +206,7 @@ const listRef = useRef<HTMLDivElement>(null)
   const closeDetail = useCallback(() => {
     setPanelOpen(false)
     setTimeout(() => setSelectedSession(null), 300) // wait for animation
+  }, [])
 
   // ─── Keyboard navigation ─────────────────────────────────────────────────
 
@@ -221,7 +222,6 @@ const listRef = useRef<HTMLDivElement>(null)
       const s = sessions[focusedIndex]; if (s) setDeleteConfirm(s.id)
     }
   }, [focusedIndex, sessions, openDetail])
-  }, [])
 
   // ─── Delete session ──────────────────────────────────────────────────────
 
