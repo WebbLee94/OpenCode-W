@@ -136,7 +136,8 @@ const listRef = useRef<HTMLDivElement>(null)
         setSessions(result.data)
         setTotal(result.total)
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('SESSIONS_LIST failed:', err)
         setSessions([])
         setTotal(0)
       })
