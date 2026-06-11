@@ -95,6 +95,8 @@ function Sessions() {
   // Session share state
   const [sessionShare, setSessionShare] = useState<SessionShareDTO | null>(null)
   const [showSecret, setShowSecret] = useState(false)
+  const [parentSession, setParentSession] = useState<SessionDTO | null>(null)
+  const [childSessions, setChildSessions] = useState<SessionDTO[]>([])
 
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -201,6 +203,9 @@ const listRef = useRef<HTMLDivElement>(null)
     invokeSafe<SessionShareDTO | null>(IPC_CHANNELS.SESSION_SHARE_GET, sessionId)
       .then((result) => setSessionShare(result))
       .catch(() => setSessionShare(null))
+    // Load hierarchy
+    invokeSafe<SessionDTO | null>(IPC_CHANNELS.SESSIONS_PARENT, sessionId).then(setParentSession).catch(() => setParentSession(null))
+    invokeSafe<SessionDTO[]>(IPC_CHANNELS.SESSIONS_CHILDREN, sessionId).then(setChildSessions).catch(() => setChildSessions([]))
   }, [])
 
   const closeDetail = useCallback(() => {
@@ -794,7 +799,32 @@ const listRef = useRef<HTMLDivElement>(null)
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <Share2 size={16} className="text-gray-500" />
-                    <h5 className="text-sm font-medium text-gray-700">分享信息</h5>
+                    {/* Route B: Session Hierarchy */}
+          {(parentSession || childSessions.length > 0) && (
+            <div className="border-t border-gray-100 pt-4">
+              <h5 className="text-sm font-medium text-gray-700 mb-3">会话层级</h5>
+              {parentSession && (
+                <div className="mb-2">
+                  <span className="text-xs text-gray-400">👆 父会话：</span>
+                  <button onClick={() => openDetail(parentSession.id)} className="text-blue-600 hover:underline text-sm ml-1">
+                    {parentSession.title || '无标题'}
+                  </button>
+                </div>
+              )}
+              {childSessions.length > 0 && (
+                <div>
+                  <span className="text-xs text-gray-400">👇 子会话 ({childSessions.length})：</span>
+                  {childSessions.map(c => (
+                    <button key={c.id} onClick={() => openDetail(c.id)} className="block text-blue-600 hover:underline text-sm ml-4 mt-1">
+                      {c.title || '无标题'}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <h5 className="text-sm font-medium text-gray-700">分享信息</h5>
                   </div>
                   <div className="bg-gray-50 rounded-md p-3 space-y-2 text-sm">
                     <div className="flex items-center gap-2">
