@@ -61,6 +61,13 @@ export function registerHandlers(): void {
         conditions.push('date(s.time_created / 1000, \'unixepoch\') <= ?')
         params.push(filter.endDate)
       }
+      // Parent filter — default to root-only for hierarchy view
+      if (filter?.parentFilter === 'children') {
+        conditions.push('s.parent_session_id IS NOT NULL')
+      } else if (!filter?.parentFilter || filter?.parentFilter === 'root') {
+        conditions.push('s.parent_session_id IS NULL')
+      }
+      // 'all' — no parent filter
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
