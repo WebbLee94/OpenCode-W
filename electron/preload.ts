@@ -14,9 +14,11 @@ const ALLOWED_CHANNELS = [
   'dialog:openFile', 'dialog:saveFile',
   'backup:create', 'backup:list', 'backup:restore', 'backup:delete', 'backup:preview', 'backup:config:get', 'backup:config:set', 'backup:auto-backup-check',
   'todos:list', 'todos:bySession',
-  'session-share:get',
-  'accounts:list', 'accounts:active',
+  'session-share:get', 'session-shares:list',
+  'accounts:list', 'accounts:active', 'accounts:usage',
   'events:list', 'events:detail',
+  'sessions:parent', 'sessions:children',
+  'dashboard:projects', 'dashboard:workspaces', 'dashboard:modelRanking', 'dashboard:providerStats',
 ]
 
 /**

@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import type { DatabaseStats, TokenStats, ToolRanking, SkillUsage, TrendDataPoint, TrendComparison, TokenGroupDataPoint, TimeRange, IpcResult } from '../../shared/types'
+import type { DatabaseStats, TokenStats, ToolRanking, SkillUsage, TrendDataPoint, TrendComparison, TokenGroupDataPoint, TimeRange, IpcResult, ProjectStatsItem, WorkspaceStatsItem, ModelRankingItem, ProviderStatsItem } from '../../shared/types'
 import dbManager from '../database'
 
 /** Build a SQL date filter clause for time_created (ms timestamp) */
@@ -365,5 +365,52 @@ export function registerHandlers(): void {
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
+  })
+
+  // ─── Route B: Project & Workspace Stats ─────────────────────────────
+
+  ipcMain.handle(IPC_CHANNELS.DASHBOARD_PROJECTS, (_event, timeRange?: TimeRange): IpcResult<ProjectStatsItem[]> => {
+    try {
+      const dateFilter = buildDateFilter('', timeRange)
+      const rows = dbManager.rawQuery<Record<string, unknown>>(
+        `SELECT directory, COUNT(*) as sessionCount, SUM(tokens_input + tokens_output) as tokenCount, SUM(cost) as cost FROM session WHERE directory IS NOT NULL ${dateFilter.sql} GROUP BY directory ORDER BY sessionCount DESC LIMIT 5`,
+        dateFilter.params
+      )
+      return { success: true, data: rows.map(r => ({ directory: r.directory as string, sessionCount: r.sessionCount as number, tokenCount: r.tokenCount as number, cost: r.cost as number })) }
+    } catch (error) { return { success: false, error: (error as Error).message } }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DASHBOARD_WORKSPACES, async (): Promise<IpcResult<WorkspaceStatsItem[]>> => {
+    try {
+      const rows = dbManager.rawQuery<Record<string, unknown>>(
+        `SELECT name, branch, CAST(SUM(COALESCE(time_used, 0)) AS REAL) / 3600.0 as totalTimeHours FROM workspace GROUP BY name ORDER BY totalTimeHours DESC`
+      )
+      return { success: true, data: rows.map(r => ({ name: r.name as string, branch: r.branch as string | null, totalTimeHours: r.totalTimeHours as number })) }
+    } catch (error) { return { success: false, error: (error as Error).message } }
+  })
+
+  // ─── Route B: Model & Provider Stats ────────────────────────────────
+
+  ipcMain.handle(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, (_event, timeRange?: TimeRange): IpcResult<ModelRankingItem[]> => {
+    try {
+      const dateFilter = buildDateFilter('', timeRange)
+      const rows = dbManager.rawQuery<Record<string, unknown>>(
+        `SELECT model, COUNT(*) as sessionCount, SUM(tokens_input + tokens_output) as tokenCount, SUM(cost) as totalCost FROM session WHERE model IS NOT NULL ${dateFilter.sql} GROUP BY model ORDER BY sessionCount DESC LIMIT 10`,
+        dateFilter.params
+      )
+      return { success: true, data: rows.map(r => ({ model: r.model as string, sessionCount: r.sessionCount as number, tokenCount: r.tokenCount as number, totalCost: r.totalCost as number })) }
+    } catch (error) { return { success: false, error: (error as Error).message } }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, (_event, timeRange?: TimeRange): IpcResult<ProviderStatsItem[]> => {
+    try {
+      const dateFilter = buildDateFilter('s.', timeRange)
+      const providerMap: Record<string, string> = { 'api.anthropic.com': 'Anthropic', 'api.openai.com': 'OpenAI', 'api.deepseek.com': 'DeepSeek', 'api.moonshot.cn': 'Moonshot', 'api.minimax.chat': 'MiniMax', 'generativelanguage.googleapis.com': 'Google' }
+      const rows = dbManager.rawQuery<Record<string, unknown>>(
+        `SELECT a.url, COUNT(s.id) as sessionCount, SUM(s.tokens_input + s.tokens_output) as tokenCount, SUM(s.cost) as totalCost FROM session s JOIN account a ON s.account_id = a.id WHERE a.url IS NOT NULL ${dateFilter.sql} GROUP BY a.url ORDER BY sessionCount DESC`,
+        dateFilter.params
+      )
+      return { success: true, data: rows.map(r => ({ provider: providerMap[r.url as string] || '其他', sessionCount: r.sessionCount as number, tokenCount: r.tokenCount as number, totalCost: r.totalCost as number })) }
+    } catch (error) { return { success: false, error: (error as Error).message } }
   })
 }

@@ -250,6 +250,35 @@ export function registerHandlers(): void {
       } catch (error) {
         return { success: false, error: (error as Error).message }
       }
-    }
+      }
   )
+
+  // ─── Route B: Session Parent/Children ────────────────────────────
+
+  ipcMain.handle(IPC_CHANNELS.SESSIONS_PARENT, (_event, sessionId: string): IpcResult<SessionDTO | null> => {
+    try {
+      const s = dbManager.rawGet<{ parent_session_id: string | null }>('SELECT parent_session_id FROM session WHERE id = ?', [sessionId])
+      if (!s?.parent_session_id) return { success: true, data: null }
+      const parent = dbManager.rawGet<SessionDTO>('SELECT id, title, time_created FROM session WHERE id = ?', [s.parent_session_id])
+      return { success: true, data: parent ?? null }
+    } catch (error) { return { success: false, error: (error as Error).message } }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SESSIONS_CHILDREN, (_event, sessionId: string): IpcResult<SessionDTO[]> => {
+    try {
+      const children = dbManager.rawQuery<SessionDTO>('SELECT id, title, time_created, time_updated, msg_count, tokens_input, tokens_output, directory, project_id FROM session WHERE parent_session_id = ? ORDER BY time_created ASC', [sessionId])
+      return { success: true, data: children }
+    } catch (error) { return { success: false, error: (error as Error).message } }
+  })
+
+  // ─── Route B: Session Shares List ────────────────────────────────
+
+  ipcMain.handle(IPC_CHANNELS.SESSION_SHARES_LIST, (_event, filter: { page?: number; pageSize?: number }): IpcResult<{ data: SessionShareDTO[]; total: number }> => {
+    try {
+      const page = filter.page || 1; const pageSize = filter.pageSize || 50; const offset = (page - 1) * pageSize
+      const total = (dbManager.rawGet<{ cnt: number }>('SELECT COUNT(*) as cnt FROM session_share'))!.cnt
+      const rows = dbManager.rawQuery<SessionShareDTO>('SELECT ss.*, s.title as session_title FROM session_share ss JOIN session s ON ss.session_id = s.id ORDER BY ss.time_created DESC LIMIT ? OFFSET ?', [pageSize, offset])
+      return { success: true, data: { data: rows, total } }
+    } catch (error) { return { success: false, error: (error as Error).message } }
+  })
 }

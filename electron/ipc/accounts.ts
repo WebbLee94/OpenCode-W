@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import type { AccountDTO, AccountStateDTO, IpcResult } from '../../shared/types'
+import type { AccountDTO, AccountStateDTO, IpcResult, AccountUsageItem } from '../../shared/types'
 import dbManager from '../database'
 
 export function registerHandlers(): void {
@@ -40,4 +40,28 @@ export function registerHandlers(): void {
       }
     }
   )
+
+  // ─── Route B: Account Usage Stats ────────────────────────────────
+
+  ipcMain.handle(IPC_CHANNELS.ACCOUNTS_USAGE, (): IpcResult<AccountUsageItem[]> => {
+    try {
+      const rows = dbManager.rawQuery<Record<string, unknown>>(
+        `SELECT a.id as accountId, a.email,
+          COUNT(s.id) as sessionCount,
+          COALESCE(SUM(s.tokens_input + s.tokens_output), 0) as tokenCount,
+          COALESCE(SUM(s.cost), 0) as totalCost,
+          CASE WHEN st.active_account_id = a.id THEN 1 ELSE 0 END as isActive
+        FROM account a
+        LEFT JOIN session s ON s.account_id = a.id
+        LEFT JOIN account_state st ON 1=1
+        GROUP BY a.id
+        ORDER BY isActive DESC, sessionCount DESC`
+      )
+      return { success: true, data: rows.map(r => ({
+        accountId: r.accountId as string, email: r.email as string,
+        sessionCount: r.sessionCount as number, tokenCount: r.tokenCount as number,
+        totalCost: r.totalCost as number, isActive: Boolean(r.isActive),
+      })) }
+    } catch (error) { return { success: false, error: (error as Error).message } }
+  })
 }
