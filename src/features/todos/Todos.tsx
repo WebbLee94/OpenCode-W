@@ -186,28 +186,6 @@ function Todos() {
             )}
           </div>
 
-          {/* Status filter */}
-          <select
-            value={status}
-            onChange={(e) => { setStatus(e.target.value); setPage(1) }}
-            className="min-w-[120px] appearance-none rounded-md border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-          >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-
-          {/* Priority filter */}
-          <select
-            value={priority}
-            onChange={(e) => { setPriority(e.target.value); setPage(1) }}
-            className="min-w-[120px] appearance-none rounded-md border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-          >
-            {PRIORITY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-
           {/* Project filter with search */}
           <div className="relative min-w-[180px]" ref={projectRef}>
             <FolderOpen size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -240,6 +218,28 @@ function Todos() {
               </div>
             )}
           </div>
+
+          {/* Status filter */}
+          <select
+            value={status}
+            onChange={(e) => { setStatus(e.target.value); setPage(1) }}
+            className="min-w-[120px] appearance-none rounded-md border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          >
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+
+          {/* Priority filter */}
+          <select
+            value={priority}
+            onChange={(e) => { setPriority(e.target.value); setPage(1) }}
+            className="min-w-[120px] appearance-none rounded-md border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          >
+            {PRIORITY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
 
           {/* Reset overrides button — removed (v2.1) */}
         </div>
