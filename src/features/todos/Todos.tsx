@@ -89,7 +89,8 @@ function Todos() {
   }, [])
 
   const sortedProjects = useMemo(() =>
-    projects.filter(p => !projectSearch || p.toLowerCase().includes(projectSearch.toLowerCase())).sort((a, b) => a.localeCompare(b))
+    projects.filter(p => !projectSearch || p.toLowerCase().includes(projectSearch.toLowerCase()))
+      .sort((a, b) => (a.split('/').pop() || a).localeCompare(b.split('/').pop() || b))
   , [projects, projectSearch])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(() => {

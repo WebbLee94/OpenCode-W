@@ -70,7 +70,8 @@ function Sessions() {
   }, [])
 
   const sortedProjects = useMemo(() =>
-    projects.filter(p => !projectSearch || p.toLowerCase().includes(projectSearch.toLowerCase())).sort((a, b) => a.localeCompare(b))
+    projects.filter(p => !projectSearch || p.toLowerCase().includes(projectSearch.toLowerCase()))
+      .sort((a, b) => (a.split('/').pop() || a).localeCompare(b.split('/').pop() || b))
   , [projects, projectSearch])
 
   // Filter state
