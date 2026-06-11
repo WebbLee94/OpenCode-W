@@ -267,3 +267,45 @@ export interface EventDTO {
   type: string;
   data: string;
 }
+
+// ─── Route B: Project & Workspace Stats ─────────────────────────────────
+
+export interface ProjectStatsItem {
+  directory: string
+  sessionCount: number
+  tokenCount: number
+  cost: number
+}
+
+export interface WorkspaceStatsItem {
+  name: string
+  branch: string | null
+  totalTimeHours: number
+}
+
+// ─── Route B: Model & Provider Stats ─────────────────────────────────────
+
+export interface ModelRankingItem {
+  model: string
+  sessionCount: number
+  tokenCount: number
+  totalCost: number
+}
+
+export interface ProviderStatsItem {
+  provider: string
+  sessionCount: number
+  tokenCount: number
+  totalCost: number
+}
+
+// ─── Route B: Account Usage ──────────────────────────────────────────────
+
+export interface AccountUsageItem {
+  accountId: string
+  email: string
+  sessionCount: number
+  tokenCount: number
+  totalCost: number
+  isActive: boolean
+}

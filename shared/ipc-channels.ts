@@ -12,12 +12,18 @@ export const IPC_CHANNELS = {
   DASHBOARD_TOOL_RANKING: 'dashboard:toolRanking',
   DASHBOARD_SKILL_USAGE: 'dashboard:skillUsage',
   DASHBOARD_TRENDS: 'dashboard:trends',
+  DASHBOARD_PROJECTS: 'dashboard:projects',
+  DASHBOARD_WORKSPACES: 'dashboard:workspaces',
+  DASHBOARD_MODEL_RANKING: 'dashboard:modelRanking',
+  DASHBOARD_PROVIDER_STATS: 'dashboard:providerStats',
 
   // Sessions
   SESSIONS_LIST: 'sessions:list',
   SESSIONS_DETAIL: 'sessions:detail',
   SESSIONS_PROJECTS: 'sessions:projects',
   SESSIONS_DELETE: 'sessions:delete',
+  SESSIONS_PARENT: 'sessions:parent',
+  SESSIONS_CHILDREN: 'sessions:children',
 
   // Messages
   MESSAGES_LIST: 'messages:list',
@@ -52,10 +58,12 @@ export const IPC_CHANNELS = {
 
   // Session Share
   SESSION_SHARE_GET: 'session-share:get',
+  SESSION_SHARES_LIST: 'session-shares:list',
 
   // Accounts
   ACCOUNTS_LIST: 'accounts:list',
   ACCOUNTS_ACTIVE: 'accounts:active',
+  ACCOUNTS_USAGE: 'accounts:usage',
 
   // Events
   EVENTS_LIST: 'events:list',
