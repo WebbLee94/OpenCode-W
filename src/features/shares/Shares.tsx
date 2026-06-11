@@ -4,6 +4,7 @@ import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatRelativeTime, truncateText } from '../../lib/format'
 import { useToast } from '../../hooks/useToast'
+import { useNavigate } from 'react-router'
 import { ChevronLeft, ChevronRight, Share2 } from 'lucide-react'
 
 function Shares() {
@@ -13,6 +14,7 @@ function Shares() {
   const [page, setPage] = useState(1)
   const pageSize = 50
   const { addToast } = useToast()
+  const navigate = useNavigate()
 
   useEffect(() => {
     setLoading(true)
@@ -59,7 +61,9 @@ function Shares() {
                   <td className="px-4 py-3 text-right text-gray-600">{formatRelativeTime(s.time_created)}</td>
                   <td className="px-4 py-3 text-center">
                     <button onClick={() => { navigator.clipboard.writeText((s as any).url || ''); addToast('已复制链接', 'success') }}
-                      className="text-gray-400 hover:text-blue-600" title="复制链接">📋</button>
+                      className="text-gray-400 hover:text-blue-600 mr-2" title="复制链接">📋</button>
+                    <button onClick={() => navigate(`/sessions/${s.session_id}/messages`)}
+                      className="text-gray-400 hover:text-blue-600" title="跳转到会话">🔗</button>
                   </td>
                 </tr>
               ))}
