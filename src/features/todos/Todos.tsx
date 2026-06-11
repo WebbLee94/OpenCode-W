@@ -14,9 +14,6 @@ import {
   FolderOpen,
 } from 'lucide-react'
 
-// ─── Types ───────────────────────────────────────────────────────────────
-type TodoOverrides = Record<string, { status?: string; priority?: string }>
-
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const DEFAULT_PAGE_SIZE = 20
@@ -100,52 +97,8 @@ function Todos() {
     return saved ? parseInt(saved, 10) : DEFAULT_PAGE_SIZE
   })
 
-  // Override state (localStorage-backed)
-  const STORAGE_KEY = 'dbscope-todos-overrides'
-  const [overrides, setOverrides] = useState<TodoOverrides>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      return raw ? JSON.parse(raw) : {}
-    } catch {
-      return {}
-    }
-  })
-  const [editingTodoId, setEditingTodoId] = useState<string | null>(null)
-  const [editingPriorityId, setEditingPriorityId] = useState<string | null>(null)
-
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const navigate = useNavigate()
-
-  // ─── Override helpers ──────────────────────────────────────────────────
-
-  function updateOverride(todoId: string, field: 'status' | 'priority', value: string) {
-    setOverrides(prev => {
-      const next = { ...prev, [todoId]: { ...prev[todoId], [field]: value } }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-      return next
-    })
-  }
-
-  function resetOverrides() {
-    setOverrides({})
-    localStorage.removeItem(STORAGE_KEY)
-  }
-
-  // ─── Merged todos with overrides ────────────────────────────────────────
-
-  const getTodoKey = (todo: TodoDTO) => `${todo.session_id}:${todo.position}`
-
-  const mergedTodos = useMemo(() =>
-    todos.map(t => {
-      const key = getTodoKey(t)
-      return {
-        ...t,
-        status: (overrides[key]?.status ?? t.status) as TodoDTO['status'],
-        priority: (overrides[key]?.priority ?? t.priority) as TodoDTO['priority'],
-      }
-    }),
-    [todos, overrides]
-  )
 
   // ─── Debounced search ──────────────────────────────────────────────────
 
@@ -287,15 +240,7 @@ function Todos() {
             )}
           </div>
 
-          {/* Reset overrides button */}
-          {Object.keys(overrides).length > 0 && (
-            <button
-              onClick={resetOverrides}
-              className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-            >
-              重置编辑
-            </button>
-          )}
+          {/* Reset overrides button — removed (v2.1) */}
         </div>
       </div>
 
@@ -317,8 +262,8 @@ function Todos() {
               </tr>
             </thead>
             <tbody>
-              {mergedTodos.map((todo, idx) => {
-                const todoKey = getTodoKey(todo)
+              {todos.map((todo, idx) => {
+                const todoKey = `${todo.session_id}:${todo.position}`
                 return (
                   <tr
                     key={todoKey}
@@ -334,63 +279,17 @@ function Todos() {
                     >
                       <span className="text-gray-400 mr-1">[{todo.position}]</span>{truncateText(todo.content, 120)}
                     </td>
-                    {/* Status dropdown */}
-                    <td className="px-4 py-3 relative">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setEditingTodoId(editingTodoId === todoKey ? null : todoKey)
-                        }}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                      >
-                        {STATUS_EMOJI[todo.status]} {STATUS_LABEL[todo.status]} ▾
-                      </button>
-                      {editingTodoId === todoKey && (
-                        <div className="absolute z-20 top-full left-0 mt-1 bg-white border border-gray-200 rounded shadow-lg py-1 w-28">
-                          {['pending', 'in_progress', 'completed', 'cancelled'].map(s => (
-                            <button
-                              key={s}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                updateOverride(todoKey, 'status', s)
-                                setEditingTodoId(null)
-                              }}
-                              className="block w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors"
-                            >
-                              {STATUS_EMOJI[s]} {STATUS_LABEL[s]}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                    {/* Status — read-only */}
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                        {STATUS_EMOJI[todo.status]} {STATUS_LABEL[todo.status]}
+                      </span>
                     </td>
-                    {/* Priority dropdown */}
-                    <td className="px-4 py-3 relative">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setEditingPriorityId(editingPriorityId === todoKey ? null : todoKey)
-                        }}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                      >
-                        {PRIORITY_EMOJI[todo.priority]} {PRIORITY_LABEL[todo.priority]} ▾
-                      </button>
-                      {editingPriorityId === todoKey && (
-                        <div className="absolute z-20 top-full left-0 mt-1 bg-white border border-gray-200 rounded shadow-lg py-1 w-20">
-                          {['high', 'medium', 'low'].map(p => (
-                            <button
-                              key={p}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                updateOverride(todoKey, 'priority', p)
-                                setEditingPriorityId(null)
-                              }}
-                              className="block w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors"
-                            >
-                              {PRIORITY_EMOJI[p]} {PRIORITY_LABEL[p]}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                    {/* Priority — read-only */}
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                        {PRIORITY_EMOJI[todo.priority]} {PRIORITY_LABEL[todo.priority]}
+                      </span>
                     </td>
                     <td className="max-w-[200px] truncate px-4 py-3">
                       <span
