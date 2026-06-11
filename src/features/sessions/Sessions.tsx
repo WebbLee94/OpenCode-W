@@ -98,8 +98,10 @@ function Sessions() {
 
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const urlSyncedRef = useRef(false)
+const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+const urlSyncedRef = useRef(false)
+const [focusedIndex, setFocusedIndex] = useState(-1)
+const listRef = useRef<HTMLDivElement>(null)
 
   // ─── Debounced search ────────────────────────────────────────────────────
 
@@ -204,6 +206,21 @@ function Sessions() {
   const closeDetail = useCallback(() => {
     setPanelOpen(false)
     setTimeout(() => setSelectedSession(null), 300) // wait for animation
+
+  // ─── Keyboard navigation ─────────────────────────────────────────────────
+
+  const handleListKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+    if (e.key === 'j' || e.key === 'ArrowDown') {
+      e.preventDefault(); setFocusedIndex(prev => Math.min(prev + 1, sessions.length - 1))
+    } else if (e.key === 'k' || e.key === 'ArrowUp') {
+      e.preventDefault(); setFocusedIndex(prev => Math.max(prev - 1, 0))
+    } else if (e.key === 'Enter' && focusedIndex >= 0) {
+      openDetail(sessions[focusedIndex].id)
+    } else if (e.key === 'd' && focusedIndex >= 0 && !e.ctrlKey && !e.metaKey) {
+      const s = sessions[focusedIndex]; if (s) setDeleteConfirm(s.id)
+    }
+  }, [focusedIndex, sessions, openDetail])
   }, [])
 
   // ─── Delete session ──────────────────────────────────────────────────────
@@ -437,7 +454,7 @@ function Sessions() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto px-6 py-0">
+      <div className="flex-1 overflow-auto px-6 py-0" tabIndex={0} ref={listRef} onKeyDown={handleListKeyDown} onBlur={() => setFocusedIndex(-1)}>
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-4 bg-blue-50 px-4 py-2 rounded mb-2 text-sm">
             <span className="text-blue-700 font-medium">已选 {selectedIds.size} 项</span>
@@ -469,9 +486,9 @@ function Sessions() {
                 <tr
                   key={session.id}
                   onClick={() => openDetail(session.id)}
-                  className={`session-row cursor-pointer border-b border-gray-100 transition-colors hover:bg-brand-50 ${
-                    idx % 2 === 1 ? 'bg-gray-50/50' : ''
-                  } ${selectedSession?.id === session.id ? 'bg-brand-50' : ''}`}
+                    className={`session-row cursor-pointer border-b border-gray-100 transition-colors hover:bg-brand-50 ${
+                      idx % 2 === 1 ? 'bg-gray-50/50' : ''
+                    } ${selectedSession?.id === session.id ? 'bg-brand-50' : ''} ${idx === focusedIndex ? '!bg-blue-50 ring-1 ring-blue-200' : ''}`}
                 >
                   <td className="w-8 p-2" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(session.id)} onChange={() => toggleSelect(session.id)} /></td>
                   <td className="px-4 py-3 text-center text-gray-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
