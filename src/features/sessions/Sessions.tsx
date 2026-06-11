@@ -78,6 +78,7 @@ function Sessions() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [projectId, setProjectId] = useState('')
+  const [parentFilter, setParentFilter] = useState<'root' | 'all' | 'children'>('root')
   const [sortBy, setSortBy] = useState('time_updated')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(1)
@@ -143,6 +144,7 @@ const listRef = useRef<HTMLDivElement>(null)
       pageSize,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
+      parentFilter,
     }
 
     setLoading(true)
@@ -159,7 +161,7 @@ const listRef = useRef<HTMLDivElement>(null)
         setTotal(0)
       })
       .finally(() => setLoading(false))
-  }, [debouncedSearch, projectId, sortBy, sortOrder, page, pageSize, startDate, endDate])
+  }, [debouncedSearch, projectId, sortBy, sortOrder, page, pageSize, startDate, endDate, parentFilter])
 
   // ─── Load projects list ──────────────────────────────────────────────────
 
@@ -231,7 +233,7 @@ const listRef = useRef<HTMLDivElement>(null)
     setTimeout(() => setSelectedSession(null), 300) // wait for animation
   }, [])
 
-  // ─── Keyboard navigation ─────────────────────────────────────────────────
+  // ─── Key handler (keyboard nav) ────────────────────────────────────────────────
 
   const handleListKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
@@ -440,6 +442,17 @@ const listRef = useRef<HTMLDivElement>(null)
             <ArrowUpDown size={14} />
             {sortOrder === 'asc' ? '升序' : '降序'}
           </button>
+
+          {/* Display mode — hierarchy view */}
+          <select
+            value={parentFilter}
+            onChange={(e) => { setParentFilter(e.target.value as 'root' | 'all' | 'children'); setPage(1) }}
+            className="min-w-[110px] appearance-none rounded-md border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          >
+            <option value="root">根会话</option>
+            <option value="all">全部</option>
+            <option value="children">子会话</option>
+          </select>
 
           {/* Date range filter */}
           <div className="flex items-center gap-1.5">
