@@ -109,6 +109,7 @@ export interface SessionFilter {
   pageSize?: number;
   startDate?: string;
   endDate?: string;
+  parentFilter?: 'root' | 'all' | 'children';
 }
 
 // Message DTOs
