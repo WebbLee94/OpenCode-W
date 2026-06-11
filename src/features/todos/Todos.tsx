@@ -81,6 +81,19 @@ function Todos() {
   const [priority, setPriority] = useState('')
   const [projectId, setProjectId] = useState('')
   const [projects, setProjects] = useState<string[]>([])
+  const [projectSearch, setProjectSearch] = useState('')
+  const [projectOpen, setProjectOpen] = useState(false)
+  const projectRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (projectRef.current && !projectRef.current.contains(e.target as Node)) setProjectOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const sortedProjects = useMemo(() =>
+    projects.filter(p => !projectSearch || p.toLowerCase().includes(projectSearch.toLowerCase())).sort((a, b) => a.localeCompare(b))
+  , [projects, projectSearch])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(() => {
     const saved = localStorage.getItem('dbscope-todos-page-size')
@@ -241,22 +254,37 @@ function Todos() {
             ))}
           </select>
 
-          {/* Project filter */}
-          <div className="relative min-w-[180px]">
+          {/* Project filter with search */}
+          <div className="relative min-w-[180px]" ref={projectRef}>
             <FolderOpen size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <select
-              value={projectId}
-              onChange={(e) => { setProjectId(e.target.value); setPage(1) }}
-              className="w-full appearance-none rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            <button
+              onClick={() => setProjectOpen(!projectOpen)}
+              className="w-full appearance-none rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 text-left truncate focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             >
-              <option value="">全部项目</option>
-              {projects.map((p) => (
-                <option key={p} value={p}>
-                  {p.split('/').pop() || p}
-                </option>
-              ))}
-            </select>
-            <ChevronRight size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-gray-400" />
+              {projectId ? projectId.split('/').pop() || projectId : '全部项目'}
+            </button>
+            <ChevronRight size={14} className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 transition-transform ${projectOpen ? 'rotate-90' : 'rotate-0'}`} />
+            {projectOpen && (
+              <div className="absolute z-30 top-full left-0 mt-1 w-80 bg-white border border-gray-200 rounded shadow-lg max-h-64 overflow-hidden">
+                <div className="p-2 border-b">
+                  <input type="text" placeholder="搜索项目..." value={projectSearch}
+                    onChange={e => setProjectSearch(e.target.value)}
+                    className="w-full border rounded px-2 py-1 text-sm focus:border-brand-500 focus:outline-none" autoFocus />
+                </div>
+                <ul className="overflow-y-auto max-h-48">
+                  <li className={`px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-100 ${!projectId ? 'bg-brand-50 text-brand-700' : ''}`}
+                    onClick={() => { setProjectId(''); setProjectOpen(false); setProjectSearch(''); setPage(1) }}>
+                    全部项目
+                  </li>
+                  {sortedProjects.map(p => (
+                    <li key={p} className={`px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-100 truncate ${projectId === p ? 'bg-brand-50 text-brand-700' : ''}`}
+                      onClick={() => { setProjectId(p); setProjectOpen(false); setProjectSearch(''); setPage(1) }}>
+                      {p.split('/').pop() || p}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Reset overrides button */}
