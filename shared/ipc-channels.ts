@@ -42,6 +42,9 @@ export const IPC_CHANNELS = {
   BACKUP_RESTORE: 'backup:restore',
   BACKUP_DELETE: 'backup:delete',
   BACKUP_PREVIEW: 'backup:preview',
+  BACKUP_CONFIG_GET: 'backup:config:get',
+  BACKUP_CONFIG_SET: 'backup:config:set',
+  BACKUP_AUTO_CHECK: 'backup:auto-backup-check',
 
   // Todos
   TODOS_LIST: 'todos:list',

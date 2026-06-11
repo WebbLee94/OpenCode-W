@@ -26,7 +26,14 @@ function Backup() {
     open: false, backup: null, deleting: false, error: null,
   })
 
-  // Load backups on mount
+  // ─── Auto-backup config ────────────────────────────────────────────────
+  const [backupCfg, setBackupCfg] = useState({ enabled: false, frequency: 'daily' as string, maxCount: 10, maxAgeDays: 30 })
+  useEffect(() => { (window as any).electronAPI?.backupConfigGet?.().then((c: any) => { if (c) setBackupCfg(c) }) }, [])
+  function updateCfg(key: string, val: any) {
+    setBackupCfg(p => { const n = { ...p, [key]: val }; (window as any).electronAPI?.backupConfigSet?.(n); return n })
+  }
+
+  // ─── Load backups on mount ──────────────────────────────────────────────
   const loadBackups = async () => {
     setLoading(true)
     setListError(null)
@@ -117,6 +124,45 @@ function Backup() {
   return (
     <div className="p-6 h-full flex flex-col">
       <h2 className="text-2xl font-semibold text-gray-900 mb-6">备份与恢复</h2>
+
+      {/* ==================== Auto-Backup Settings ==================== */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Clock size={16} className="text-gray-400" />
+          <h3 className="text-sm font-medium text-gray-700">自动备份设置</h3>
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            <input type="checkbox" checked={backupCfg.enabled} onChange={e => updateCfg('enabled', e.target.checked)} />
+            启用
+          </label>
+          {backupCfg.enabled && (
+            <>
+              <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                <span>频率</span>
+                <select value={backupCfg.frequency} onChange={e => updateCfg('frequency', e.target.value)}
+                  className="border rounded px-2 py-0.5 text-sm">
+                  <option value="onOpen">每次打开</option>
+                  <option value="daily">每天</option>
+                  <option value="weekly">每周</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                <span>保留数量</span>
+                <input type="number" value={backupCfg.maxCount} min={1} max={50}
+                  onChange={e => updateCfg('maxCount', parseInt(e.target.value) || 10)}
+                  className="border rounded px-2 py-0.5 w-16 text-sm" />
+              </div>
+              <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                <span>保留天数</span>
+                <input type="number" value={backupCfg.maxAgeDays} min={1} max={365}
+                  onChange={e => updateCfg('maxAgeDays', parseInt(e.target.value) || 30)}
+                  className="border rounded px-2 py-0.5 w-16 text-sm" />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* ==================== Top Section: Backup Creation ==================== */}
       <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">

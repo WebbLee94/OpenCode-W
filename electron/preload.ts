@@ -12,7 +12,7 @@ const ALLOWED_CHANNELS = [
   'cleanup:preview', 'cleanup:execute',
   'database:vacuum', 'database:checkpoint', 'database:open', 'database:health',
   'dialog:openFile', 'dialog:saveFile',
-  'backup:create', 'backup:list', 'backup:restore', 'backup:delete', 'backup:preview',
+  'backup:create', 'backup:list', 'backup:restore', 'backup:delete', 'backup:preview', 'backup:config:get', 'backup:config:set', 'backup:auto-backup-check',
   'todos:list', 'todos:bySession',
   'session-share:get',
   'accounts:list', 'accounts:active',
@@ -61,4 +61,8 @@ function saveFile(content: string, defaultName: string): Promise<unknown> {
   return invoke('dialog:saveFile', { content, defaultName })
 }
 
-contextBridge.exposeInMainWorld('electronAPI', { invoke, on, saveFile })
+contextBridge.exposeInMainWorld('electronAPI', { invoke, on, saveFile,
+  backupConfigGet: () => invoke('backup:config:get'),
+  backupConfigSet: (config: any) => invoke('backup:config:set', config),
+  backupAutoCheck: () => invoke('backup:auto-backup-check'),
+})
