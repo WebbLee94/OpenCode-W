@@ -11,6 +11,7 @@ import { LayoutDashboard, MessageSquare, Trash2, HardDrive, ChevronRight, Folder
 import { useState, useEffect, useCallback } from 'react'
 import { invokeSafe, isElectron } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
+import { ToastProvider } from './components/ToastProvider'
 
 const navItems = [
   { to: '/', label: '首页仪表盘', icon: LayoutDashboard },
@@ -166,19 +167,21 @@ function Layout() {
 
 function App() {
   return (
-    <HashRouter>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/sessions" element={<Sessions />} />
-          <Route path="/sessions/:sessionId/messages" element={<Messages />} />
-          <Route path="/todos" element={<Todos />} />
-          <Route path="/accounts" element={<Accounts />} />
-          <Route path="/cleanup" element={<Cleanup />} />
-          <Route path="/backup" element={<Backup />} />
-        </Route>
-      </Routes>
-    </HashRouter>
+    <ToastProvider>
+      <HashRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/sessions" element={<Sessions />} />
+            <Route path="/sessions/:sessionId/messages" element={<Messages />} />
+            <Route path="/todos" element={<Todos />} />
+            <Route path="/accounts" element={<Accounts />} />
+            <Route path="/cleanup" element={<Cleanup />} />
+            <Route path="/backup" element={<Backup />} />
+          </Route>
+        </Routes>
+      </HashRouter>
+    </ToastProvider>
   )
 }
 

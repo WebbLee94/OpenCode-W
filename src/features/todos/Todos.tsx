@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router'
 import type { TodoDTO, TodoFilter } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
@@ -13,6 +13,9 @@ import {
   MessageSquare,
   FolderOpen,
 } from 'lucide-react'
+
+// ─── Types ───────────────────────────────────────────────────────────────
+type TodoOverrides = Record<string, { status?: string; priority?: string }>
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -34,38 +37,35 @@ const PRIORITY_OPTIONS = [
   { value: 'low', label: '低' },
 ] as const
 
-// ─── Status Badge ────────────────────────────────────────────────────────────
+// ─── Display Maps ────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { label: string; className: string }> = {
-    pending: { label: '⏳ 待处理', className: 'bg-gray-100 text-gray-700' },
-    in_progress: { label: '🔄 进行中', className: 'bg-blue-100 text-blue-700' },
-    completed: { label: '✅ 完成', className: 'bg-green-100 text-green-700' },
-    cancelled: { label: '🚫 取消', className: 'bg-red-100 text-red-700' },
-  }
-  const c = config[status] ?? { label: status, className: 'bg-gray-100 text-gray-700' }
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${c.className}`}>
-      {c.label}
-    </span>
-  )
+const STATUS_EMOJI: Record<string, string> = {
+  pending: '⏳',
+  in_progress: '🔄',
+  completed: '✅',
+  cancelled: '🚫',
 }
 
-// ─── Priority Badge ─────────────────────────────────────────────────────────
-
-function PriorityBadge({ priority }: { priority: string }) {
-  const config: Record<string, { label: string; className: string }> = {
-    high: { label: '🔴 高', className: 'bg-red-100 text-red-700' },
-    medium: { label: '🟡 中', className: 'bg-yellow-100 text-yellow-700' },
-    low: { label: '🟢 低', className: 'bg-green-100 text-green-700' },
-  }
-  const c = config[priority] ?? { label: priority, className: 'bg-gray-100 text-gray-700' }
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${c.className}`}>
-      {c.label}
-    </span>
-  )
+const STATUS_LABEL: Record<string, string> = {
+  pending: '待处理',
+  in_progress: '进行中',
+  completed: '完成',
+  cancelled: '取消',
 }
+
+const PRIORITY_EMOJI: Record<string, string> = {
+  high: '🔴',
+  medium: '🟡',
+  low: '🟢',
+}
+
+const PRIORITY_LABEL: Record<string, string> = {
+  high: '高',
+  medium: '中',
+  low: '低',
+}
+
+
 
 // ─── Todos Page ──────────────────────────────────────────────────────────────
 
@@ -87,8 +87,52 @@ function Todos() {
     return saved ? parseInt(saved, 10) : DEFAULT_PAGE_SIZE
   })
 
+  // Override state (localStorage-backed)
+  const STORAGE_KEY = 'dbscope-todos-overrides'
+  const [overrides, setOverrides] = useState<TodoOverrides>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      return raw ? JSON.parse(raw) : {}
+    } catch {
+      return {}
+    }
+  })
+  const [editingTodoId, setEditingTodoId] = useState<string | null>(null)
+  const [editingPriorityId, setEditingPriorityId] = useState<string | null>(null)
+
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const navigate = useNavigate()
+
+  // ─── Override helpers ──────────────────────────────────────────────────
+
+  function updateOverride(todoId: string, field: 'status' | 'priority', value: string) {
+    setOverrides(prev => {
+      const next = { ...prev, [todoId]: { ...prev[todoId], [field]: value } }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      return next
+    })
+  }
+
+  function resetOverrides() {
+    setOverrides({})
+    localStorage.removeItem(STORAGE_KEY)
+  }
+
+  // ─── Merged todos with overrides ────────────────────────────────────────
+
+  const getTodoKey = (todo: TodoDTO) => `${todo.session_id}:${todo.position}`
+
+  const mergedTodos = useMemo(() =>
+    todos.map(t => {
+      const key = getTodoKey(t)
+      return {
+        ...t,
+        status: (overrides[key]?.status ?? t.status) as TodoDTO['status'],
+        priority: (overrides[key]?.priority ?? t.priority) as TodoDTO['priority'],
+      }
+    }),
+    [todos, overrides]
+  )
 
   // ─── Debounced search ──────────────────────────────────────────────────
 
@@ -214,6 +258,16 @@ function Todos() {
             </select>
             <ChevronRight size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-gray-400" />
           </div>
+
+          {/* Reset overrides button */}
+          {Object.keys(overrides).length > 0 && (
+            <button
+              onClick={resetOverrides}
+              className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+            >
+              重置编辑
+            </button>
+          )}
         </div>
       </div>
 
@@ -235,31 +289,94 @@ function Todos() {
               </tr>
             </thead>
             <tbody>
-              {todos.map((todo, idx) => (
-                <tr
-                  key={`${todo.session_id}-${todo.position}`}
-                  className={`cursor-pointer border-b border-gray-100 transition-colors hover:bg-brand-50 ${
-                    idx % 2 === 1 ? 'bg-gray-50/50' : ''
-                  }`}
-                  onClick={() => navigate(`/sessions/${todo.session_id}/messages`)}
-                >
-                  <td className="px-4 py-3 text-center text-gray-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
-                  <td className="max-w-xs py-3 pr-4 text-gray-900" title={todo.content}>
-                    <span className="text-gray-400 mr-1">[{todo.position}]</span>{truncateText(todo.content, 120)}
-                  </td>
-                  <td className="px-4 py-3"><StatusBadge status={todo.status} /></td>
-                  <td className="px-4 py-3"><PriorityBadge priority={todo.priority} /></td>
-                  <td className="max-w-[200px] truncate px-4 py-3">
-                    <span
-                      className="inline-flex items-center gap-1 text-brand-600 hover:text-brand-800 transition-colors"
-                      title={todo.session_title}
+              {mergedTodos.map((todo, idx) => {
+                const todoKey = getTodoKey(todo)
+                return (
+                  <tr
+                    key={todoKey}
+                    className={`border-b border-gray-100 transition-colors hover:bg-brand-50 ${
+                      idx % 2 === 1 ? 'bg-gray-50/50' : ''
+                    }`}
+                  >
+                    <td className="px-4 py-3 text-center text-gray-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
+                    <td
+                      className="max-w-xs py-3 pr-4 text-gray-900 cursor-pointer"
+                      title={todo.content}
+                      onClick={() => navigate(`/sessions/${todo.session_id}/messages`)}
                     >
-                      <MessageSquare size={12} />
-                      {truncateText(todo.session_title, 30)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+                      <span className="text-gray-400 mr-1">[{todo.position}]</span>{truncateText(todo.content, 120)}
+                    </td>
+                    {/* Status dropdown */}
+                    <td className="px-4 py-3 relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditingTodoId(editingTodoId === todoKey ? null : todoKey)
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                      >
+                        {STATUS_EMOJI[todo.status]} {STATUS_LABEL[todo.status]} ▾
+                      </button>
+                      {editingTodoId === todoKey && (
+                        <div className="absolute z-20 top-full left-0 mt-1 bg-white border border-gray-200 rounded shadow-lg py-1 w-28">
+                          {['pending', 'in_progress', 'completed', 'cancelled'].map(s => (
+                            <button
+                              key={s}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                updateOverride(todoKey, 'status', s)
+                                setEditingTodoId(null)
+                              }}
+                              className="block w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors"
+                            >
+                              {STATUS_EMOJI[s]} {STATUS_LABEL[s]}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    {/* Priority dropdown */}
+                    <td className="px-4 py-3 relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditingPriorityId(editingPriorityId === todoKey ? null : todoKey)
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                      >
+                        {PRIORITY_EMOJI[todo.priority]} {PRIORITY_LABEL[todo.priority]} ▾
+                      </button>
+                      {editingPriorityId === todoKey && (
+                        <div className="absolute z-20 top-full left-0 mt-1 bg-white border border-gray-200 rounded shadow-lg py-1 w-20">
+                          {['high', 'medium', 'low'].map(p => (
+                            <button
+                              key={p}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                updateOverride(todoKey, 'priority', p)
+                                setEditingPriorityId(null)
+                              }}
+                              className="block w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors"
+                            >
+                              {PRIORITY_EMOJI[p]} {PRIORITY_LABEL[p]}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="max-w-[200px] truncate px-4 py-3">
+                      <span
+                        className="inline-flex items-center gap-1 text-brand-600 hover:text-brand-800 transition-colors cursor-pointer"
+                        title={todo.session_title}
+                        onClick={() => navigate(`/sessions/${todo.session_id}/messages`)}
+                      >
+                        <MessageSquare size={12} />
+                        {truncateText(todo.session_title, 30)}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}

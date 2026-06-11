@@ -112,6 +112,26 @@ function registerIpcHandlers() {
   accountsIpc.registerHandlers()
   eventsIpc.registerHandlers()
 
+  // Save file dialog
+  ipcMain.handle(IPC_CHANNELS.DIALOG_SAVE_FILE, async (_event, { content, defaultName }: { content: string; defaultName: string }): Promise<IpcResult<{ success: boolean }>> => {
+    try {
+      const result = await dialog.showSaveDialog(mainWindow!, {
+        defaultPath: defaultName,
+        filters: [
+          { name: 'CSV', extensions: ['csv'] },
+          { name: 'JSON', extensions: ['json'] },
+        ],
+      })
+      if (!result.canceled && result.filePath) {
+        fs.writeFileSync(result.filePath, content, 'utf-8')
+        return { success: true, data: { success: true } }
+      }
+      return { success: true, data: { success: false } }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
   // Open file dialog for database
   ipcMain.handle(IPC_CHANNELS.DIALOG_OPEN_FILE, async (): Promise<IpcResult<string>> => {
     try {

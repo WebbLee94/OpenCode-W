@@ -4,6 +4,8 @@ import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShare
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatNumber, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
+import { useToast } from '../../hooks/useToast'
+import ConfirmDialog from '../../components/ConfirmDialog'
 import {
   Search,
   ChevronLeft,
@@ -79,6 +81,12 @@ function Sessions() {
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // Batch selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showBatchDelete, setShowBatchDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const { addToast } = useToast()
 
   // Todos state (Session detail panel)
   const [sessionTodos, setSessionTodos] = useState<TodoDTO[]>([])
@@ -219,6 +227,47 @@ function Sessions() {
     },
     [closeDetail]
   )
+
+  // ─── Batch selection helpers ────────────────────────────────────────────
+
+  function toggleSelect(sessionId: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(sessionId) ? next.delete(sessionId) : next.add(sessionId)
+      return next
+    })
+  }
+
+  function selectAll() {
+    if (selectedIds.size === sessions.length) setSelectedIds(new Set())
+    else setSelectedIds(new Set(sessions.map(s => s.id)))
+  }
+
+  async function batchDelete() {
+    setDeleting(true)
+    let count = 0
+    for (const id of selectedIds) {
+      const res = await invokeSafe<{ success?: boolean }>(IPC_CHANNELS.SESSIONS_DELETE, id)
+      if (res?.success) count++
+    }
+    setDeleting(false)
+    setSelectedIds(new Set())
+    setShowBatchDelete(false)
+    addToast(`已删除 ${count} 个会话`, 'success')
+    // Refresh sessions list
+    setPage((p) => p)
+    setSessions((prev) => prev.filter((s) => !selectedIds.has(s.id)))
+    setTotal((t) => t - count)
+  }
+
+  function batchExport() {
+    const selected = sessions.filter(s => selectedIds.has(s.id))
+    const csv = '标题,项目,消息数,Token,最后活跃\n' +
+      selected.map(s => `"${s.title}","${s.directory || ''}",${s.msg_count},${s.tokens_input + s.tokens_output},"${s.time_updated}"`).join('\n')
+    window.electronAPI.saveFile(csv, `DBScope-会话导出-${new Date().toISOString().slice(0, 10)}.csv`).then((res: any) => {
+      if (res?.success) addToast('已导出', 'success')
+    })
+  }
 
   // ─── Pagination helpers ──────────────────────────────────────────────────
 
@@ -389,6 +438,14 @@ function Sessions() {
 
       {/* Table */}
       <div className="flex-1 overflow-auto px-6 py-0">
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-4 bg-blue-50 px-4 py-2 rounded mb-2 text-sm">
+            <span className="text-blue-700 font-medium">已选 {selectedIds.size} 项</span>
+            <button onClick={() => setShowBatchDelete(true)} className="text-red-600 hover:text-red-800">🗑 删除所选</button>
+            <button onClick={batchExport} className="text-blue-600 hover:text-blue-800">⬇ 导出所选</button>
+            <button onClick={() => setSelectedIds(new Set())} className="text-gray-400 hover:text-gray-600 ml-auto">取消选择</button>
+          </div>
+        )}
         {loading && sessions.length === 0 ? (
           <div className="flex items-center justify-center py-20 text-gray-400">加载中...</div>
         ) : sessions.length === 0 ? (
@@ -397,6 +454,7 @@ function Sessions() {
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-gray-50">
               <tr className="border-b border-gray-200">
+                <th className="w-8 p-2"><input type="checkbox" checked={sessions.length > 0 && selectedIds.size === sessions.length} onChange={selectAll} /></th>
                 <th className="w-12 px-4 py-3 text-center font-medium text-gray-500">#</th>
                 <th className="py-3 pr-4 text-left font-medium text-gray-500">标题</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">消息数</th>
@@ -415,6 +473,7 @@ function Sessions() {
                     idx % 2 === 1 ? 'bg-gray-50/50' : ''
                   } ${selectedSession?.id === session.id ? 'bg-brand-50' : ''}`}
                 >
+                  <td className="w-8 p-2" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(session.id)} onChange={() => toggleSelect(session.id)} /></td>
                   <td className="px-4 py-3 text-center text-gray-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
                   <td className="max-w-xs truncate py-3 pr-4 font-medium text-gray-900" title={session.title || '无标题'}>
                     {session.title || '无标题'}
@@ -812,6 +871,18 @@ function Sessions() {
           </div>
         </div>
       )}
+
+      {/* Batch Delete Confirmation */}
+      <ConfirmDialog
+        isOpen={showBatchDelete}
+        onClose={() => setShowBatchDelete(false)}
+        onConfirm={batchDelete}
+        title="确认批量删除"
+        message={`确定要删除选中的 ${selectedIds.size} 个会话吗？此操作不可恢复。`}
+        confirmLabel="确认删除"
+        variant="danger"
+        loading={deleting}
+      />
     </div>
   )
 }

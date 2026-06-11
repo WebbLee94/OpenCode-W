@@ -11,7 +11,7 @@ const ALLOWED_CHANNELS = [
   'messages:list', 'messages:detail', 'messages:search',
   'cleanup:preview', 'cleanup:execute',
   'database:vacuum', 'database:checkpoint', 'database:open', 'database:health',
-  'dialog:openFile',
+  'dialog:openFile', 'dialog:saveFile',
   'backup:create', 'backup:list', 'backup:restore', 'backup:delete', 'backup:preview',
   'todos:list', 'todos:bySession',
   'session-share:get',
@@ -51,4 +51,14 @@ function on(channel: string, callback: (...args: unknown[]) => void): () => void
   return () => ipcRenderer.removeListener(channel, subscription)
 }
 
-contextBridge.exposeInMainWorld('electronAPI', { invoke, on })
+/**
+ * Save content to a file via the system save dialog.
+ * @param {string} content - File content to save
+ * @param {string} defaultName - Suggested filename
+ * @returns {Promise<IpcResult<{ success: boolean }>>}
+ */
+function saveFile(content: string, defaultName: string): Promise<unknown> {
+  return invoke('dialog:saveFile', { content, defaultName })
+}
+
+contextBridge.exposeInMainWorld('electronAPI', { invoke, on, saveFile })

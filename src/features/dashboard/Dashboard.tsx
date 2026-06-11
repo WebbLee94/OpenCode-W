@@ -26,7 +26,9 @@ import {
   AlertCircle,
   Unplug,
   Heart,
+  Download,
 } from 'lucide-react'
+import { useToast } from '../../hooks/useToast'
 import {
   PieChart,
   Pie,
@@ -56,18 +58,16 @@ const SKILL_COLORS = [
 ]
 
 // ── Time range presets ─────────────────────────────────────────────
-type TimePreset = 'all' | 7 | 30 | 90
+type TimePreset = 'all' | 7 | 30 | 90 | 'custom'
 type GroupBy = 'day' | 'week' | 'month'
 
-function computeTimeRange(days: TimePreset): TimeRange | undefined {
+function computeTimeRange(days: TimePreset, start?: string, end?: string): TimeRange | undefined {
   if (days === 'all') return undefined
-  const endDate = new Date()
-  const startDate = new Date()
-  startDate.setDate(endDate.getDate() - days)
-  return {
-    startDate: startDate.toISOString().slice(0, 10),
-    endDate: endDate.toISOString().slice(0, 10),
-  }
+  if (days === 'custom' && start && end) return { startDate: start, endDate: end }
+  if (days === 'custom') return undefined
+  const endDate = new Date().toISOString().slice(0, 10)
+  const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  return { startDate, endDate }
 }
 
 // ── Module-level cache ─────────────────────────────────────────────
@@ -89,6 +89,7 @@ let dashboardCache: DashboardCache | null = null
 // ── Dashboard ──────────────────────────────────────────────────────
 function Dashboard() {
   const navigate = useNavigate()
+  const { addToast } = useToast()
   const [dbStats, setDbStats] = useState<DatabaseStats | null>(dashboardCache?.dbStats ?? null)
   const [tokenStats, setTokenStats] = useState<TokenStats | null>(dashboardCache?.tokenStats ?? null)
   const [toolRanking, setToolRanking] = useState<ToolRanking[]>(dashboardCache?.toolRanking ?? [])
@@ -101,6 +102,8 @@ function Dashboard() {
   const [timeRange, setTimeRange] = useState<TimeRange | undefined>(dashboardCache?.timeRange ?? computeTimeRange(30))
   const [groupBy, setGroupBy] = useState<GroupBy>(dashboardCache?.groupBy ?? 'day')
   const [showComparison, setShowComparison] = useState(true)
+  const [customStart, setCustomStart] = useState<string>('')
+  const [customEnd, setCustomEnd] = useState<string>('')
 
   const [connected, setConnected] = useState(!!dashboardCache)
   const [dbPath, setDbPath] = useState<string | null>(null)
@@ -112,6 +115,21 @@ function Dashboard() {
   const [refreshing, setRefreshing] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [dbHealth, setDbHealth] = useState<{ pageCount: number; freelistPages: number } | null>(dashboardCache?.dbHealth ?? null)
+
+  // ── Export helpers ────────────────────────────────────────────────
+  function exportCSV(data: Record<string, any>[], filename: string) {
+    if (!data.length) return
+    const header = Object.keys(data[0]).join(',')
+    const rows = data.map(r => Object.values(r).join(',')).join('\n')
+    window.electronAPI.saveFile(header + '\n' + rows, filename).then((res) => {
+      if (res.success && res.data?.success) addToast(`${filename} 已保存`, 'success')
+    })
+  }
+  function exportJSON(data: any, filename: string) {
+    window.electronAPI.saveFile(JSON.stringify(data, null, 2), filename).then((res) => {
+      if (res.success && res.data?.success) addToast(`${filename} 已保存`, 'success')
+    })
+  }
 
   const hasLoadedRef = useRef(!!dashboardCache)
 
@@ -345,7 +363,7 @@ function Dashboard() {
   // ── Time range change handler ──────────────────────────────────
   const handleTimePresetChange = useCallback(async (days: TimePreset) => {
     setTimePreset(days)
-    const tr = computeTimeRange(days)
+    const tr = computeTimeRange(days, customStart, customEnd)
     setTimeRange(tr)
     dashboardCache = null
     // Directly load with new params (state updates are async, so pass computed values)
@@ -372,7 +390,7 @@ function Dashboard() {
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
     }
-  }, [loadFastData, loadSlowData, groupBy])
+  }, [loadFastData, loadSlowData, groupBy, customStart, customEnd])
 
   // ── GroupBy change handler ─────────────────────────────────────
   const handleGroupByChange = useCallback(async (gb: GroupBy) => {
@@ -537,7 +555,9 @@ function Dashboard() {
 
       {/* ── ROW 2: 数据库概览 + 4卡片 ────────────────────────────── */}
       <div>
-        <p className="text-xs text-gray-400 font-medium mb-2">📊 数据库概览</p>
+        <p className="text-xs text-gray-400 font-medium mb-2">📊 数据库概览
+          {dbStats && <button onClick={() => exportJSON(dbStats, 'db-overview.json')} className="ml-2 text-brand-500 hover:text-brand-700" title="导出 JSON"><Download size={12} /></button>}
+        </p>
         {fastLoading && !dbStats ? (
           <div className="grid grid-cols-4 gap-4">
             {[1,2,3,4].map(i => (
@@ -582,7 +602,7 @@ function Dashboard() {
         <p className="text-xs text-gray-400 font-medium mb-2">⏱ 时间范围</p>
         <div className="flex items-center gap-3">
           <div className="inline-flex rounded-md border border-gray-300 overflow-hidden">
-            {(['all', 7, 30, 90] as TimePreset[]).map((days) => (
+            {(['all', 7, 30, 90, 'custom'] as TimePreset[]).map((days) => (
               <button
                 key={days}
                 onClick={() => handleTimePresetChange(days)}
@@ -592,16 +612,42 @@ function Dashboard() {
                     : 'bg-white text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                {days === 'all' ? '全部' : `${days}天`}
+                {days === 'all' ? '全部' : days === 'custom' ? '自定义' : `${days}天`}
               </button>
             ))}
           </div>
         </div>
+        {timePreset === 'custom' && (
+          <div className="flex items-center gap-3 mt-2">
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+            <span className="text-sm text-gray-400">至</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+            <button
+              onClick={() => handleTimePresetChange('custom')}
+              disabled={!customStart || !customEnd}
+              className="px-3 py-1.5 text-sm bg-brand-600 text-white rounded-md hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              应用
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── ROW 4: 时段统计 + 4卡片 ──────────────────────────────── */}
       <div>
-        <p className="text-xs text-gray-400 font-medium mb-2">📈 时段统计</p>
+        <p className="text-xs text-gray-400 font-medium mb-2">📈 时段统计
+          {tokenStats && <button onClick={() => exportJSON(tokenStats, 'token-stats.json')} className="ml-2 text-brand-500 hover:text-brand-700" title="导出 JSON"><Download size={12} /></button>}
+        </p>
         {fastLoading && !tokenStats ? (
           <div className="grid grid-cols-4 gap-4">
             {[1,2,3,4].map(i => (
@@ -639,7 +685,13 @@ function Dashboard() {
 
       {/* ── ROW 5: Token 分布 + 增长趋势 ────────────────────────── */}
       <div>
-        <p className="text-xs text-gray-400 font-medium mb-2">📊 Token 分析 & 增长趋势</p>
+        <p className="text-xs text-gray-400 font-medium mb-2">📊 Token 分析 & 增长趋势
+          <span className="ml-2 inline-flex gap-1">
+            {tokenPieData.length > 0 && <button onClick={() => exportCSV(tokenPieData, 'token-distribution.csv')} className="text-brand-500 hover:text-brand-700" title="导出 Token 分布 CSV"><Download size={12} /></button>}
+            {tokenGroupData.length > 0 && <button onClick={() => exportCSV(tokenGroupData, 'token-trend.csv')} className="text-emerald-500 hover:text-emerald-700" title="导出 Token 趋势 CSV"><Download size={12} /></button>}
+            {trendData.length > 0 && <button onClick={() => exportCSV(trendData, 'growth-trend.csv')} className="text-violet-500 hover:text-violet-700" title="导出增长趋势 CSV"><Download size={12} /></button>}
+          </span>
+        </p>
         <div className="grid grid-cols-2 gap-4">
           {/* Token Panel */}
           <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
@@ -756,7 +808,7 @@ function Dashboard() {
               </div>
             )}
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-700">增长趋势{timePreset === 'all' ? '' : ` (近${timePreset}天)`}</h3>
+              <h3 className="text-sm font-medium text-gray-700">增长趋势{timePreset === 'all' ? '' : timePreset === 'custom' ? ` (${customStart} ~ ${customEnd})` : ` (近${timePreset}天)`}</h3>
               <label className="inline-flex items-center gap-2 cursor-pointer">
                 <span className="text-xs text-gray-500">对比上期</span>
                 <input
@@ -892,7 +944,12 @@ function Dashboard() {
 
       {/* ── ROW 6: 技能分布 + 工具排行 ─────────────────────────────── */}
       <div>
-        <p className="text-xs text-gray-400 font-medium mb-2">🔧 工具 & 技能排行</p>
+        <p className="text-xs text-gray-400 font-medium mb-2">🔧 工具 & 技能排行
+          <span className="ml-2 inline-flex gap-1">
+            {skillData.length > 0 && <button onClick={() => exportCSV(skillData, 'skill-usage.csv')} className="text-violet-500 hover:text-violet-700" title="导出技能使用 CSV"><Download size={12} /></button>}
+            {toolData.length > 0 && <button onClick={() => exportCSV(toolData, 'tool-ranking.csv')} className="text-brand-500 hover:text-brand-700" title="导出工具排行 CSV"><Download size={12} /></button>}
+          </span>
+        </p>
         <div className="grid grid-cols-2 gap-4">
           {/* Skill Usage */}
           <div className="bg-white rounded-lg border border-gray-200 p-5 relative">

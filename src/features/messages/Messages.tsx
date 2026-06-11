@@ -16,6 +16,7 @@ import type { MessageDTO, MessageDetailDTO, PartDTO, SearchResult } from '../../
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
+import { useToast } from '../../hooks/useToast'
 
 // Register highlight.js languages
 hljs.registerLanguage('typescript', ts)
@@ -179,7 +180,7 @@ function MarkdownContent({ content }: { content: string }) {
 }
 
 /** Expandable tool part detail */
-function ToolPartDetail({ part }: { part: PartDTO }) {
+function ToolPartDetail({ part, onCopy }: { part: PartDTO; onCopy: (text: string) => void }) {
   const [outputExpanded, setOutputExpanded] = useState(false)
 
   return (
@@ -194,7 +195,16 @@ function ToolPartDetail({ part }: { part: PartDTO }) {
       {/* Input */}
       {part.input && (
         <div>
-          <span className="text-gray-500 font-medium">Input:</span>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500 font-medium">Input:</span>
+            <button
+              onClick={() => onCopy(part.input || '')}
+              className="text-xs text-gray-400 hover:text-blue-600 flex items-center gap-1"
+              title="复制输入"
+            >
+              📋 复制
+            </button>
+          </div>
           <pre className="mt-1 p-2 bg-gray-800 text-gray-100 rounded text-xs overflow-x-auto max-h-60 overflow-y-auto">
             {part.input}
           </pre>
@@ -214,6 +224,13 @@ function ToolPartDetail({ part }: { part: PartDTO }) {
                 {outputExpanded ? '收起' : '展开全部'}
               </button>
             )}
+            <button
+              onClick={() => onCopy(part.output || '')}
+              className="text-xs text-gray-400 hover:text-blue-600 flex items-center gap-1 ml-auto"
+              title="复制输出"
+            >
+              📋 复制
+            </button>
           </div>
           <pre className="mt-1 p-2 bg-gray-800 text-gray-100 rounded text-xs overflow-x-auto max-h-60 overflow-y-auto whitespace-pre-wrap break-all">
             {outputExpanded ? part.output : truncateText(part.output, 500)}
@@ -272,6 +289,7 @@ function Messages() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const highlightKeyword = searchParams.get('highlight') || ''
+  const { addToast } = useToast()
 
   // Message list state
   const [messages, setMessages] = useState<MessageDTO[]>([])
@@ -436,24 +454,69 @@ function Messages() {
 
     if (isError) {
       return (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 whitespace-pre-wrap">
-          {highlightKeyword ? highlightText(detail.content, highlightKeyword) : detail.content}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-400">消息内容</span>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(detail.content)
+                addToast('已复制到剪贴板', 'success')
+              }}
+              className="text-xs text-gray-400 hover:text-blue-600 flex items-center gap-1"
+              title="复制消息内容"
+            >
+              📋 复制
+            </button>
+          </div>
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 whitespace-pre-wrap">
+            {highlightKeyword ? highlightText(detail.content, highlightKeyword) : detail.content}
+          </div>
         </div>
       )
     }
 
     if (detail.role === 'user') {
       return (
-        <div className="p-4 bg-brand-50 border border-brand-100 rounded-lg text-sm text-gray-800 whitespace-pre-wrap">
-          {highlightKeyword ? highlightText(detail.content, highlightKeyword) : detail.content}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-400">消息内容</span>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(detail.content)
+                addToast('已复制到剪贴板', 'success')
+              }}
+              className="text-xs text-gray-400 hover:text-blue-600 flex items-center gap-1"
+              title="复制消息内容"
+            >
+              📋 复制
+            </button>
+          </div>
+          <div className="p-4 bg-brand-50 border border-brand-100 rounded-lg text-sm text-gray-800 whitespace-pre-wrap">
+            {highlightKeyword ? highlightText(detail.content, highlightKeyword) : detail.content}
+          </div>
         </div>
       )
     }
 
     // Assistant / others -> Markdown (no highlight for markdown to avoid breaking HTML)
     return (
-      <div className="p-4 bg-white border border-gray-200 rounded-lg">
-        <MarkdownContent content={detail.content} />
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-gray-400">消息内容</span>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(detail.content)
+              addToast('已复制到剪贴板', 'success')
+            }}
+            className="text-xs text-gray-400 hover:text-blue-600 flex items-center gap-1"
+            title="复制消息内容"
+          >
+            📋 复制
+          </button>
+        </div>
+        <div className="p-4 bg-white border border-gray-200 rounded-lg">
+          <MarkdownContent content={detail.content} />
+        </div>
       </div>
     )
   }
@@ -721,78 +784,96 @@ function Messages() {
                     </span>
                   </div>
 
-                  {/* Part table */}
-                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                          <th className="text-left px-3 py-2 font-medium text-gray-500 text-xs w-36">类型</th>
-                          <th className="text-right px-3 py-2 font-medium text-gray-500 text-xs w-24">大小</th>
-                          <th className="text-left px-3 py-2 font-medium text-gray-500 text-xs">摘要</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredParts.map((part) => {
-                          const isExpandable = part.type === 'tool' || part.type === 'reasoning' || part.type === 'step-finish'
-                          const isExpanded = expandedParts.has(part.id)
-                          return (
-                            <tr key={part.id} className="border-b border-gray-100 last:border-b-0">
-                              {/* Type */}
-                              <td className="px-3 py-2">
-                                <div className="flex items-center gap-1">
-                                  {isExpandable && (
-                                    <button
-                                      onClick={() => togglePart(part.id)}
-                                      className="text-gray-400 hover:text-gray-600 transition-colors"
-                                    >
-                                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                    </button>
-                                  )}
-                                  <PartTypeBadge type={part.type} />
-                                </div>
-                              </td>
+                   {/* Part table */}
+                   <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                     <table className="w-full text-sm">
+                       <thead className="bg-gray-50 border-b border-gray-200">
+                         <tr>
+                           <th className="text-left px-3 py-2 font-medium text-gray-500 text-xs w-36">类型</th>
+                           <th className="text-right px-3 py-2 font-medium text-gray-500 text-xs w-24">大小</th>
+                           <th className="text-left px-3 py-2 font-medium text-gray-500 text-xs flex-1">摘要</th>
+                           <th className="text-center px-3 py-2 font-medium text-gray-500 text-xs w-12">操作</th>
+                         </tr>
+                       </thead>
+                       <tbody>
+                         {filteredParts.map((part) => {
+                           const isExpandable = part.type === 'tool' || part.type === 'reasoning' || part.type === 'step-finish'
+                           const isExpanded = expandedParts.has(part.id)
+                           return (
+                             <tr key={part.id} className="border-b border-gray-100 last:border-b-0">
+                               {/* Type */}
+                               <td className="px-3 py-2">
+                                 <div className="flex items-center gap-1">
+                                   {isExpandable && (
+                                     <button
+                                       onClick={() => togglePart(part.id)}
+                                       className="text-gray-400 hover:text-gray-600 transition-colors"
+                                     >
+                                       {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                     </button>
+                                   )}
+                                   <PartTypeBadge type={part.type} />
+                                 </div>
+                               </td>
 
-                              {/* Size */}
-                              <td className="px-3 py-2 text-right">
-                                <SizeIndicator bytes={part.data_size} />
-                              </td>
+                               {/* Size */}
+                               <td className="px-3 py-2 text-right">
+                                 <SizeIndicator bytes={part.data_size} />
+                               </td>
 
-                              {/* Summary */}
-                              <td className="px-3 py-2 text-gray-600 text-xs max-w-xs truncate">
-                                {part.type === 'tool' && part.toolName
-                                  ? part.toolName
-                                  : part.summary
-                                    ? truncateText(part.summary, 100)
-                                    : '-'}
-                              </td>
-                            </tr>
-                          )
-                        })}
+                               {/* Summary */}
+                               <td className="px-3 py-2 text-gray-600 text-xs max-w-xs truncate">
+                                 {part.type === 'tool' && part.toolName
+                                   ? part.toolName
+                                   : part.summary
+                                     ? truncateText(part.summary, 100)
+                                     : '-'}
+                               </td>
 
-                        {filteredParts.length === 0 && (
-                          <tr>
-                            <td colSpan={3} className="px-3 py-4 text-center text-gray-400 text-xs">
-                              无匹配的 Part
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                               {/* Copy button */}
+                               <td className="px-3 py-2 text-center">
+                                 <button
+                                   onClick={() => {
+                                     const textToCopy = part.type === 'tool' && part.toolName
+                                       ? part.toolName
+                                       : part.summary || ''
+                                     navigator.clipboard.writeText(textToCopy)
+                                     addToast('已复制', 'success')
+                                   }}
+                                   className="text-gray-400 hover:text-blue-600 transition-colors"
+                                   title="复制"
+                                 >
+                                   📋
+                                 </button>
+                               </td>
+                             </tr>
+                           )
+                         })}
 
-                  {/* Expanded part details */}
-                  {filteredParts.map((part) => {
-                    const isExpanded = expandedParts.has(part.id)
-                    if (!isExpanded) return null
+                         {filteredParts.length === 0 && (
+                           <tr>
+                             <td colSpan={4} className="px-3 py-4 text-center text-gray-400 text-xs">
+                               无匹配的 Part
+                             </td>
+                           </tr>
+                         )}
+                       </tbody>
+                     </table>
+                   </div>
 
-                    return (
-                      <div key={`detail-${part.id}`}>
-                        {part.type === 'tool' && <ToolPartDetail part={part} />}
-                        {part.type === 'step-finish' && <TokenBreakdown tokens={part.tokens} />}
-                        {part.type === 'reasoning' && <ReasoningDetail part={part} />}
-                      </div>
-                    )
-                  })}
+                   {/* Expanded part details */}
+                   {filteredParts.map((part) => {
+                     const isExpanded = expandedParts.has(part.id)
+                     if (!isExpanded) return null
+
+                     return (
+                       <div key={`detail-${part.id}`}>
+                         {part.type === 'tool' && <ToolPartDetail part={part} onCopy={(text) => { navigator.clipboard.writeText(text); addToast('已复制', 'success') }} />}
+                         {part.type === 'step-finish' && <TokenBreakdown tokens={part.tokens} />}
+                         {part.type === 'reasoning' && <ReasoningDetail part={part} />}
+                       </div>
+                     )
+                   })}
                 </div>
               )}
             </div>
