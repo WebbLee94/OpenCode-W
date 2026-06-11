@@ -31,6 +31,17 @@ function mapSessionRow(row: Record<string, unknown>): SessionDTO {
 }
 
 export function registerHandlers(): void {
+  // Check if session table has parent_id column (added in later OpenCode versions)
+  let hasParentColumn: boolean | null = null
+  const checkParentColumn = () => {
+    if (hasParentColumn !== null) return hasParentColumn
+    try {
+      const cols = dbManager.rawQuery<{ name: string }>(`PRAGMA table_info(session)`)
+      hasParentColumn = cols.some(c => c.name === 'parent_id')
+    } catch { hasParentColumn = false }
+    return hasParentColumn
+  }
+
   ipcMain.handle(
     IPC_CHANNELS.SESSIONS_LIST,
     (_event, filter?: SessionFilter): IpcResult<{ data: SessionDTO[]; total: number; page: number; pageSize: number }> => {
@@ -61,14 +72,15 @@ export function registerHandlers(): void {
         conditions.push('date(s.time_created / 1000, \'unixepoch\') <= ?')
         params.push(filter.endDate)
       }
-      // Parent filter — default to root-only for hierarchy view
-      const hasParentFilter = filter?.parentFilter && filter?.parentFilter !== 'all'
-      if (filter?.parentFilter === 'children') {
-        conditions.push('s.parent_session_id IS NOT NULL')
-      } else if (!filter?.parentFilter || filter?.parentFilter === 'root') {
-        conditions.push('s.parent_session_id IS NULL')
+      // Parent filter — only apply if column exists
+      if (checkParentColumn()) {
+        if (filter?.parentFilter === 'children') {
+          conditions.push('s.parent_id IS NOT NULL')
+        } else if (!filter?.parentFilter || filter?.parentFilter === 'root') {
+          conditions.push('s.parent_id IS NULL')
+        }
+        // 'all' — no parent filter
       }
-      // 'all' — no parent filter
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
@@ -89,19 +101,8 @@ export function registerHandlers(): void {
         return { total, rows }
       }
 
-      try {
-        const { total, rows } = runQuery(whereClause)
-        return { success: true, data: { data: rows.map(mapSessionRow), total, page, pageSize } }
-      } catch (e: any) {
-        if (hasParentFilter && e.message?.includes('parent_session_id')) {
-          // Retry without parent filter for old schema
-          const noParentWhere = conditions.filter(c => !c.includes('parent_session_id')).join(' AND ')
-          const wc = noParentWhere ? `WHERE ${noParentWhere}` : ''
-          const { total, rows } = runQuery(wc)
-          return { success: true, data: { data: rows.map(mapSessionRow), total, page, pageSize } }
-        }
-        throw e
-      }
+      const { total, rows } = runQuery(whereClause)
+      return { success: true, data: { data: rows.map(mapSessionRow), total, page, pageSize } }
       } catch (error) {
         return { success: false, error: (error as Error).message }
       }
@@ -254,17 +255,19 @@ export function registerHandlers(): void {
   // ─── Route B: Session Parent/Children ────────────────────────────
 
   ipcMain.handle(IPC_CHANNELS.SESSIONS_PARENT, (_event, sessionId: string): IpcResult<SessionDTO | null> => {
+    if (!checkParentColumn()) return { success: true, data: null }
     try {
-      const s = dbManager.rawGet<{ parent_session_id: string | null }>('SELECT parent_session_id FROM session WHERE id = ?', [sessionId])
-      if (!s?.parent_session_id) return { success: true, data: null }
-      const parent = dbManager.rawGet<SessionDTO>('SELECT id, title, time_created FROM session WHERE id = ?', [s.parent_session_id])
+      const s = dbManager.rawGet<{ parent_id: string | null }>('SELECT parent_id FROM session WHERE id = ?', [sessionId])
+      if (!s?.parent_id) return { success: true, data: null }
+      const parent = dbManager.rawGet<SessionDTO>('SELECT id, title, time_created FROM session WHERE id = ?', [s.parent_id])
       return { success: true, data: parent ?? null }
     } catch (error) { return { success: false, error: (error as Error).message } }
   })
 
   ipcMain.handle(IPC_CHANNELS.SESSIONS_CHILDREN, (_event, sessionId: string): IpcResult<SessionDTO[]> => {
+    if (!checkParentColumn()) return { success: true, data: [] }
     try {
-      const children = dbManager.rawQuery<SessionDTO>('SELECT id, title, time_created, time_updated, msg_count, tokens_input, tokens_output, directory, project_id FROM session WHERE parent_session_id = ? ORDER BY time_created ASC', [sessionId])
+      const children = dbManager.rawQuery<SessionDTO>('SELECT id, title, time_created, time_updated, msg_count, tokens_input, tokens_output, directory, project_id FROM session WHERE parent_id = ? ORDER BY time_created ASC', [sessionId])
       return { success: true, data: children }
     } catch (error) { return { success: false, error: (error as Error).message } }
   })
