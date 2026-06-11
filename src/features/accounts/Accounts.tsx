@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AccountDTO, AccountStateDTO } from '../../../shared/types'
+import type { AccountDTO, AccountStateDTO, AccountUsageItem } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatDateTime } from '../../lib/format'
@@ -11,6 +11,7 @@ function Accounts() {
   const [accounts, setAccounts] = useState<AccountDTO[]>([])
   const [activeAccount, setActiveAccount] = useState<AccountStateDTO | null>(null)
   const [loading, setLoading] = useState(true)
+  const [usageData, setUsageData] = useState<AccountUsageItem[]>([])
 
   useEffect(() => {
     setLoading(true)
@@ -21,6 +22,7 @@ function Accounts() {
       setAccounts(accs)
       setActiveAccount(active)
     }).finally(() => setLoading(false))
+    invokeSafe<AccountUsageItem[]>(IPC_CHANNELS.ACCOUNTS_USAGE).then(setUsageData).catch(() => setUsageData([]))
   }, [])
 
   const activeId = activeAccount?.active_account_id
@@ -82,6 +84,28 @@ function Accounts() {
           )}
         </div>
 
+        {/* Route B: Account Usage Stats */}
+        {usageData.length > 0 && (
+          <div className="grid grid-cols-4 gap-4 mb-4">
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="text-xs text-gray-400 mb-1">账户数</div>
+              <div className="text-xl font-semibold text-gray-900">{usageData.length}</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="text-xs text-gray-400 mb-1">总会话</div>
+              <div className="text-xl font-semibold text-gray-900">{usageData.reduce((s, u) => s + u.sessionCount, 0).toLocaleString()}</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="text-xs text-gray-400 mb-1">总 Token</div>
+              <div className="text-xl font-semibold text-gray-900">{(usageData.reduce((s, u) => s + u.tokenCount, 0) / 1000).toFixed(0)}K</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="text-xs text-gray-400 mb-1">总成本</div>
+              <div className="text-xl font-semibold text-gray-900">${usageData.reduce((s, u) => s + u.totalCost, 0).toFixed(2)}</div>
+            </div>
+          </div>
+        )}
+
         {/* All Accounts Table */}
         <div>
           <h3 className="text-base font-medium text-gray-900 mb-3">全部账户</h3>
@@ -99,6 +123,9 @@ function Accounts() {
                     <th className="px-4 py-3 text-left font-medium text-gray-500">服务地址</th>
                     <th className="px-4 py-3 text-left font-medium text-gray-500">Token 过期</th>
                     <th className="px-4 py-3 text-left font-medium text-gray-500">状态</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-500">会话数</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-500">Token</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-500">成本</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -135,6 +162,11 @@ function Accounts() {
                             </span>
                           )}
                         </td>
+                        {(() => { const u = usageData.find(x => x.accountId === account.id); return (<>
+                          <td className="px-4 py-3 text-right text-gray-600">{u?.sessionCount?.toLocaleString() ?? '-'}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{u ? `${(u.tokenCount / 1000).toFixed(0)}K` : '-'}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{u ? `$${u.totalCost.toFixed(2)}` : '-'}</td>
+                        </>)})()}
                       </tr>
                     )
                   })}

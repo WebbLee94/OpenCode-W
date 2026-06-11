@@ -85,7 +85,9 @@ export function registerHandlers(): void {
           s.*,
           COALESCE(msg_cnt.cnt, 0) as msg_count,
           (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0)) as total_tokens,
-          COALESCE(part_size.total, 0) as data_size
+          COALESCE(part_size.total, 0) as data_size,
+          CASE WHEN s.parent_session_id IS NOT NULL THEN 1 ELSE 0 END as hasParent,
+          (SELECT COUNT(*) FROM session c WHERE c.parent_session_id = s.id) as childCount
         FROM session s
         LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id
         LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id
