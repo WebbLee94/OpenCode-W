@@ -13,6 +13,8 @@
 DBScope-OC 是一款跨平台桌面应用，用于可视化管理 OpenCode 的 SQLite 数据库。支持数据库概览仪表盘、会话与消息浏览、待办与账户管理、安全清理、备份恢复，覆盖 OpenCode 全部核心数据表。
 
 > 基于 [OpenCode](https://github.com/anomalyco/opencode) 构建
+> 
+> **支持的 OpenCode 版本**：需 OpenCode v1.x 及以上（`session` 表需包含 `parent_session_id` 列以支持会话层级功能）。旧版本数据库仍可打开，部分功能不可用。
 
 ## ✨ 功能特性
 
