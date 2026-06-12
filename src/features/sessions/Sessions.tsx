@@ -245,9 +245,11 @@ const listRef = useRef<HTMLDivElement>(null)
     setExpandedIds(prev => new Set(prev).add(sessionId))
     if (!childMap[sessionId]) {
       try {
+        console.log('[Sessions] Loading children for:', sessionId)
         const children = await invokeSafe<SessionDTO[]>(IPC_CHANNELS.SESSIONS_CHILDREN, sessionId)
+        console.log('[Sessions] Children count:', children.length)
         setChildMap(prev => ({ ...prev, [sessionId]: children }))
-      } catch { /* column may not exist */ }
+      } catch (e) { console.error('[Sessions] Children failed:', e) }
     }
   }, [expandedIds, childMap])
 
