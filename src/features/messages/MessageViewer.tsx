@@ -29,6 +29,33 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 const DEFAULT_PAGE_SIZE = 10
 const PAGE_SIZE_STORAGE_KEY = 'dbscope-messageviewer-page-size'
 
+// 角色样式配置（与 Messages.tsx 一致）
+const ROLE_CONFIG: Record<string, { label: string; icon: any; badgeClass: string; bgClass: string }> = {
+  user: { label: 'User', icon: User, badgeClass: 'bg-brand-100 text-brand-700', bgClass: 'bg-brand-50' },
+  assistant: { label: 'Assistant', icon: Bot, badgeClass: 'bg-green-100 text-green-700', bgClass: 'bg-green-50' },
+  tool: { label: 'Tool', icon: Wrench, badgeClass: 'bg-orange-100 text-orange-700', bgClass: 'bg-orange-50' },
+  system: { label: 'System', icon: FileText, badgeClass: 'bg-gray-100 text-gray-700', bgClass: 'bg-gray-50' },
+}
+
+const PART_TYPE_CONFIG: Record<string, { label: string; emoji: string; badgeClass: string }> = {
+  text: { label: 'text', emoji: '📝', badgeClass: 'bg-green-100 text-green-700' },
+  tool: { label: 'tool', emoji: '🔧', badgeClass: 'bg-brand-100 text-brand-700' },
+  reasoning: { label: 'reasoning', emoji: '🧠', badgeClass: 'bg-orange-100 text-orange-700' },
+  'step-start': { label: 'step-start', emoji: '▶', badgeClass: 'bg-gray-100 text-gray-600' },
+  'step-finish': { label: 'step-finish', emoji: '✅', badgeClass: 'bg-gray-100 text-gray-600' },
+}
+
+function RoleBadge({ role }: { role: string }) {
+  const config = ROLE_CONFIG[role] ?? ROLE_CONFIG.system
+  const Icon = config.icon
+  return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${config.badgeClass}`}><Icon size={12} />{config.label}</span>
+}
+
+function PartTypeBadge({ type }: { type: string }) {
+  const config = PART_TYPE_CONFIG[type] ?? { label: type, emoji: '', badgeClass: 'bg-gray-100 text-gray-600' }
+  return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${config.badgeClass}`}>{config.emoji} {config.label}</span>
+}
+
 interface MessageViewerProps { sessionId: string }
 
 export default function MessageViewer({ sessionId }: MessageViewerProps) {
@@ -63,17 +90,6 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
-  function roleBadge(role: string) {
-    const map: Record<string, { icon: any; color: string; label: string }> = {
-      user: { icon: User, color: 'text-blue-600 bg-blue-50', label: 'User' },
-      assistant: { icon: Bot, color: 'text-purple-600 bg-purple-50', label: 'Assistant' },
-      tool: { icon: Wrench, color: 'text-yellow-600 bg-yellow-50', label: 'Tool' },
-      system: { icon: FileText, color: 'text-gray-600 bg-gray-100', label: 'System' },
-    }
-    const m = map[role] || map.system; const Icon = m.icon
-    return <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${m.color}`}><Icon size={12} />{m.label}</span>
-  }
-
   function sizeColor(size: number) { return size > 100000 ? 'text-red-600' : size > 50000 ? 'text-orange-500' : size > 10000 ? 'text-yellow-600' : 'text-green-600' }
 
   const markdownComponents: any = useMemo(() => ({
@@ -96,7 +112,7 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
           <tbody>
             {parts.map((p, i) => (
               <tr key={i} className="border-b hover:bg-gray-50 cursor-pointer" onClick={() => setExpandedPart(expandedPart === i ? null : i)}>
-                <td className="px-2 py-1"><span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-700">{p.type}</span></td>
+                <td className="px-2 py-1"><PartTypeBadge type={p.type} /></td>
                 <td className={`px-2 py-1 font-mono ${sizeColor(p.data_size)}`}>{formatBytes(p.data_size)}</td>
                 <td className="px-2 py-1 text-gray-500 truncate max-w-xs">{p.summary || '-'}</td>
               </tr>
@@ -122,8 +138,8 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
           : messages.length === 0 ? <div className="flex items-center justify-center py-20 text-gray-400 text-sm">暂无消息</div>
           : messages.map(msg => (
             <div key={msg.id} onClick={() => loadDetail(msg.id)}
-              className={`px-3 py-2.5 border-b cursor-pointer hover:bg-gray-50 ${detail?.id === msg.id ? 'bg-brand-50 border-l-2 border-l-brand-500' : ''}`}>
-              <div className="flex items-center justify-between mb-1">{roleBadge(msg.role)}<span className={`text-xs font-mono ${sizeColor(msg.data_size)}`}>{formatBytes(msg.data_size)}</span></div>
+              className={`px-3 py-2.5 border-b cursor-pointer hover:bg-gray-50 ${detail?.id === msg.id ? `${ROLE_CONFIG[msg.role]?.bgClass || 'bg-brand-50'} border-l-2 border-l-brand-500` : ''}`}>
+              <div className="flex items-center justify-between mb-1"><RoleBadge role={msg.role} /><span className={`text-xs font-mono ${sizeColor(msg.data_size)}`}>{formatBytes(msg.data_size)}</span></div>
               <div className="text-xs text-gray-500 truncate mt-0.5">{truncateText(msg.content || '', 80)}</div>
               <div className="text-xs text-gray-400 mt-1">{formatRelativeTime(msg.time_created)}</div>
             </div>
@@ -146,7 +162,7 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
         {detailLoading ? <div className="flex items-center justify-center py-20 text-gray-400 text-sm">加载中...</div>
         : detail ? (
           <div>
-            <div className="flex items-center justify-between mb-4">{roleBadge(detail.role)}<span className="text-xs text-gray-400">{formatRelativeTime(detail.time_created)} · {formatBytes(detail.data_size)}</span></div>
+            <div className="flex items-center justify-between mb-4"><RoleBadge role={detail.role} /><span className="text-xs text-gray-400">{formatRelativeTime(detail.time_created)} · {formatBytes(detail.data_size)}</span></div>
             <div className="prose prose-sm max-w-none text-gray-800"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{detail.content || ''}</ReactMarkdown></div>
             {detail.parts && detail.parts.length > 0 && renderParts(detail.parts)}
           </div>
