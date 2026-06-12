@@ -58,7 +58,7 @@ function Shares() {
                   <td className="px-4 py-3 text-gray-600">{truncateText((s as any).session_title || '-', 30)}</td>
                   <td className="px-4 py-3 text-right text-gray-600">{formatRelativeTime(s.time_created)}</td>
                   <td className="px-4 py-3 text-center">
-                    <button onClick={() => navigate(`/sessions/${s.session_id}/messages`)}
+                    <button onClick={() => navigate(`/sessions?session=${s.session_id}&tab=shares`)}
                       className="text-gray-400 hover:text-blue-600 mr-2" title="跳转到会话">🔗</button>
                     <button onClick={() => { const url = (s as any).url; if (url) window.open(url, '_blank') }}
                       className="text-gray-400 hover:text-blue-600" title="在浏览器打开">🌐</button>

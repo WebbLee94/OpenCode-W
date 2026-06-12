@@ -296,7 +296,7 @@ function Todos() {
                       <span
                         className="inline-flex items-center gap-1 text-brand-600 hover:text-brand-800 transition-colors cursor-pointer"
                         title={todo.session_title}
-                        onClick={() => navigate(`/sessions/${todo.session_id}/messages`)}
+                      onClick={() => navigate(`/sessions?session=${todo.session_id}&tab=todos`)}
                       >
                         <MessageSquare size={12} />
                         {truncateText(todo.session_title, 30)}
