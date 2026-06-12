@@ -25,6 +25,8 @@ hljs.registerLanguage('sql', sql)
 hljs.registerLanguage('css', css)
 hljs.registerLanguage('html', html)
 
+const CONTENT_PREVIEW_THRESHOLD = 800
+
 interface ConversationViewProps {
   messages: MessageDTO[]
   loading?: boolean
@@ -48,6 +50,43 @@ function MarkdownBlock({ content }: { content: string }) {
   return (
     <div className="prose prose-sm max-w-none text-gray-800">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{content}</ReactMarkdown>
+    </div>
+  )
+}
+
+function ExpandableContent({ content, threshold = CONTENT_PREVIEW_THRESHOLD }: { content: string; threshold?: number }) {
+  const [expanded, setExpanded] = useState(false)
+  if (!content) return null
+  if (content.length <= threshold) return <div className="whitespace-pre-wrap">{content}</div>
+  return (
+    <div>
+      <div className="whitespace-pre-wrap">
+        {expanded ? content : content.slice(0, threshold) + '…'}
+      </div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="mt-2 text-xs text-brand-600 hover:text-brand-800 inline-flex items-center gap-1"
+      >
+        {expanded ? '▲ 收起' : `▼ 展开全部 (${content.length} 字符)`}
+      </button>
+    </div>
+  )
+}
+
+function ExpandableMarkdown({ content, threshold = CONTENT_PREVIEW_THRESHOLD }: { content: string; threshold?: number }) {
+  const [expanded, setExpanded] = useState(false)
+  if (!content) return null
+  if (content.length <= threshold) return <MarkdownBlock content={content} />
+  const displayContent = expanded ? content : content.slice(0, threshold) + '…'
+  return (
+    <div>
+      <MarkdownBlock content={displayContent} />
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="mt-2 text-xs text-brand-600 hover:text-brand-800 inline-flex items-center gap-1"
+      >
+        {expanded ? '▲ 收起' : `▼ 展开全部 (${content.length} 字符)`}
+      </button>
     </div>
   )
 }
@@ -216,11 +255,11 @@ export default function ConversationView({ messages, loading }: ConversationView
             </div>
 
             {msg.role === 'user' && msg.content && (
-              <div className="text-sm text-gray-800 whitespace-pre-wrap">{msg.content}</div>
+              <ExpandableContent content={msg.content} />
             )}
 
             {msg.role === 'assistant' && msg.content && (
-              <MarkdownBlock content={msg.content} />
+              <ExpandableMarkdown content={msg.content} />
             )}
 
             {msg.role === 'tool' && (

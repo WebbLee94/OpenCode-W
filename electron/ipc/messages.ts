@@ -102,9 +102,17 @@ export function registerHandlers(): void {
       const total = countRow?.cnt ?? 0
 
       // Query messages - role is in data JSON, not a column
+      // content_preview source: first text part of message (real content lives in part.data.text, not message.data)
       const rows = dbManager.rawQuery<Record<string, unknown>>(
         `SELECT id, session_id, json_extract(data, '$.role') as role, LENGTH(data) as data_size, time_created,
-                SUBSTR(COALESCE(json_extract(data, '$.content'), json_extract(data, '$.text'), ''), 1, 300) as content_preview
+                COALESCE(
+                  (SELECT json_extract(p.data, '$.text') FROM part p
+                   WHERE p.message_id = message.id AND json_extract(p.data, '$.type') = 'text'
+                   ORDER BY p.id ASC LIMIT 1),
+                  json_extract(data, '$.content'),
+                  json_extract(data, '$.text'),
+                  ''
+                ) as content_preview
         FROM message
         WHERE session_id = ?
         ORDER BY time_created ASC
@@ -122,7 +130,7 @@ export function registerHandlers(): void {
           time_created: typeof row.time_created === 'string'
             ? new Date(row.time_created as string).getTime()
             : (row.time_created as number),
-          content: rawContent.length >= 300 ? rawContent + '...' : rawContent || undefined,
+          content: rawContent || undefined,
         }
       })
 
@@ -225,7 +233,14 @@ export function registerHandlers(): void {
 
         const rows = dbManager.rawQuery<Record<string, unknown>>(
           `SELECT id, session_id, json_extract(data, '$.role') as role, LENGTH(data) as data_size, time_created,
-                  SUBSTR(COALESCE(json_extract(data, '$.content'), json_extract(data, '$.text'), ''), 1, 300) as content_preview
+                  COALESCE(
+                    (SELECT json_extract(p.data, '$.text') FROM part p
+                     WHERE p.message_id = message.id AND json_extract(p.data, '$.type') = 'text'
+                     ORDER BY p.id ASC LIMIT 1),
+                    json_extract(data, '$.content'),
+                    json_extract(data, '$.text'),
+                    ''
+                  ) as content_preview
            FROM message
            WHERE session_id IN (${placeholders})
            ORDER BY time_created ASC
@@ -243,7 +258,7 @@ export function registerHandlers(): void {
             time_created: typeof row.time_created === 'string'
               ? new Date(row.time_created as string).getTime()
               : (row.time_created as number),
-            content: rawContent.length >= 300 ? rawContent + '...' : rawContent || undefined,
+            content: rawContent || undefined,
           }
         })
 
