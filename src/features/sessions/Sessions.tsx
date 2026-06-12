@@ -115,6 +115,12 @@ function Sessions() {
     setPage(1)
   }
 
+  function handleHeaderSort(col: string) {
+    if (sortBy === col) { setSortOrder(o => o === 'asc' ? 'desc' : 'asc') }
+    else { setSortBy(col); setSortOrder('asc') }
+    setPage(1)
+  }
+
   // Close date dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => { if (dateRef.current && !dateRef.current.contains(e.target as Node)) setDateOpen(false) }
@@ -516,11 +522,17 @@ const listRef = useRef<HTMLDivElement>(null)
               <tr className="border-b border-gray-200">
                 <th className="w-8 p-2"><input type="checkbox" checked={sessions.length > 0 && selectedIds.size === sessions.length} onChange={selectAll} /></th>
                 <th className="w-12 px-4 py-3 text-center font-medium text-gray-500">#</th>
-                <th className="py-3 pr-4 text-left font-medium text-gray-500">标题</th>
+                <th onClick={() => handleHeaderSort('title')} className="py-3 pr-4 text-left font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none">
+                  标题 {sortBy === 'title' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
+                </th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">消息数</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-500">数据大小</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-500">Token消耗</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-500">最近活跃</th>
+                <th onClick={() => handleHeaderSort('data_size')} className="px-4 py-3 text-right font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none">数据大小</th>
+                <th onClick={() => handleHeaderSort('total_tokens')} className="px-4 py-3 text-right font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none">
+                  Token消耗 {sortBy === 'total_tokens' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th onClick={() => handleHeaderSort('time_updated')} className="px-4 py-3 text-right font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none">
+                  最近活跃 {sortBy === 'time_updated' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
+                </th>
                 <th className="pl-4 py-3 text-left font-medium text-gray-500">所属项目</th>
               </tr>
             </thead>
