@@ -156,6 +156,7 @@ function Sessions() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeSessionId = searchParams.get('session') || null
+  const activeTab = searchParams.get('tab') || 'basic'
 const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 const urlSyncedRef = useRef(false)
 const [focusedIndex, setFocusedIndex] = useState(-1)
@@ -434,16 +435,103 @@ const listRef = useRef<HTMLDivElement>(null)
             <span className="text-sm font-medium text-gray-700">会话详情</span>
             <button onClick={() => setSearchParams(p => { p.delete('session'); return p })} className="text-gray-400 hover:text-gray-600">✕ 关闭</button>
           </div>
-          <div className="flex-1 overflow-auto p-4">
+          <div className="flex-1 overflow-auto">
             {activeSessionId && selectedSession ? (
-              <div className="space-y-6">
-                <div>
-                  <p className="text-sm text-gray-500">名称: {selectedSession.title || '无标题'}</p>
-                  <p className="text-sm text-gray-500">目录: {selectedSession.directory || '-'}</p>
-                  <p className="text-sm text-gray-500">模型: {selectedSession.model || '-'}</p>
-                  <p className="text-sm text-gray-500">时间: {selectedSession.time_created ? formatRelativeTime(selectedSession.time_created) : '-'}</p>
+              <>
+                {/* Tab Bar */}
+                <div className="flex border-b bg-white px-4 shrink-0 gap-0">
+                  {['basic', 'subsessions', 'messages', 'todos', 'shares'].map(t => (
+                    <button key={t} onClick={() => setSearchParams(p => { p.set('tab', t); return p })}
+                      className={`px-4 py-2 text-sm border-b-2 -mb-[1px] whitespace-nowrap ${
+                        activeTab === t ? 'border-brand-500 text-brand-700 font-medium' : 'border-transparent text-gray-500 hover:text-gray-700'
+                      }`}>
+                      {t === 'basic' ? '基础' : t === 'subsessions' ? '子会话' : t === 'messages' ? '消息' : t === 'todos' ? '待办' : '分享'}
+                    </button>
+                  ))}
                 </div>
-              </div>
+                {/* Tab Content */}
+                <div className="p-4">
+                  {activeTab === 'basic' && (
+                    <div className="space-y-6">
+                      <div>
+                        <h4 className="text-base font-semibold text-gray-900 mb-3">{selectedSession.title || '无标题'}</h4>
+                        <div className="space-y-2 text-sm">
+                          <p><span className="text-gray-500">目录:</span> {selectedSession.directory || '-'}</p>
+                          <p><span className="text-gray-500">模型:</span> {selectedSession.model || '-'}</p>
+                          <p><span className="text-gray-500">时间:</span> {selectedSession.time_created ? new Date(selectedSession.time_created).toLocaleString() : '-'}</p>
+                        </div>
+                      </div>
+                      {/* Token Pie */}
+                      {tokenPieData.length > 0 && (
+                        <div>
+                          <h5 className="text-sm font-medium text-gray-700 mb-2">Token 明细</h5>
+                          <ResponsiveContainer width="100%" height={180}>
+                            <PieChart><Pie data={tokenPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value">
+                              {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
+                            </Pie><RechartsTooltip formatter={(v: number) => formatNumber(v)} /></PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                      {/* Tool Ranking */}
+                      {toolBarData.length > 0 && (
+                        <div>
+                          <h5 className="text-sm font-medium text-gray-700 mb-2">Tool 排行</h5>
+                          <ResponsiveContainer width="100%" height={toolBarData.length * 32 + 20}>
+                            <BarChart data={toolBarData} layout="vertical" margin={{left:80,right:20}}>
+                              <XAxis type="number" tickFormatter={v => formatNumber(v)} />
+                              <YAxis type="category" dataKey="name" width={80} tick={{fontSize:12}} />
+                              <Bar dataKey="count" fill="#3B82F6" radius={[0,4,4,0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                      {/* Skill List */}
+                      {selectedSession.skillList?.length > 0 && (
+                        <div>
+                          <h5 className="text-sm font-medium text-gray-700 mb-2">Skill 列表</h5>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedSession.skillList.map(s => (
+                              <span key={s.skillName} className="px-2.5 py-0.5 rounded-full bg-purple-50 text-xs text-purple-700">{s.skillName} ({s.count})</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {activeTab === 'todos' && (
+                    <div>
+                      <h5 className="text-sm font-medium text-gray-700 mb-3">待办列表 ({sessionTodos.length})</h5>
+                      {sessionTodos.length > 0 ? (
+                        <div className="space-y-2">
+                          {sessionTodos.map(todo => (
+                            <div key={`${todo.session_id}:${todo.position}`} className="rounded border p-2 bg-gray-50/50">
+                              <span className="text-xs text-gray-400 mr-1">[{todo.position}]</span>
+                              <span className="text-xs">{todo.content?.slice(0, 120)}</span>
+                              <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${todo.status==='completed'?'bg-green-100 text-green-700':'bg-yellow-100 text-yellow-700'}`}>
+                                {todo.status}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <p className="text-sm text-gray-400">暂无待办</p>}
+                    </div>
+                  )}
+                  {activeTab === 'shares' && (
+                    <div>
+                      <h5 className="text-sm font-medium text-gray-700 mb-3">分享信息</h5>
+                      {sessionShare ? (
+                        <div className="space-y-2 text-sm bg-gray-50 rounded p-3">
+                          <p className="break-all"><span className="text-gray-500">链接:</span> {sessionShare.url}</p>
+                          <p className="text-xs text-gray-400">ID: {sessionShare.id}</p>
+                        </div>
+                      ) : <p className="text-sm text-gray-400">暂无分享</p>}
+                    </div>
+                  )}
+                  {!['basic','todos','shares'].includes(activeTab) && (
+                    <p className="text-sm text-gray-400 py-8 text-center">该模块开发中...</p>
+                  )}
+                </div>
+              </>
             ) : (
               <p className="text-gray-400 text-sm">加载中...</p>
             )}
