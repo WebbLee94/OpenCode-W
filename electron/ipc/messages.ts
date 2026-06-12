@@ -209,7 +209,9 @@ export function registerHandlers(): void {
         const page = filter?.page ?? 1
         const pageSize = filter?.pageSize ?? 50
         const offset = (page - 1) * pageSize
-        const sessionIds = [filter.parentSessionId, ...(filter.childSessionIds ?? [])]
+        const sessionIds: string[] = []
+        if (filter?.parentSessionId) sessionIds.push(filter.parentSessionId)
+        if (filter?.childSessionIds) sessionIds.push(...filter.childSessionIds)
         if (sessionIds.length === 0) {
           return { success: true, data: { data: [], total: 0, page, pageSize } }
         }

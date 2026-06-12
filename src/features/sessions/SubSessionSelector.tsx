@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SessionDTO } from '../../../shared/types'
+import { formatRelativeTime } from '../../lib/format'
 
 interface SubSessionSelectorProps {
   childSessions: SessionDTO[]
@@ -26,11 +27,19 @@ export default function SubSessionSelector({ childSessions, selectedChildId, onC
       </button>
       {open && (
         <div className="absolute z-20 top-full left-0 mt-1 bg-white border rounded shadow-lg py-1 w-64 max-h-48 overflow-y-auto">
-          <button onClick={() => { onChange(''); setOpen(false) }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 font-medium">全部子会话</button>
+          <button onClick={() => { onChange(''); setOpen(false) }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 font-medium">
+            <div className="flex items-center justify-between gap-2">
+              <span>全部子会话</span>
+              <span className="text-xs text-gray-400 font-normal">共 {childSessions.length} 个</span>
+            </div>
+          </button>
           {childSessions.map(c => (
             <button key={c.id} onClick={() => { onChange(c.id); setOpen(false) }}
               className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 ${selectedChildId === c.id ? 'bg-brand-50' : ''}`}>
-              {c.title || '无标题'}
+              <div className="flex items-center justify-between gap-2">
+                <span className={`truncate ${selectedChildId === c.id ? 'font-medium' : ''}`}>{c.title || '无标题'}</span>
+                <span className="text-xs text-gray-400 shrink-0">{formatRelativeTime(c.time_created)}</span>
+              </div>
             </button>
           ))}
         </div>

@@ -33,10 +33,18 @@ export default function SessionPreview({ activeSessionId, childSessions }: Sessi
 
   useEffect(() => {
     setLoading(true)
-    const childIds = selectedChildId ? [selectedChildId] : childSessions.map(c => c.id)
+    const params: { parentSessionId?: string; childSessionIds?: string[]; page: number; pageSize: number } = {
+      page, pageSize,
+    }
+    if (selectedChildId) {
+      params.childSessionIds = [selectedChildId]
+    } else {
+      params.parentSessionId = activeSessionId
+      params.childSessionIds = childSessions.map(c => c.id)
+    }
     invokeSafe<{ data: MessageDTO[]; total: number }>(
       IPC_CHANNELS.MESSAGES_LIST_BY_PARENT,
-      { parentSessionId: activeSessionId, childSessionIds: childIds, page, pageSize }
+      params
     )
       .then(r => { setMessages(r.data || []); setTotal(r.total) })
       .catch(() => { setMessages([]); setTotal(0) })

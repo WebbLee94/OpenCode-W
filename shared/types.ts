@@ -135,7 +135,7 @@ export interface MessageFilter {
 }
 
 export interface MessageListByParentFilter {
-  parentSessionId: string;
+  parentSessionId?: string;
   childSessionIds?: string[];
   page?: number;
   pageSize?: number;
