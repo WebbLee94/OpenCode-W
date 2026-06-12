@@ -418,18 +418,7 @@ const listRef = useRef<HTMLDivElement>(null)
     <div className={`flex h-full ${activeSessionId ? '' : 'flex-col'}`}>
     {activeSessionId ? (
       <>
-        {/* Compact list (5%) */}
-        <div className="w-[5%] border-r border-gray-200 overflow-auto bg-white">
-          <div className="p-1 space-y-0.5">
-            {sessions.map(s => (
-              <div key={s.id} onClick={() => setSearchParams(p => { p.set('session', s.id); return p })}
-                className={`text-xs truncate cursor-pointer px-1 py-0.5 rounded ${s.id === activeSessionId ? 'bg-brand-100 text-brand-700 font-medium' : 'hover:bg-gray-100'}`}>
-                {s.title?.slice(0, 12) || '-'}
-              </div>
-            ))}
-          </div>
-        </div>
-        {/* Detail panel (95%) */}
+        {/* Detail panel */}
         <div className="flex-1 flex flex-col overflow-auto">
           <div className="flex items-center justify-between px-4 py-2 border-b bg-white shrink-0">
             <span className="text-sm font-medium text-gray-700">会话详情</span>
@@ -526,13 +515,23 @@ const listRef = useRef<HTMLDivElement>(null)
                   )}
                   {activeTab === 'shares' && (
                     <div>
-                      <h5 className="text-sm font-medium text-gray-700 mb-3">分享信息</h5>
                       {sessionShare ? (
-                        <div className="space-y-2 text-sm bg-gray-50 rounded p-3">
-                          <p className="break-all"><span className="text-gray-500">链接:</span> {sessionShare.url}</p>
-                          <p className="text-xs text-gray-400">ID: {sessionShare.id}</p>
-                        </div>
-                      ) : <p className="text-sm text-gray-400">暂无分享</p>}
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr className="border-b"><th className="text-left px-3 py-2 text-gray-500">分享ID</th><th className="text-left px-3 py-2 text-gray-500">创建时间</th><th className="text-center px-3 py-2 text-gray-500">操作</th></tr>
+                          </thead>
+                          <tbody>
+                            <tr className="border-b hover:bg-gray-50">
+                              <td className="px-3 py-2 font-mono text-xs">{sessionShare.id?.slice(0,16)}</td>
+                              <td className="px-3 py-2 text-xs text-gray-600">{new Date(sessionShare.time_created).toLocaleString()}</td>
+                              <td className="px-3 py-2 text-center">
+                                <button onClick={() => { navigator.clipboard.writeText(sessionShare.url) }} className="text-gray-400 hover:text-blue-600 mr-2 text-sm" title="复制链接">📋</button>
+                                <button onClick={() => { if (sessionShare.url) window.open(sessionShare.url, '_blank') }} className="text-gray-400 hover:text-blue-600 text-sm" title="浏览器打开">🌐</button>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      ) : <p className="text-sm text-gray-400 py-4">暂无分享</p>}
                     </div>
                   )}
                   {!['basic','todos','shares'].includes(activeTab) && (

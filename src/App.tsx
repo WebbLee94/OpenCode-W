@@ -35,8 +35,15 @@ function Breadcrumb() {
     if (match) {
       crumbs.push({ label: '会话浏览', path: '/sessions' })
       crumbs.push({ label: '消息查看器' })
-    } else {
-      crumbs.push({ label: '会话浏览' })
+    } else if (path === '/sessions' || path.startsWith('/sessions?')) {
+      const hash = window.location.hash
+      const qp = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '')
+      if (qp.get('session')) {
+        crumbs.push({ label: '会话浏览', path: '/sessions' })
+        crumbs.push({ label: '会话详情' })
+      } else {
+        crumbs.push({ label: '会话浏览' })
+      }
     }
   } else if (path.startsWith('/todos')) {
     crumbs.push({ label: '待办管理' })
