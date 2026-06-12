@@ -57,6 +57,7 @@ export const IPC_CHANNELS = {
   // Todos
   TODOS_LIST: 'todos:list',
   TODOS_BY_SESSION: 'todos:bySession',
+  TODOS_BY_PARENT: 'todos:by-parent',
 
   // Session Share
   SESSION_SHARE_GET: 'session-share:get',

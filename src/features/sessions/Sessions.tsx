@@ -258,18 +258,26 @@ const listRef = useRef<HTMLDivElement>(null)
       .catch(() => setSelectedSession(null))
       .finally(() => setDetailLoading(false))
 
-    // Load todos for this session
-    invokeSafe<TodoDTO[]>(IPC_CHANNELS.TODOS_BY_SESSION, sessionId)
-      .then((result) => setSessionTodos(result))
-      .catch(() => setSessionTodos([]))
-
     // Load share info for this session
     invokeSafe<SessionShareDTO | null>(IPC_CHANNELS.SESSION_SHARE_GET, sessionId)
       .then((result) => setSessionShare(result))
       .catch(() => setSessionShare(null))
 
-    // Load children for sub-session dropdown
-    invokeSafe<SessionDTO[]>(IPC_CHANNELS.SESSIONS_CHILDREN, sessionId).then(setChildSessions).catch(() => setChildSessions([]))
+    // Load children for sub-session dropdown, then load todos with merged parent + child IDs
+    // 修复「全部子会话」过滤只在前端列表过滤,实际后端只查父会话的 bug
+    invokeSafe<SessionDTO[]>(IPC_CHANNELS.SESSIONS_CHILDREN, sessionId)
+      .then((children) => {
+        setChildSessions(children)
+        return invokeSafe<TodoDTO[]>(IPC_CHANNELS.TODOS_BY_PARENT, {
+          parentSessionId: sessionId,
+          childSessionIds: children.map(c => c.id),
+        })
+      })
+      .then((todos) => setSessionTodos(todos))
+      .catch(() => {
+        setChildSessions([])
+        setSessionTodos([])
+      })
   }, [])
 
   const closeDetail = useCallback(() => {

@@ -333,6 +333,13 @@ export interface TodoFilter {
   pageSize?: number;
 }
 
+// 父子会话合并查询过滤条件
+// 当 childSessionIds 为空数组或省略时,只查询父会话的 todos
+export interface TodoFilterByParent {
+  parentSessionId: string;
+  childSessionIds?: string[];
+}
+
 // Session Share DTO
 export interface SessionShareDTO {
   session_id: string;
