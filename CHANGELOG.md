@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-13
+
+### Fixed
+
+- **Dashboard 4 个 state 不读 cache**：项目排行、模型排行、Provider 统计、timePreset 在组件首次/重新挂载时为空，改为从 `dashboardCache` 读取，修复"首次/重访仪表盘栏目不显示"问题
+- **timePreset 重新挂载被重置**：从 cache 读取 `timePreset` 保持用户时间范围选择一致
+
+### Changed
+
+- **Dashboard 移除"项目与工作区统计"栏目**：工作区数据无意义，移除该区块及相关 state/fetch
+- **Dashboard "模型&Provider"改造为柱状图**：以 CSS 渐变柱状图展示 Top 10 模型，支持 `provider/model` 双层命名展示，含会话数与成本双指标
+- **系统级标题统一**（`PageHeader`）：7 个页面（Dashboard / Sessions / Todos / Shares / Accounts / Cleanup / Backup）标题统一为"图标 + 中文名"格式
+- **系统级分页栏统一**（`PaginationBar`）：4 个页面（Todos / Shares / Sessions / Messages）分页栏统一高度、样式、sticky 行为
+- **Sidebar 3 个一级分组**：左侧菜单按功能分类为「概览 / 数据 / 工具」3 个一级分组（`SidebarGroup`）
+- **Todos 移除"重置筛选"按钮**：与筛选重置行为整合，避免冗余
+
+### Added
+
+- **3 个共享组件**：`PageHeader`（页面标题）、`PaginationBar`（分页栏）、`SidebarGroup`（侧边栏一级分组）
+
 ## [1.0.1] - 2026-05-23
 
 ### Added
