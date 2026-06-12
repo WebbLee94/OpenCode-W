@@ -1,23 +1,42 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import type { MessageDTO, MessageDetailDTO, MessageFilter, MessageListByParentFilter, PartDTO, SearchResult, IpcResult } from '../../shared/types'
+import type { MessageDTO, MessageDetailDTO, MessageFilter, MessageListByParentFilter, PartDTO, PartType, PartTimeRange, PartFileSourceDTO, SearchResult, IpcResult } from '../../shared/types'
 import dbManager from '../database'
 
+/**
+ * 两层兼容：canonical 字段优先，flat 字段兜底
+ * OpenCode DB 同时存在 nested state（newer）和 flat（older）两种格式
+ */
+function pick<T = unknown>(data: Record<string, any>, ...paths: string[]): T | undefined {
+  for (const p of paths) {
+    const v = p.split('.').reduce((acc: any, k) => acc?.[k], data)
+    if (v !== undefined && v !== null) return v as T
+  }
+  return undefined
+}
+
+function asString(v: unknown): string {
+  if (v === undefined || v === null) return ''
+  return typeof v === 'string' ? v : JSON.stringify(v, null, 2)
+}
+
+function asStringOrUndef(v: unknown): string | undefined {
+  if (v === undefined || v === null) return ''
+  const s = typeof v === 'string' ? v : JSON.stringify(v, null, 2)
+  return s || undefined
+}
+
 function parsePartData(row: Record<string, unknown>): PartDTO {
-  let data: Record<string, unknown> = {}
+  let data: Record<string, any> = {}
   try {
     const rawData = row.data
-    if (typeof rawData === 'string') {
-      data = JSON.parse(rawData)
-    } else if (typeof rawData === 'object' && rawData !== null) {
-      data = rawData as Record<string, unknown>
-    }
+    if (typeof rawData === 'string') data = JSON.parse(rawData)
+    else if (typeof rawData === 'object' && rawData !== null) data = rawData as Record<string, any>
   } catch {
-    /* keep data as empty object */
+    /* keep data empty */
   }
 
-  // Type is stored inside data JSON, not as a column
-  const type = (data.type as PartDTO['type']) ?? 'text'
+  const type = (data.type as PartType) ?? 'text'
   const dataSize = typeof row.data === 'string' ? (row.data as string).length : 0
 
   const part: PartDTO = {
@@ -28,56 +47,194 @@ function parsePartData(row: Record<string, unknown>): PartDTO {
     data_size: dataSize,
   }
 
-  // Parse type-specific fields
+  if (data.metadata && typeof data.metadata === 'object') {
+    part.metadata = data.metadata
+  }
+
   switch (type) {
+    // ============ TextPart ============
     case 'text': {
-      const text = (data.text as string) ?? (data.content as string) ?? ''
-      part.summary = text.length > 200 ? text.slice(0, 200) + '...' : text
+      const text = asString(pick(data, 'text', 'content'))
+      part.text = text || undefined
+      part.summary = text.length > 200 ? text.slice(0, 200) + '...' : text || undefined
+      if (data.synthetic === true) part.synthetic = true
+      if (data.ignored === true) part.ignored = true
+      const time = pick<PartTimeRange>(data, 'time')
+      if (time) part.time = time
       break
     }
-    case 'tool': {
-      part.toolName = (data.tool_name as string) ?? (data.toolName as string) ?? ''
-      part.summary = part.toolName
-      if (data.tool_input !== undefined || data.input !== undefined) {
-        const input = data.tool_input ?? data.input
-        part.input = typeof input === 'string' ? input : JSON.stringify(input, null, 2)
-      }
-      if (data.tool_output !== undefined || data.output !== undefined) {
-        const output = data.tool_output ?? data.output
-        part.output = typeof output === 'string' ? output : JSON.stringify(output, null, 2)
-      }
-      part.status = (data.status as string) ?? (data.result as string) ?? 'completed'
-      break
-    }
+
+    // ============ ReasoningPart ============
     case 'reasoning': {
-      const text = (data.text as string) ?? ''
-      part.summary = text.length > 200 ? text.slice(0, 200) + '...' : text
+      const text = asString(pick(data, 'text', 'content'))
+      part.text = text || undefined
+      part.summary = text.length > 200 ? text.slice(0, 200) + '...' : text || undefined
+      const time = pick<PartTimeRange>(data, 'time')
+      if (time) part.time = time
       break
     }
+
+    // ============ ToolPart ============
+    case 'tool': {
+      // canonical: state nested; flat: tool_name/tool_input/tool_output/status
+      // 工具名
+      part.toolName = pick<string>(data, 'tool', 'tool_name') || ''
+      // callID
+      part.callID = pick<string>(data, 'callID') || undefined
+      // 状态
+      const status = pick<string>(data, 'state.status', 'status') || 'completed'
+      if (['pending', 'running', 'completed', 'error'].includes(status)) {
+        part.toolState = status as PartDTO['toolState']
+      }
+      part.status = status
+      part.summary = part.toolName || '[tool]'
+
+      // input
+      const input = pick(data, 'state.input', 'tool_input', 'input')
+      if (input !== undefined) part.input = asStringOrUndef(input)
+
+      // output
+      const output = pick(data, 'state.output', 'tool_output', 'output')
+      if (output !== undefined) part.output = asStringOrUndef(output)
+
+      // 错误
+      const error = pick(data, 'state.error', 'error')
+      if (error !== undefined) part.error = asStringOrUndef(error)
+
+      // 标题
+      const title = pick<string>(data, 'state.title', 'title')
+      if (title) part.title = title
+
+      // 附件
+      const attachments = pick<unknown[]>(data, 'state.attachments')
+      if (Array.isArray(attachments)) {
+        part.attachments = attachments.map((a: any) => ({
+          mime: a.mime,
+          url: a.url,
+          filename: a.filename,
+        }))
+      }
+
+      // time
+      const time = pick<PartTimeRange>(data, 'state.time', 'time')
+      if (time) part.time = time
+
+      break
+    }
+
+    // ============ FilePart ============
+    case 'file': {
+      part.fileMime = pick<string>(data, 'mime') || undefined
+      part.fileName = pick<string>(data, 'filename') || undefined
+      part.fileUrl = pick<string>(data, 'url') || undefined
+      const source = pick(data, 'source')
+      if (source && typeof source === 'object') {
+        part.fileSource = source as PartFileSourceDTO
+      }
+      const filename = part.fileName || part.fileUrl || 'file'
+      part.summary = `[file] ${part.fileMime || ''} ${filename}`.trim()
+      break
+    }
+
+    // ============ PatchPart ============
+    case 'patch': {
+      part.patchHash = pick<string>(data, 'hash') || undefined
+      part.patchFiles = pick<string[]>(data, 'files') || undefined
+      part.summary = `[patch] ${part.patchFiles?.length ?? 0} 个文件`
+      break
+    }
+
+    // ============ SnapshotPart ============
+    case 'snapshot': {
+      const snap = pick<string>(data, 'snapshot') || ''
+      part.snapshotData = snap || undefined
+      part.summary = snap ? `[snapshot] ${snap.slice(0, 30)}${snap.length > 30 ? '...' : ''}` : '[snapshot]'
+      break
+    }
+
+    // ============ AgentPart ============
+    case 'agent': {
+      part.agentName = pick<string>(data, 'name') || undefined
+      const source = pick<{ value: string; start: number; end: number }>(data, 'source')
+      if (source && typeof source === 'object') {
+        part.agentSource = source
+      }
+      part.summary = part.agentName ? `agent: ${part.agentName}` : '[agent]'
+      break
+    }
+
+    // ============ StepStartPart ============
     case 'step-start': {
-      const snapshot = data.snapshot as Record<string, unknown> | undefined
-      part.summary = snapshot?.step_name as string ?? `Step ${snapshot?.step_id ?? ''}`
-      break
-    }
-    case 'step-finish': {
-      part.status = (data.result as string) ?? 'completed'
-      part.summary = `Step finished: ${part.status}`
-      if (data.tokens && typeof data.tokens === 'object') {
-        const tokens = data.tokens as Record<string, unknown>
-        part.tokens = {
-          input: (tokens.input as number) ?? 0,
-          output: (tokens.output as number) ?? 0,
-          reasoning: (tokens.reasoning as number) ?? 0,
-          cache_read: (tokens.cache_read as number) ?? 0,
-          cache_write: (tokens.cache_write as number) ?? 0,
-        }
+      // canonical: snapshot?: string; flat: snapshot: {step_id, step_name}
+      const snap = pick<any>(data, 'snapshot')
+      if (typeof snap === 'string') {
+        part.stepSnapshot = snap
+        part.summary = `[step] ${snap.slice(0, 30)}`
+      } else if (snap && typeof snap === 'object') {
+        const stepName = snap.step_name || `Step ${snap.step_id ?? ''}`
+        part.summary = stepName
+      } else {
+        part.summary = 'Step start'
       }
       break
     }
-    case 'compaction':
-    case 'patch':
-    case 'file': {
-      part.summary = `[${type}]`
+
+    // ============ StepFinishPart ============
+    case 'step-finish': {
+      const reason = pick<string>(data, 'reason', 'result') || 'completed'
+      part.reason = reason
+      part.status = reason
+      part.cost = pick<number>(data, 'cost')
+
+      // tokens: canonical nested cache.{read,write} / flat cache_read+cache_write
+      // 输出为 flat（与现有渲染端兼容，Commit 3 再迁嵌套）
+      const tokens = pick<any>(data, 'tokens')
+      if (tokens && typeof tokens === 'object') {
+        const cacheNested = tokens.cache && typeof tokens.cache === 'object'
+        part.tokens = {
+          input: tokens.input ?? 0,
+          output: tokens.output ?? 0,
+          reasoning: tokens.reasoning ?? 0,
+          cache_read: cacheNested ? (tokens.cache.read ?? 0) : (tokens.cache_read ?? 0),
+          cache_write: cacheNested ? (tokens.cache.write ?? 0) : (tokens.cache_write ?? 0),
+        }
+        const t = part.tokens
+        const summaryParts: string[] = []
+        if (t.input) summaryParts.push(`in ${t.input}`)
+        if (t.output) summaryParts.push(`out ${t.output}`)
+        part.summary = `Step finished: ${reason} (${summaryParts.join('/')})`
+      } else {
+        part.summary = `Step finished: ${reason}`
+      }
+      break
+    }
+
+    // ============ SubtaskPart ============
+    case 'subtask': {
+      part.subtaskPrompt = pick<string>(data, 'prompt') || undefined
+      part.subtaskDescription = pick<string>(data, 'description') || undefined
+      part.subtaskAgent = pick<string>(data, 'agent') || undefined
+      part.subtaskModel = pick(data, 'model') as { providerID: string; modelID: string } | undefined
+      part.subtaskCommand = pick<string>(data, 'command') || undefined
+      part.summary = part.subtaskDescription || part.subtaskPrompt?.slice(0, 40) || '[subtask]'
+      break
+    }
+
+    // ============ RetryPart ============
+    case 'retry': {
+      part.retryAttempt = pick<number>(data, 'attempt')
+      const errObj = pick<any>(data, 'error')
+      part.retryError = asStringOrUndef(errObj)
+      part.retryTime = pick<number>(data, 'time.created')
+      part.summary = `Retry attempt ${part.retryAttempt ?? '?'}: ${part.retryError?.slice(0, 50) || 'unknown error'}`
+      break
+    }
+
+    // ============ CompactionPart ============
+    case 'compaction': {
+      part.compactionAuto = pick<boolean>(data, 'auto')
+      part.compactionOverflow = pick<boolean>(data, 'overflow')
+      part.summary = part.compactionAuto === false ? '手动压缩' : (part.compactionOverflow ? '压缩（溢出）' : '自动压缩')
       break
     }
   }
@@ -102,13 +259,15 @@ export function registerHandlers(): void {
       const total = countRow?.cnt ?? 0
 
       // Query messages - role is in data JSON, not a column
-      // content_preview source: first text part of message (real content lives in part.data.text, not message.data)
+      // content_preview source: concatenated text parts (real content lives in part.data.text, not message.data)
+      // 多 text part 用双换行连接（与 OpenCode toModelMessages 行为一致：所有 text part 都参与 message.parts）
       const rows = dbManager.rawQuery<Record<string, unknown>>(
         `SELECT id, session_id, json_extract(data, '$.role') as role, LENGTH(data) as data_size, time_created,
                 COALESCE(
-                  (SELECT json_extract(p.data, '$.text') FROM part p
+                  (SELECT GROUP_CONCAT(json_extract(p.data, '$.text'), char(10) || char(10))
+                   FROM part p
                    WHERE p.message_id = message.id AND json_extract(p.data, '$.type') = 'text'
-                   ORDER BY p.id ASC LIMIT 1),
+                   ORDER BY p.id ASC),
                   json_extract(data, '$.content'),
                   json_extract(data, '$.text'),
                   ''
@@ -234,9 +393,10 @@ export function registerHandlers(): void {
         const rows = dbManager.rawQuery<Record<string, unknown>>(
           `SELECT id, session_id, json_extract(data, '$.role') as role, LENGTH(data) as data_size, time_created,
                   COALESCE(
-                    (SELECT json_extract(p.data, '$.text') FROM part p
+                    (SELECT GROUP_CONCAT(json_extract(p.data, '$.text'), char(10) || char(10))
+                     FROM part p
                      WHERE p.message_id = message.id AND json_extract(p.data, '$.type') = 'text'
-                     ORDER BY p.id ASC LIMIT 1),
+                     ORDER BY p.id ASC),
                     json_extract(data, '$.content'),
                     json_extract(data, '$.text'),
                     ''

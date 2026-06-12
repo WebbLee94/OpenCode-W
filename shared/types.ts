@@ -150,26 +150,121 @@ export interface SearchResult {
   time_created: number;
 }
 
-// Part DTO
+// Part DTO — 覆盖 OpenCode canonical Part union 全部 12 种
+export type PartType =
+  | 'text' | 'reasoning' | 'tool'
+  | 'file' | 'patch' | 'snapshot' | 'agent'
+  | 'step-start' | 'step-finish'
+  | 'subtask' | 'retry' | 'compaction';
+
+// Canonical token 嵌套结构（与 OpenCode 一致，供未来使用）
+// 当前 PartDTO.tokens 仍为 flat（cache_read/cache_write）以兼容 ConversationView / Messages 渲染端
+// Commit 3 渲染端重构时再统一迁移为 PartTokensDTO
+export interface PartTokensDTO {
+  total?: number;
+  input: number;
+  output: number;
+  reasoning: number;
+  cache: {
+    read: number;
+    write: number;
+  };
+}
+
+export interface PartTimeRange {
+  start?: number;
+  end?: number;
+}
+
+export interface PartFileSourceDTO {
+  type: 'file' | 'symbol' | 'resource';
+  path?: string;
+  range?: unknown;
+  name?: string;
+  kind?: number;
+  clientName?: string;
+  uri?: string;
+  text?: { value: string; start: number; end: number };
+}
+
 export interface PartDTO {
+  // 基础字段
   id: string;
   message_id: string;
   session_id: string;
-  type: 'text' | 'tool' | 'reasoning' | 'step-start' | 'step-finish' | 'compaction' | 'patch' | 'file';
+  type: PartType;
   data_size: number;
-  // Parsed from JSON data field
-  summary?: string;        // text preview or tool name
-  toolName?: string;       // for tool type
-  input?: string;          // tool input params
-  output?: string;         // tool output
-  status?: string;         // completed/failed
-  tokens?: {               // step-finish tokens
+
+  // 通用可选字段
+  summary?: string;             // 一行摘要
+  metadata?: Record<string, unknown>;  // 通用元数据（text/reasoning/tool）
+
+  // TextPart
+  text?: string;                // 完整文本
+  synthetic?: boolean;
+  ignored?: boolean;
+  time?: PartTimeRange;
+
+  // ReasoningPart
+  // (复用 text/metadata/time)
+
+  // ToolPart
+  toolName?: string;            // 工具名（canonical `tool` 字段）
+  callID?: string;              // 工具调用 ID（canonical `callID` 字段）
+  toolState?: 'pending' | 'running' | 'completed' | 'error';  // 规范化状态
+  status?: string;              // 状态字符串（tool/step-finish 通用）
+  input?: string;               // JSON string
+  output?: string;              // JSON string
+  title?: string;               // 完成态标题
+  error?: string;               // 错误态错误信息
+  attachments?: { mime: string; url: string; filename?: string }[];  // 附件
+
+  // FilePart
+  fileMime?: string;
+  fileName?: string;
+  fileUrl?: string;
+  fileSource?: PartFileSourceDTO;
+
+  // PatchPart
+  patchHash?: string;
+  patchFiles?: string[];
+
+  // SnapshotPart
+  snapshotData?: string;
+
+  // AgentPart
+  agentName?: string;
+  agentSource?: { value: string; start: number; end: number };
+
+  // StepStartPart
+  stepSnapshot?: string;        // canonical 字符串 variant
+
+  // StepFinishPart
+  reason?: string;
+  cost?: number;
+  tokens?: {                    // flat 结构（cache_read/cache_write），与渲染端兼容
     input: number;
     output: number;
     reasoning: number;
     cache_read: number;
     cache_write: number;
   };
+
+  // SubtaskPart
+  subtaskPrompt?: string;
+  subtaskDescription?: string;
+  subtaskAgent?: string;
+  subtaskModel?: { providerID: string; modelID: string };
+  subtaskCommand?: string;
+
+  // RetryPart
+  retryAttempt?: number;
+  retryError?: string;
+  retryTime?: number;
+
+  // CompactionPart
+  compactionAuto?: boolean;
+  compactionOverflow?: boolean;
 }
 
 // Cleanup DTOs
