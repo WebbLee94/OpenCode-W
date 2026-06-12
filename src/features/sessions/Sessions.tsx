@@ -35,6 +35,7 @@ import {
   YAxis,
 } from 'recharts'
 import MessageViewer from '../messages/MessageViewer'
+import SubSessionSelector from './SubSessionSelector'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -147,18 +148,9 @@ function Sessions() {
   const [tabMsgs, setTabMsgs] = useState<MessageDTO[]>([])
   const [selectedMsgId, setSelectedMsgId] = useState('')
 
-  // Sub-session dropdown
+  // Sub-session selector
   const [childSessions, setChildSessions] = useState<SessionDTO[]>([])
   const [selectedChildId, setSelectedChildId] = useState<string>('')
-  const [subDropdownOpen, setSubDropdownOpen] = useState(false)
-  const subDropdownRef = useRef<HTMLDivElement>(null)
-
-  // Close sub-session dropdown on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => { if (subDropdownRef.current && !subDropdownRef.current.contains(e.target as Node)) setSubDropdownOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
 
   // Inline title edit
   const [editingTitle, setEditingTitle] = useState(false)
@@ -545,22 +537,7 @@ const listRef = useRef<HTMLDivElement>(null)
                     })
                     return (
                     <div>
-                      <div className="relative inline-block mb-3" ref={subDropdownRef}>
-                        <button onClick={() => setSubDropdownOpen(!subDropdownOpen)} className="text-sm text-gray-500 hover:text-gray-700 border rounded px-2 py-0.5">
-                          ▼ {selectedChildId ? childSessions.find(c => c.id === selectedChildId)?.title?.slice(0,20) || '已选' : '全部子会话'}
-                        </button>
-                        {subDropdownOpen && (
-                          <div className="absolute z-20 top-full left-0 mt-1 bg-white border rounded shadow-lg py-1 w-64 max-h-48 overflow-y-auto">
-                            <button onClick={() => { setSelectedChildId(''); setSubDropdownOpen(false) }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 font-medium">全部子会话</button>
-                            {childSessions.map(c => (
-                              <button key={c.id} onClick={() => { setSelectedChildId(c.id); setSubDropdownOpen(false) }}
-                                className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 ${selectedChildId === c.id ? 'bg-brand-50' : ''}`}>
-                                {c.title || '无标题'}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      <SubSessionSelector childSessions={childSessions} selectedChildId={selectedChildId} onChange={setSelectedChildId} />
                       <h5 className="text-sm font-medium text-gray-700 mb-3">待办列表 ({filteredTodos.length})</h5>
                       <div className="flex gap-2 mb-3">
                         <input type="text" placeholder="搜索待办..." value={todoSearch} onChange={e => setTodoSearch(e.target.value)}
@@ -597,25 +574,15 @@ const listRef = useRef<HTMLDivElement>(null)
                     </div>
                     )
                   })()}
-                  {activeTab === 'subsessions' && <MessageViewer sessionId={(selectedChildId || activeSessionId)!} />}
+                  {activeTab === 'subsessions' && (
+                    <>
+                      <SubSessionSelector childSessions={childSessions} selectedChildId={selectedChildId} onChange={setSelectedChildId} />
+                      <MessageViewer sessionId={(selectedChildId || activeSessionId)!} />
+                    </>
+                  )}
                   {activeTab === 'messages' && (
                     <div>
-                      <div className="relative inline-block mb-3" ref={subDropdownRef}>
-                        <button onClick={() => setSubDropdownOpen(!subDropdownOpen)} className="text-sm text-gray-500 hover:text-gray-700 border rounded px-2 py-0.5">
-                          ▼ {selectedChildId ? childSessions.find(c => c.id === selectedChildId)?.title?.slice(0,20) || '已选' : '全部子会话'}
-                        </button>
-                        {subDropdownOpen && (
-                          <div className="absolute z-20 top-full left-0 mt-1 bg-white border rounded shadow-lg py-1 w-64 max-h-48 overflow-y-auto">
-                            <button onClick={() => { setSelectedChildId(''); setSubDropdownOpen(false) }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 font-medium">全部子会话</button>
-                            {childSessions.map(c => (
-                              <button key={c.id} onClick={() => { setSelectedChildId(c.id); setSubDropdownOpen(false) }}
-                                className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 ${selectedChildId === c.id ? 'bg-brand-50' : ''}`}>
-                                {c.title || '无标题'}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      <SubSessionSelector childSessions={childSessions} selectedChildId={selectedChildId} onChange={setSelectedChildId} />
                       {selectedChildId ? (
                         tabMsgs.length === 0 ? <div className="flex items-center justify-center py-20 text-gray-400 text-sm">暂无消息</div> : <div className="space-y-4 p-2">{tabMsgs.map((msg, i) => (<div key={i} className={`p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-50 ml-8' : msg.role === 'assistant' ? 'bg-gray-50 mr-8' : 'bg-yellow-50 mx-4'}`}><div className="text-xs text-gray-400 mb-1">{msg.role}</div><div className="text-sm text-gray-800 whitespace-pre-wrap">{msg.content}</div></div>))}</div>
                       ) : <div className="flex items-center justify-center py-20 text-gray-400 text-sm">请从上方下拉选择子会话</div>}
