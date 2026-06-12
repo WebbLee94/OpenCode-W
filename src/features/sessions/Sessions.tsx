@@ -411,41 +411,43 @@ const listRef = useRef<HTMLDivElement>(null)
     {activeSessionId ? (
       <>
         {/* Detail panel */}
-        <div className="flex-1 flex flex-col overflow-auto">
-          <div className="flex items-center justify-between px-4 py-2 border-b bg-white shrink-0">
-            {editingTitle ? (
-              <input
-                value={editTitle}
-                onChange={e => setEditTitle(e.target.value)}
-                onBlur={async () => {
-                  if (editTitle.trim() && editTitle !== selectedSession?.title) {
-                    await invokeSafe(IPC_CHANNELS.SESSIONS_RENAME, { sessionId: activeSessionId, title: editTitle.trim() })
-                  }
-                  setEditingTitle(false)
-                }}
-                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                className="border rounded px-2 py-0.5 text-sm font-medium text-gray-800 max-w-md"
-                autoFocus
-              />
-            ) : (
-              <span
-                className="text-sm font-medium text-gray-800 cursor-pointer hover:text-brand-600"
-                title="点击修改名称"
-                onClick={() => { setEditTitle(selectedSession?.title || ''); setEditingTitle(true) }}
-              >
-                {selectedSession?.title || '无标题'}
-              </span>
-            )}
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowDelete(true)} className="text-red-500 hover:text-red-700 text-sm" title="删除会话">删除</button>
-              <button onClick={() => setSearchParams(p => { p.delete('session'); return p })} className="text-gray-400 hover:text-gray-600" title="关闭">✕</button>
-            </div>
-          </div>
-          <div className="flex-1 overflow-auto">
-            {activeSessionId && selectedSession ? (
-              <>
+        <div className="flex h-full flex-col">
+          {activeSessionId && selectedSession ? (
+            <>
+              {/* 顶部 sticky — 头部 + Tab 栏 + SubSessionSelector */}
+              <div className="shrink-0 bg-white">
+                {/* 头部 */}
+                <div className="flex items-center justify-between px-4 py-2 border-b">
+                  {editingTitle ? (
+                    <input
+                      value={editTitle}
+                      onChange={e => setEditTitle(e.target.value)}
+                      onBlur={async () => {
+                        if (editTitle.trim() && editTitle !== selectedSession?.title) {
+                          await invokeSafe(IPC_CHANNELS.SESSIONS_RENAME, { sessionId: activeSessionId, title: editTitle.trim() })
+                        }
+                        setEditingTitle(false)
+                      }}
+                      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                      className="border rounded px-2 py-0.5 text-sm font-medium text-gray-800 max-w-md"
+                      autoFocus
+                    />
+                  ) : (
+                    <span
+                      className="text-sm font-medium text-gray-800 cursor-pointer hover:text-brand-600"
+                      title="点击修改名称"
+                      onClick={() => { setEditTitle(selectedSession?.title || ''); setEditingTitle(true) }}
+                    >
+                      {selectedSession?.title || '无标题'}
+                    </span>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setShowDelete(true)} className="text-red-500 hover:text-red-700 text-sm" title="删除会话">删除</button>
+                    <button onClick={() => setSearchParams(p => { p.delete('session'); return p })} className="text-gray-400 hover:text-gray-600" title="关闭">✕</button>
+                  </div>
+                </div>
                 {/* Tab Bar */}
-                <div className="flex border-b bg-white px-4 shrink-0 gap-0">
+                <div className="flex border-b px-4 gap-0">
                   {['basic', 'subsessions', 'messages', 'todos'].map(t => (
                     <button key={t} onClick={() => setSearchParams(p => { p.set('tab', t); return p })}
                       className={`px-4 py-2 text-sm border-b-2 -mb-[1px] whitespace-nowrap ${
@@ -455,146 +457,158 @@ const listRef = useRef<HTMLDivElement>(null)
                     </button>
                   ))}
                 </div>
-                {/* Tab Content */}
-                <div className="p-4">
-                  {activeTab === 'basic' && (
-                    <div className="space-y-6">
-                      <div>
-                        <h5 className="text-sm font-medium text-gray-700 mb-2">📋 基础信息</h5>
-                        <div className="space-y-2 text-sm">
-                          <p><span className="text-gray-500">目录:</span> {selectedSession.directory || '-'}</p>
-                          <p><span className="text-gray-500">模型:</span> {selectedSession.model || '-'}</p>
-                          <p><span className="text-gray-500">时间:</span> {selectedSession.time_created ? new Date(selectedSession.time_created).toLocaleString() : '-'}</p>
-                        </div>
-                      </div>
-                      {((tokenPieData.length > 0) || (toolBarData.length > 0)) && (
-                        <div className="grid grid-cols-2 gap-4">
-                          {/* Token Pie */}
-                          {tokenPieData.length > 0 && (
-                            <div>
-                              <h5 className="text-sm font-medium text-gray-700 mb-2">💰 Token 明细</h5>
-                              <ResponsiveContainer width="100%" height={180}>
-                                <PieChart><Pie data={tokenPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value">
-                                  {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
-                                </Pie><RechartsTooltip formatter={(v: number) => formatNumber(v)} /></PieChart>
-                              </ResponsiveContainer>
-                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                                {tokenPieData.map((entry, i) => (
-                                  <div key={entry.name} className="flex items-center gap-1.5 text-xs text-gray-600">
-                                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{backgroundColor: TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]}}/>
-                                    {entry.name}: {formatNumber(entry.value)}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {/* Tool Ranking */}
-                          {toolBarData.length > 0 && (
-                            <div>
-                              <h5 className="text-sm font-medium text-gray-700 mb-2">🔧 Tool 排行</h5>
-                              <ResponsiveContainer width="100%" height={toolBarData.length * 32 + 20}>
-                                <BarChart data={toolBarData} layout="vertical" margin={{left:80,right:20}}>
-                                  <XAxis type="number" tickFormatter={v => formatNumber(v)} />
-                                  <YAxis type="category" dataKey="name" width={80} tick={{fontSize:12}} />
-                                  <Bar dataKey="count" fill="#3B82F6" radius={[0,4,4,0]} />
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {/* Skill List */}
-                      {selectedSession.skillList?.length > 0 && (
+                {/* SubSessionSelector 栏 */}
+                <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50/50">
+                  <SubSessionSelector childSessions={childSessions} selectedChildId={selectedChildId} onChange={setSelectedChildId} />
+                </div>
+              </div>
+
+              {/* 中间 — 解析 Tab 独有 flex h-full 左右分栏 */}
+              <div className="flex-1 overflow-hidden">
+                {activeTab === 'subsessions' && (
+                  <div className="flex h-full">
+                    <div className="w-[35%] border-r border-gray-200 flex flex-col">
+                      <MessageViewer sessionId={(selectedChildId || activeSessionId)!} />
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4">
+                      {/* 解析 Tab 右侧 — Part 明细（Commit 4.3 处理） */}
+                    </div>
+                  </div>
+                )}
+                {activeTab !== 'subsessions' && (
+                  <div className="overflow-y-auto h-full p-4">
+                    {activeTab === 'basic' && (
+                      <div className="space-y-6">
                         <div>
-                          <h5 className="text-sm font-medium text-gray-700 mb-2">🎯 Skill 列表</h5>
-                          <div className="flex flex-wrap gap-2">
-                            {selectedSession.skillList.map((skillName, i) => (
-                              <span key={i} className="px-2.5 py-0.5 rounded-full bg-purple-50 text-xs text-purple-700">{skillName}</span>
+                          <h5 className="text-sm font-medium text-gray-700 mb-2">📋 基础信息</h5>
+                          <div className="space-y-2 text-sm">
+                            <p><span className="text-gray-500">目录:</span> {selectedSession.directory || '-'}</p>
+                            <p><span className="text-gray-500">模型:</span> {selectedSession.model || '-'}</p>
+                            <p><span className="text-gray-500">时间:</span> {selectedSession.time_created ? new Date(selectedSession.time_created).toLocaleString() : '-'}</p>
+                          </div>
+                        </div>
+                        {((tokenPieData.length > 0) || (toolBarData.length > 0)) && (
+                          <div className="grid grid-cols-2 gap-4">
+                            {/* Token Pie */}
+                            {tokenPieData.length > 0 && (
+                              <div>
+                                <h5 className="text-sm font-medium text-gray-700 mb-2">💰 Token 明细</h5>
+                                <ResponsiveContainer width="100%" height={180}>
+                                  <PieChart><Pie data={tokenPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value">
+                                    {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
+                                  </Pie><RechartsTooltip formatter={(v: number) => formatNumber(v)} /></PieChart>
+                                </ResponsiveContainer>
+                                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                                  {tokenPieData.map((entry, i) => (
+                                    <div key={entry.name} className="flex items-center gap-1.5 text-xs text-gray-600">
+                                      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{backgroundColor: TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]}}/>
+                                      {entry.name}: {formatNumber(entry.value)}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {/* Tool Ranking */}
+                            {toolBarData.length > 0 && (
+                              <div>
+                                <h5 className="text-sm font-medium text-gray-700 mb-2">🔧 Tool 排行</h5>
+                                <ResponsiveContainer width="100%" height={toolBarData.length * 32 + 20}>
+                                  <BarChart data={toolBarData} layout="vertical" margin={{left:80,right:20}}>
+                                    <XAxis type="number" tickFormatter={v => formatNumber(v)} />
+                                    <YAxis type="category" dataKey="name" width={80} tick={{fontSize:12}} />
+                                    <Bar dataKey="count" fill="#3B82F6" radius={[0,4,4,0]} />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {/* Skill List */}
+                        {selectedSession.skillList?.length > 0 && (
+                          <div>
+                            <h5 className="text-sm font-medium text-gray-700 mb-2">🎯 Skill 列表</h5>
+                            <div className="flex flex-wrap gap-2">
+                              {selectedSession.skillList.map((skillName, i) => (
+                                <span key={i} className="px-2.5 py-0.5 rounded-full bg-purple-50 text-xs text-purple-700">{skillName}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {sessionShare && (
+                          <div className="border-t pt-4 mt-4">
+                            <h5 className="text-sm font-medium text-gray-700 mb-2">🔗 分享信息</h5>
+                            <div className="flex items-center gap-3 text-sm bg-gray-50 rounded p-3">
+                              <span className="text-gray-500 truncate flex-1 font-mono text-xs">{sessionShare.url}</span>
+                              <button onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(sessionShare.url)
+                                  addToast('已复制链接', 'success')
+                                } catch {
+                                  addToast('复制失败', 'error')
+                                }
+                              }} className="text-gray-400 hover:text-blue-600 text-sm">📋 复制</button>
+                              <button onClick={() => { openExternal(sessionShare.url) }} className="text-gray-400 hover:text-blue-600 text-sm">🌐 打开</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {activeTab === 'todos' && (() => {
+                      const filteredTodos = sessionTodos.filter(t => {
+                        if (selectedChildId && t.session_id !== selectedChildId) return false
+                        if (todoSearch && !t.content?.toLowerCase().includes(todoSearch.toLowerCase())) return false
+                        if (todoStatusFilter && t.status !== todoStatusFilter) return false
+                        if (todoPriorityFilter && t.priority !== todoPriorityFilter) return false
+                        return true
+                      })
+                      return (
+                      <div>
+                        <h5 className="text-sm font-medium text-gray-700 mb-3">待办列表 ({filteredTodos.length})</h5>
+                        <div className="flex gap-2 mb-3">
+                          <input type="text" placeholder="搜索待办..." value={todoSearch} onChange={e => setTodoSearch(e.target.value)}
+                            className="border rounded px-2 py-1 text-sm w-48" />
+                          <select value={todoStatusFilter} onChange={e => setTodoStatusFilter(e.target.value)}
+                            className="border rounded px-2 py-1 text-sm">
+                            <option value="">全部状态</option>
+                            <option value="pending">待处理</option>
+                            <option value="in_progress">进行中</option>
+                            <option value="completed">已完成</option>
+                            <option value="cancelled">已取消</option>
+                          </select>
+                          <select value={todoPriorityFilter} onChange={e => setTodoPriorityFilter(e.target.value)}
+                            className="border rounded px-2 py-1 text-sm">
+                            <option value="">全部优先级</option>
+                            <option value="high">高</option>
+                            <option value="medium">中</option>
+                            <option value="low">低</option>
+                          </select>
+                        </div>
+                        {filteredTodos.length > 0 ? (
+                          <div className="space-y-2">
+                            {filteredTodos.map(todo => (
+                              <div key={`${todo.session_id}:${todo.position}`} className="rounded border p-2 bg-gray-50/50">
+                                <span className="text-xs text-gray-400 mr-1">[{todo.position}]</span>
+                                <span className="text-xs">{todo.content?.slice(0, 120)}</span>
+                                <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${todo.status==='completed'?'bg-green-100 text-green-700':'bg-yellow-100 text-yellow-700'}`}>
+                                  {todo.status}
+                                </span>
+                              </div>
                             ))}
                           </div>
-                        </div>
-                      )}
-                      {sessionShare && (
-                        <div className="border-t pt-4 mt-4">
-                          <h5 className="text-sm font-medium text-gray-700 mb-2">🔗 分享信息</h5>
-                          <div className="flex items-center gap-3 text-sm bg-gray-50 rounded p-3">
-                            <span className="text-gray-500 truncate flex-1 font-mono text-xs">{sessionShare.url}</span>
-                            <button onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(sessionShare.url)
-                                addToast('已复制链接', 'success')
-                              } catch {
-                                addToast('复制失败', 'error')
-                              }
-                            }} className="text-gray-400 hover:text-blue-600 text-sm">📋 复制</button>
-                            <button onClick={() => { openExternal(sessionShare.url) }} className="text-gray-400 hover:text-blue-600 text-sm">🌐 打开</button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {activeTab === 'todos' && (() => {
-                    const filteredTodos = sessionTodos.filter(t => {
-                      if (selectedChildId && t.session_id !== selectedChildId) return false
-                      if (todoSearch && !t.content?.toLowerCase().includes(todoSearch.toLowerCase())) return false
-                      if (todoStatusFilter && t.status !== todoStatusFilter) return false
-                      if (todoPriorityFilter && t.priority !== todoPriorityFilter) return false
-                      return true
-                    })
-                    return (
-                    <div>
-                      <SubSessionSelector childSessions={childSessions} selectedChildId={selectedChildId} onChange={setSelectedChildId} />
-                      <h5 className="text-sm font-medium text-gray-700 mb-3">待办列表 ({filteredTodos.length})</h5>
-                      <div className="flex gap-2 mb-3">
-                        <input type="text" placeholder="搜索待办..." value={todoSearch} onChange={e => setTodoSearch(e.target.value)}
-                          className="border rounded px-2 py-1 text-sm w-48" />
-                        <select value={todoStatusFilter} onChange={e => setTodoStatusFilter(e.target.value)}
-                          className="border rounded px-2 py-1 text-sm">
-                          <option value="">全部状态</option>
-                          <option value="pending">待处理</option>
-                          <option value="in_progress">进行中</option>
-                          <option value="completed">已完成</option>
-                          <option value="cancelled">已取消</option>
-                        </select>
-                        <select value={todoPriorityFilter} onChange={e => setTodoPriorityFilter(e.target.value)}
-                          className="border rounded px-2 py-1 text-sm">
-                          <option value="">全部优先级</option>
-                          <option value="high">高</option>
-                          <option value="medium">中</option>
-                          <option value="low">低</option>
-                        </select>
+                        ) : <p className="text-sm text-gray-400">暂无待办</p>}
                       </div>
-                      {filteredTodos.length > 0 ? (
-                        <div className="space-y-2">
-                          {filteredTodos.map(todo => (
-                            <div key={`${todo.session_id}:${todo.position}`} className="rounded border p-2 bg-gray-50/50">
-                              <span className="text-xs text-gray-400 mr-1">[{todo.position}]</span>
-                              <span className="text-xs">{todo.content?.slice(0, 120)}</span>
-                              <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${todo.status==='completed'?'bg-green-100 text-green-700':'bg-yellow-100 text-yellow-700'}`}>
-                                {todo.status}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : <p className="text-sm text-gray-400">暂无待办</p>}
-                    </div>
-                    )
-                  })()}
-                  {activeTab === 'subsessions' && (
-                    <>
-                      <SubSessionSelector childSessions={childSessions} selectedChildId={selectedChildId} onChange={setSelectedChildId} />
-                      <MessageViewer sessionId={(selectedChildId || activeSessionId)!} />
-                    </>
-                  )}
-                  {activeTab === 'messages' && (
-                    <SessionPreview activeSessionId={activeSessionId} childSessions={childSessions} />
-                  )}
-                </div>
-              </>
-            ) : (
-              <p className="text-gray-400 text-sm">加载中...</p>
-            )}
-          </div>
+                      )
+                    })()}
+                    {activeTab === 'messages' && (
+                      <SessionPreview activeSessionId={activeSessionId} childSessions={childSessions} />
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-gray-400 text-sm p-4">加载中...</p>
+          )}
         </div>
         {showDelete && (
           <ConfirmDialog isOpen={showDelete} onClose={() => setShowDelete(false)}
