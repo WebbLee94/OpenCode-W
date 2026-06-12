@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { SessionShareDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
-import { invokeSafe } from '../../lib/ipc'
+import { invokeSafe, openExternal } from '../../lib/ipc'
 import { formatRelativeTime, truncateText } from '../../lib/format'
 import { useNavigate } from 'react-router'
 import { ChevronLeft, ChevronRight, Share2 } from 'lucide-react'
@@ -60,7 +60,7 @@ function Shares() {
                   <td className="px-4 py-3 text-center">
                     <button onClick={() => navigate(`/sessions?session=${s.session_id}&tab=shares`)}
                       className="text-gray-400 hover:text-blue-600 mr-2" title="跳转到会话">🔗</button>
-                    <button onClick={() => { const url = (s as any).url; if (url) window.open(url, '_blank') }}
+                    <button onClick={() => { const url = (s as any).url; if (url) openExternal(url) }}
                       className="text-gray-400 hover:text-blue-600" title="在浏览器打开">🌐</button>
                   </td>
                 </tr>

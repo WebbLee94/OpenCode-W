@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShareDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
-import { invokeSafe } from '../../lib/ipc'
+import { invokeSafe, openExternal } from '../../lib/ipc'
 import { formatBytes, formatNumber, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
 import { useToast } from '../../hooks/useToast'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -514,8 +514,15 @@ const listRef = useRef<HTMLDivElement>(null)
                           <h5 className="text-sm font-medium text-gray-700 mb-2">📤 分享信息</h5>
                           <div className="flex items-center gap-3 text-sm bg-gray-50 rounded p-3">
                             <span className="text-gray-500 truncate flex-1 font-mono text-xs">{sessionShare.url}</span>
-                            <button onClick={() => { navigator.clipboard.writeText(sessionShare.url) }} className="text-gray-400 hover:text-blue-600 text-sm">📋 复制</button>
-                            <button onClick={() => { window.open(sessionShare.url, '_blank') }} className="text-gray-400 hover:text-blue-600 text-sm">🌐 打开</button>
+                            <button onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(sessionShare.url)
+                                addToast('已复制链接', 'success')
+                              } catch {
+                                addToast('复制失败', 'error')
+                              }
+                            }} className="text-gray-400 hover:text-blue-600 text-sm">📋 复制</button>
+                            <button onClick={() => { openExternal(sessionShare.url) }} className="text-gray-400 hover:text-blue-600 text-sm">🌐 打开</button>
                           </div>
                         </div>
                       )}

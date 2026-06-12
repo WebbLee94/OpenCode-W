@@ -15,6 +15,7 @@ export interface ElectronAPI {
   invoke(channel: string, ...args: unknown[]): Promise<IpcResult>
   on(channel: string, callback: (...args: unknown[]) => void): () => void
   saveFile(content: string, defaultName: string): Promise<IpcResult<{ success: boolean }>>
+  openExternal?(url: string): Promise<IpcResult<true>>
   backupConfigGet?(): Promise<BackupConfig>
   backupConfigSet?(config: BackupConfig): Promise<IpcResult<{ success: boolean }>>
   backupAutoCheck?(): Promise<IpcResult<{ success: boolean }>>

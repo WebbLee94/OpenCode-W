@@ -64,6 +64,7 @@ function saveFile(content: string, defaultName: string): Promise<unknown> {
 }
 
 contextBridge.exposeInMainWorld('electronAPI', { invoke, on, saveFile,
+  openExternal: (url: string) => invoke('shell:openExternal', url),
   backupConfigGet: () => invoke('backup:config:get'),
   backupConfigSet: (config: any) => invoke('backup:config:set', config),
   backupAutoCheck: () => invoke('backup:auto-backup-check'),

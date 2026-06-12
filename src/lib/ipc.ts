@@ -47,3 +47,17 @@ export function on(channel: ChannelName, callback: (...args: unknown[]) => void)
   }
   return window.electronAPI.on(channel, callback)
 }
+
+/**
+ * 在系统默认浏览器中打开外部 URL
+ * Electron 中 window.open 会打开内置 webview,必须经主进程走 shell.openExternal
+ * 浏览器降级:走 window.open
+ */
+export async function openExternal(url: string): Promise<void> {
+  if (!url) return
+  if (!window?.electronAPI?.openExternal) {
+    window.open(url, '_blank', 'noopener,noreferrer')
+    return
+  }
+  await window.electronAPI.openExternal(url)
+}

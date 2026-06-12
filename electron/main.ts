@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -141,6 +141,20 @@ function registerIpcHandlers() {
       })
       if (result.canceled || result.filePaths.length === 0) return { success: false, error: 'User cancelled' }
       return { success: true, data: result.filePaths[0] }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  // Open URL in system default browser (via OS shell)
+  // 防止 window.open 在 Electron 中打开内置 webview
+  ipcMain.handle('shell:openExternal', async (_event, url: string): Promise<IpcResult<true>> => {
+    try {
+      if (typeof url !== 'string' || !url.startsWith('http')) {
+        return { success: false, error: 'URL 必须以 http 或 https 开头' }
+      }
+      await shell.openExternal(url)
+      return { success: true, data: true }
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
