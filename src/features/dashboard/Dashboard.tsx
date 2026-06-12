@@ -86,6 +86,10 @@ interface DashboardCache {
   timeRange: TimeRange | undefined
   timePreset: TimePreset
   groupBy: GroupBy
+  projectStats: ProjectStatsItem[]
+  workspaceStats: WorkspaceStatsItem[]
+  modelRanking: ModelRankingItem[]
+  providerStats: ProviderStatsItem[]
 }
 
 let dashboardCache: DashboardCache | null = null
@@ -195,6 +199,10 @@ function Dashboard() {
       setTimeRange(dashboardCache.timeRange)
       setTimePreset(dashboardCache.timePreset)
       setGroupBy(dashboardCache.groupBy)
+      setProjectStats(dashboardCache.projectStats ?? [])
+      setWorkspaceStats(dashboardCache.workspaceStats ?? [])
+      setModelRanking(dashboardCache.modelRanking ?? [])
+      setProviderStats(dashboardCache.providerStats ?? [])
       setFastLoading(false)
       setSlowLoading(false)
       return
@@ -220,6 +228,10 @@ function Dashboard() {
         timeRange,
         timePreset,
         groupBy,
+        projectStats: slowResult.projects,
+        workspaceStats: slowResult.workspaces,
+        modelRanking: slowResult.models,
+        providerStats: slowResult.providers,
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
@@ -245,6 +257,10 @@ function Dashboard() {
         timeRange,
         timePreset,
         groupBy,
+        projectStats: slowResult.projects,
+        workspaceStats: slowResult.workspaces,
+        modelRanking: slowResult.models,
+        providerStats: slowResult.providers,
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to refresh dashboard data')
@@ -268,6 +284,10 @@ function Dashboard() {
         setTimeRange(dashboardCache.timeRange)
         setTimePreset(dashboardCache.timePreset)
         setGroupBy(dashboardCache.groupBy)
+        setProjectStats(dashboardCache.projectStats ?? [])
+        setWorkspaceStats(dashboardCache.workspaceStats ?? [])
+        setModelRanking(dashboardCache.modelRanking ?? [])
+        setProviderStats(dashboardCache.providerStats ?? [])
         setConnected(true)
         setLoading(false)
         setFastLoading(false)
@@ -402,6 +422,10 @@ function Dashboard() {
         timeRange: tr,
         timePreset: days,
         groupBy,
+        projectStats: slowResult.projects,
+        workspaceStats: slowResult.workspaces,
+        modelRanking: slowResult.models,
+        providerStats: slowResult.providers,
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
@@ -431,6 +455,10 @@ function Dashboard() {
         timeRange,
         timePreset,
         groupBy: gb,
+        projectStats: slowResult.projects,
+        workspaceStats: slowResult.workspaces,
+        modelRanking: slowResult.models,
+        providerStats: slowResult.providers,
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
@@ -731,7 +759,7 @@ function Dashboard() {
           <div className="grid grid-cols-3 gap-3 mb-3">
             {modelRanking.slice(0, 5).map(m => (
               <div key={m.model} className="bg-white border border-gray-200 rounded-lg p-3">
-                <div className="text-xs text-gray-400 truncate">{m.model}</div>
+                <div className="text-xs text-gray-400 truncate">{m.model?.startsWith('{') ? (() => { try { const p = JSON.parse(m.model); return p.id || p.name || m.model } catch { return m.model } })() : m.model}</div>
                 <div className="text-lg font-semibold text-gray-900">{m.sessionCount.toLocaleString()}</div>
                 <div className="text-xs text-gray-500">{m.tokenCount.toLocaleString()} tokens · ${m.totalCost.toFixed(2)}</div>
               </div>

@@ -27,6 +27,7 @@ function mapSessionRow(row: Record<string, unknown>): SessionDTO {
     time_created: timeCreated,
     time_updated: timeUpdated,
     cost: row.cost as number | undefined,
+    childCount: (row.childCount as number) ?? 0,
   }
 }
 

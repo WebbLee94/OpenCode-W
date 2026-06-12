@@ -92,6 +92,7 @@ export interface SessionDTO {
   time_created: number;    // ms timestamp
   time_updated: number;    // ms timestamp
   cost?: number;
+  childCount?: number;
 }
 
 export interface SessionDetailDTO extends SessionDTO {
