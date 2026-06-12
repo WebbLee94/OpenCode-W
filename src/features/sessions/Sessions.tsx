@@ -460,24 +460,7 @@ const listRef = useRef<HTMLDivElement>(null)
                   {activeTab === 'basic' && (
                     <div className="space-y-6">
                       <div>
-                        <div className="flex items-center gap-2 mb-3">
-                          {editingTitle ? (
-                            <input value={editTitle} onChange={e => setEditTitle(e.target.value)}
-                              onBlur={async () => {
-                                if (editTitle.trim() && editTitle !== selectedSession.title) {
-                                  await invokeSafe(IPC_CHANNELS.SESSIONS_RENAME, { sessionId: activeSessionId, title: editTitle.trim() })
-                                }
-                                setEditingTitle(false)
-                              }}
-                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                              className="border rounded px-2 py-1 text-sm font-semibold" autoFocus />
-                          ) : (
-                            <h4 className="text-base font-semibold text-gray-900 cursor-pointer hover:text-brand-600"
-                              onClick={() => { setEditTitle(selectedSession?.title || ''); setEditingTitle(true) }}>
-                              {selectedSession?.title || '无标题'} ✏️
-                            </h4>
-                          )}
-                        </div>
+                        <h5 className="text-sm font-medium text-gray-700 mb-2">📋 基础信息</h5>
                         <div className="space-y-2 text-sm">
                           <p><span className="text-gray-500">目录:</span> {selectedSession.directory || '-'}</p>
                           <p><span className="text-gray-500">模型:</span> {selectedSession.model || '-'}</p>
@@ -489,7 +472,7 @@ const listRef = useRef<HTMLDivElement>(null)
                           {/* Token Pie */}
                           {tokenPieData.length > 0 && (
                             <div>
-                              <h5 className="text-sm font-medium text-gray-700 mb-2">Token 明细</h5>
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">💰 Token 明细</h5>
                               <ResponsiveContainer width="100%" height={180}>
                                 <PieChart><Pie data={tokenPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value">
                                   {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
@@ -508,7 +491,7 @@ const listRef = useRef<HTMLDivElement>(null)
                           {/* Tool Ranking */}
                           {toolBarData.length > 0 && (
                             <div>
-                              <h5 className="text-sm font-medium text-gray-700 mb-2">Tool 排行</h5>
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">🔧 Tool 排行</h5>
                               <ResponsiveContainer width="100%" height={toolBarData.length * 32 + 20}>
                                 <BarChart data={toolBarData} layout="vertical" margin={{left:80,right:20}}>
                                   <XAxis type="number" tickFormatter={v => formatNumber(v)} />
@@ -523,7 +506,7 @@ const listRef = useRef<HTMLDivElement>(null)
                       {/* Skill List */}
                       {selectedSession.skillList?.length > 0 && (
                         <div>
-                          <h5 className="text-sm font-medium text-gray-700 mb-2">Skill 列表</h5>
+                          <h5 className="text-sm font-medium text-gray-700 mb-2">🎯 Skill 列表</h5>
                           <div className="flex flex-wrap gap-2">
                             {selectedSession.skillList.map((skillName, i) => (
                               <span key={i} className="px-2.5 py-0.5 rounded-full bg-purple-50 text-xs text-purple-700">{skillName}</span>
@@ -533,7 +516,7 @@ const listRef = useRef<HTMLDivElement>(null)
                       )}
                       {sessionShare && (
                         <div className="border-t pt-4 mt-4">
-                          <h5 className="text-sm font-medium text-gray-700 mb-2">📤 分享信息</h5>
+                          <h5 className="text-sm font-medium text-gray-700 mb-2">🔗 分享信息</h5>
                           <div className="flex items-center gap-3 text-sm bg-gray-50 rounded p-3">
                             <span className="text-gray-500 truncate flex-1 font-mono text-xs">{sessionShare.url}</span>
                             <button onClick={async () => {
