@@ -10,11 +10,12 @@ import bash from 'highlight.js/lib/languages/bash'
 import sql from 'highlight.js/lib/languages/sql'
 import css from 'highlight.js/lib/languages/css'
 import html from 'highlight.js/lib/languages/xml'
-import { User, Bot, Wrench, ChevronLeft, ChevronRight, FileText } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { MessageDTO, MessageDetailDTO, PartDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatRelativeTime, truncateText } from '../../lib/format'
+import { RoleBadge, PartTypeBadge, StatusBadge, ROLE_CONFIG } from './badges'
 
 hljs.registerLanguage('typescript', ts)
 hljs.registerLanguage('javascript', js)
@@ -28,33 +29,6 @@ hljs.registerLanguage('html', html)
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 const DEFAULT_PAGE_SIZE = 10
 const PAGE_SIZE_STORAGE_KEY = 'dbscope-messageviewer-page-size'
-
-// 角色样式配置（与 Messages.tsx 一致）
-const ROLE_CONFIG: Record<string, { label: string; icon: any; badgeClass: string; bgClass: string }> = {
-  user: { label: 'User', icon: User, badgeClass: 'bg-brand-100 text-brand-700', bgClass: 'bg-brand-50' },
-  assistant: { label: 'Assistant', icon: Bot, badgeClass: 'bg-green-100 text-green-700', bgClass: 'bg-green-50' },
-  tool: { label: 'Tool', icon: Wrench, badgeClass: 'bg-orange-100 text-orange-700', bgClass: 'bg-orange-50' },
-  system: { label: 'System', icon: FileText, badgeClass: 'bg-gray-100 text-gray-700', bgClass: 'bg-gray-50' },
-}
-
-const PART_TYPE_CONFIG: Record<string, { label: string; emoji: string; badgeClass: string }> = {
-  text: { label: 'text', emoji: '📝', badgeClass: 'bg-green-100 text-green-700' },
-  tool: { label: 'tool', emoji: '🔧', badgeClass: 'bg-brand-100 text-brand-700' },
-  reasoning: { label: 'reasoning', emoji: '🧠', badgeClass: 'bg-orange-100 text-orange-700' },
-  'step-start': { label: 'step-start', emoji: '▶', badgeClass: 'bg-gray-100 text-gray-600' },
-  'step-finish': { label: 'step-finish', emoji: '✅', badgeClass: 'bg-gray-100 text-gray-600' },
-}
-
-function RoleBadge({ role }: { role: string }) {
-  const config = ROLE_CONFIG[role] ?? ROLE_CONFIG.system
-  const Icon = config.icon
-  return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${config.badgeClass}`}><Icon size={12} />{config.label}</span>
-}
-
-function PartTypeBadge({ type }: { type: string }) {
-  const config = PART_TYPE_CONFIG[type] ?? { label: type, emoji: '', badgeClass: 'bg-gray-100 text-gray-600' }
-  return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${config.badgeClass}`}>{config.emoji} {config.label}</span>
-}
 
 interface MessageViewerProps { sessionId: string }
 
@@ -112,7 +86,7 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
           <tbody>
             {parts.map((p, i) => (
               <tr key={i} className="border-b hover:bg-gray-50 cursor-pointer" onClick={() => setExpandedPart(expandedPart === i ? null : i)}>
-                <td className="px-2 py-1"><PartTypeBadge type={p.type} /></td>
+                <td className="px-2 py-1"><PartTypeBadge type={p.type} />{p.type === 'tool' && p.status && <StatusBadge status={p.status} />}</td>
                 <td className={`px-2 py-1 font-mono ${sizeColor(p.data_size)}`}>{formatBytes(p.data_size)}</td>
                 <td className="px-2 py-1 text-gray-500 truncate max-w-xs">{p.summary || '-'}</td>
               </tr>
