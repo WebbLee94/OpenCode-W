@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import type { MessageDTO, MessageDetailDTO, MessageFilter, PartDTO, SearchResult, IpcResult } from '../../shared/types'
+import type { MessageDTO, MessageDetailDTO, MessageFilter, MessageListByParentFilter, PartDTO, SearchResult, IpcResult } from '../../shared/types'
 import dbManager from '../database'
 
 function parsePartData(row: Record<string, unknown>): PartDTO {
@@ -196,6 +196,56 @@ export function registerHandlers(): void {
       message.parts = partRows.map(parsePartData)
 
       return { success: true, data: message }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.MESSAGES_LIST_BY_PARENT,
+    (_event, filter: MessageListByParentFilter): IpcResult<{ data: MessageDTO[]; total: number; page: number; pageSize: number }> => {
+      try {
+        const page = filter?.page ?? 1
+        const pageSize = filter?.pageSize ?? 50
+        const offset = (page - 1) * pageSize
+        const sessionIds = [filter.parentSessionId, ...(filter.childSessionIds ?? [])]
+        if (sessionIds.length === 0) {
+          return { success: true, data: { data: [], total: 0, page, pageSize } }
+        }
+        const placeholders = sessionIds.map(() => '?').join(',')
+
+        const countRow = dbManager.rawGet<{ cnt: number }>(
+          `SELECT COUNT(*) as cnt FROM message WHERE session_id IN (${placeholders})`,
+          sessionIds
+        )
+        const total = countRow?.cnt ?? 0
+
+        const rows = dbManager.rawQuery<Record<string, unknown>>(
+          `SELECT id, session_id, json_extract(data, '$.role') as role, LENGTH(data) as data_size, time_created,
+                  SUBSTR(COALESCE(json_extract(data, '$.content'), json_extract(data, '$.text'), ''), 1, 300) as content_preview
+           FROM message
+           WHERE session_id IN (${placeholders})
+           ORDER BY time_created ASC
+           LIMIT ? OFFSET ?`,
+          [...sessionIds, pageSize, offset]
+        )
+
+        const messages: MessageDTO[] = rows.map(row => {
+          const rawContent = (row.content_preview as string) ?? ''
+          return {
+            id: row.id as string,
+            session_id: row.session_id as string,
+            role: (row.role as MessageDTO['role']) ?? 'user',
+            data_size: (row.data_size as number) ?? 0,
+            time_created: typeof row.time_created === 'string'
+              ? new Date(row.time_created as string).getTime()
+              : (row.time_created as number),
+            content: rawContent.length >= 300 ? rawContent + '...' : rawContent || undefined,
+          }
+        })
+
+        return { success: true, data: { data: messages, total, page, pageSize } }
       } catch (error) {
         return { success: false, error: (error as Error).message }
       }

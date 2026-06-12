@@ -134,6 +134,13 @@ export interface MessageFilter {
   pageSize?: number;
 }
 
+export interface MessageListByParentFilter {
+  parentSessionId: string;
+  childSessionIds?: string[];
+  page?: number;
+  pageSize?: number;
+}
+
 // Search result
 export interface SearchResult {
   id: string;
