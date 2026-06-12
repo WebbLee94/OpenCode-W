@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShareDTO } from '../../../shared/types'
+import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShareDTO, MessageDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatNumber, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
@@ -143,6 +143,8 @@ function Sessions() {
   const [sessionShare, setSessionShare] = useState<SessionShareDTO | null>(null)
   const [showSecret, setShowSecret] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
+  const [tabMsgs, setTabMsgs] = useState<MessageDTO[]>([])
+  const [selectedMsgId, setSelectedMsgId] = useState('')
 
   // Sub-session dropdown
   const [childSessions, setChildSessions] = useState<SessionDTO[]>([])
@@ -247,6 +249,20 @@ const listRef = useRef<HTMLDivElement>(null)
   }, [setSearchParams])
 
   // ─── Load session detail ─────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (activeTab !== 'subsessions') { setTabMsgs([]); return }
+    const targetId = selectedChildId || activeSessionId
+    if (!targetId) { setTabMsgs([]); return }
+    invokeSafe<{ data: MessageDTO[]; total: number }>(IPC_CHANNELS.MESSAGES_LIST, { sessionId: targetId, pageSize: 50 })
+      .then(r => setTabMsgs(r.data || [])).catch(() => setTabMsgs([]))
+  }, [activeTab, selectedChildId, activeSessionId])
+
+  useEffect(() => {
+    if (activeTab !== 'messages' || !selectedChildId) { setTabMsgs([]); return }
+    invokeSafe<{ data: MessageDTO[]; total: number }>(IPC_CHANNELS.MESSAGES_LIST, { sessionId: selectedChildId, pageSize: 200 })
+      .then(r => setTabMsgs(r.data || [])).catch(() => setTabMsgs([]))
+  }, [activeTab, selectedChildId])
 
   const openDetail = useCallback((sessionId: string) => {
     setSearchParams(prev => { prev.set('session', sessionId); return prev })
@@ -598,10 +614,13 @@ const listRef = useRef<HTMLDivElement>(null)
                           </div>
                         )}
                       </div>
-                      <p className="text-sm text-gray-700 mb-3">📋 解析模式 — 查看子会话的消息详情</p>
-                      <div className="text-sm text-gray-400">
-                        点击子会话列表中的任一项以查看消息内容。<br/>
-                        提示：可返回会话列表，点击具体会话行进入消息查看器。
+                      <div className="flex gap-0 flex-1 overflow-hidden">
+                        <div className="w-[35%] border-r overflow-y-auto">
+                          {tabMsgs.length === 0 ? (<div className="flex items-center justify-center py-20 text-gray-400 text-sm">暂无消息</div>) : tabMsgs.map((msg, i) => (<div key={msg.id || i} onClick={() => setSelectedMsgId(msg.id)} className={`px-3 py-2 border-b cursor-pointer text-sm hover:bg-gray-50 ${selectedMsgId === msg.id ? 'bg-brand-50' : ''}`}><span className="text-xs text-gray-400">{msg.role || '?'}</span><span className="ml-2 text-gray-700 truncate">{msg.content?.slice(0, 60)}</span></div>))}
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4">
+                          {(() => { const m = tabMsgs.find(m => m.id === selectedMsgId); return m ? <div className="text-sm whitespace-pre-wrap">{m.content}</div> : <div className="flex items-center justify-center py-20 text-gray-400 text-sm">选择消息查看详情</div> })()}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -623,11 +642,9 @@ const listRef = useRef<HTMLDivElement>(null)
                           </div>
                         )}
                       </div>
-                      <p className="text-sm text-gray-700 mb-3">📖 预览模式 — 子会话对话流</p>
-                      <div className="text-sm text-gray-400">
-                        选择子会话后，此处将展示完整的对话记录。<br/>
-                        功能开发中，敬请期待。
-                      </div>
+                      {selectedChildId ? (
+                        tabMsgs.length === 0 ? <div className="flex items-center justify-center py-20 text-gray-400 text-sm">暂无消息</div> : <div className="space-y-4 p-2">{tabMsgs.map((msg, i) => (<div key={i} className={`p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-50 ml-8' : msg.role === 'assistant' ? 'bg-gray-50 mr-8' : 'bg-yellow-50 mx-4'}`}><div className="text-xs text-gray-400 mb-1">{msg.role}</div><div className="text-sm text-gray-800 whitespace-pre-wrap">{msg.content}</div></div>))}</div>
+                      ) : <div className="flex items-center justify-center py-20 text-gray-400 text-sm">请从上方下拉选择子会话</div>}
                     </div>
                   )}
                 </div>
