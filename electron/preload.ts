@@ -8,7 +8,7 @@ const ALLOWED_CHANNELS = [
   'app:getVersion', 'app:getPlatform',
   'dashboard:overview', 'dashboard:tokens', 'dashboard:toolRanking', 'dashboard:skillUsage', 'dashboard:trends',
   'sessions:list', 'sessions:detail', 'sessions:projects', 'sessions:delete',
-  'messages:list', 'messages:detail', 'messages:search',
+  'messages:list', 'messages:detail', 'messages:search', 'messages:list-by-parent',
   'cleanup:preview', 'cleanup:execute',
   'database:vacuum', 'database:checkpoint', 'database:open', 'database:health',
   'dialog:openFile', 'dialog:saveFile',
