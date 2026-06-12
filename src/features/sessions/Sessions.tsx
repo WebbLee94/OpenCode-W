@@ -413,8 +413,34 @@ const listRef = useRef<HTMLDivElement>(null)
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="relative flex h-full flex-col">
-      {/* Header & Filters */}
+    <div className={`flex h-full ${activeSessionId ? '' : 'flex-col'}`}>
+    {activeSessionId ? (
+      <>
+        {/* Compact list (5%) */}
+        <div className="w-[5%] border-r border-gray-200 overflow-auto bg-white">
+          <div className="p-1 space-y-0.5">
+            {sessions.map(s => (
+              <div key={s.id} onClick={() => setSearchParams(p => { p.set('session', s.id); return p })}
+                className={`text-xs truncate cursor-pointer px-1 py-0.5 rounded ${s.id === activeSessionId ? 'bg-brand-100 text-brand-700 font-medium' : 'hover:bg-gray-100'}`}>
+                {s.title?.slice(0, 12) || '-'}
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Detail panel (95%) */}
+        <div className="flex-1 flex flex-col overflow-auto">
+          <div className="flex items-center justify-between px-4 py-2 border-b bg-white shrink-0">
+            <span className="text-sm font-medium text-gray-700">会话详情</span>
+            <button onClick={() => setSearchParams(p => { p.delete('session'); return p })} className="text-gray-400 hover:text-gray-600">✕ 关闭</button>
+          </div>
+          <div className="flex-1 overflow-auto p-4">
+            <p className="text-gray-400 text-sm">Tab 内容区（待 Phase 3 实现）</p>
+          </div>
+        </div>
+      </>
+    ) : (
+      <div className="flex-1 flex flex-col">
+      {/* Full list header & table */}
       <div className="shrink-0 border-b border-gray-200 bg-white px-6 py-4">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-2xl font-semibold text-gray-900">Sessions</h2>
@@ -1014,6 +1040,8 @@ const listRef = useRef<HTMLDivElement>(null)
         variant="danger"
         loading={deleting}
       />
+      </div>
+      )}
     </div>
   )
 }
