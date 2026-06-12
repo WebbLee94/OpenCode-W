@@ -413,10 +413,32 @@ const listRef = useRef<HTMLDivElement>(null)
         {/* Detail panel */}
         <div className="flex-1 flex flex-col overflow-auto">
           <div className="flex items-center justify-between px-4 py-2 border-b bg-white shrink-0">
-            <span className="text-sm font-medium text-gray-700">会话详情</span>
+            {editingTitle ? (
+              <input
+                value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+                onBlur={async () => {
+                  if (editTitle.trim() && editTitle !== selectedSession?.title) {
+                    await invokeSafe(IPC_CHANNELS.SESSIONS_RENAME, { sessionId: activeSessionId, title: editTitle.trim() })
+                  }
+                  setEditingTitle(false)
+                }}
+                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                className="border rounded px-2 py-0.5 text-sm font-medium text-gray-800 max-w-md"
+                autoFocus
+              />
+            ) : (
+              <span
+                className="text-sm font-medium text-gray-800 cursor-pointer hover:text-brand-600"
+                title="点击修改名称"
+                onClick={() => { setEditTitle(selectedSession?.title || ''); setEditingTitle(true) }}
+              >
+                {selectedSession?.title || '无标题'}
+              </span>
+            )}
             <div className="flex items-center gap-2">
-              <button onClick={() => setShowDelete(true)} className="text-red-400 hover:text-red-600 ml-3 text-sm" title="删除会话">🗑</button>
-              <button onClick={() => setSearchParams(p => { p.delete('session'); return p })} className="text-gray-400 hover:text-gray-600">✕ 关闭</button>
+              <button onClick={() => setShowDelete(true)} className="text-red-500 hover:text-red-700 text-sm" title="删除会话">删除</button>
+              <button onClick={() => setSearchParams(p => { p.delete('session'); return p })} className="text-gray-400 hover:text-gray-600" title="关闭">✕</button>
             </div>
           </div>
           <div className="flex-1 overflow-auto">
