@@ -142,6 +142,7 @@ function Sessions() {
   // Session share state
   const [sessionShare, setSessionShare] = useState<SessionShareDTO | null>(null)
   const [showSecret, setShowSecret] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
 
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -390,19 +391,22 @@ const listRef = useRef<HTMLDivElement>(null)
         <div className="flex-1 flex flex-col overflow-auto">
           <div className="flex items-center justify-between px-4 py-2 border-b bg-white shrink-0">
             <span className="text-sm font-medium text-gray-700">会话详情</span>
-            <button onClick={() => setSearchParams(p => { p.delete('session'); return p })} className="text-gray-400 hover:text-gray-600">✕ 关闭</button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setShowDelete(true)} className="text-red-400 hover:text-red-600 ml-3 text-sm" title="删除会话">🗑</button>
+              <button onClick={() => setSearchParams(p => { p.delete('session'); return p })} className="text-gray-400 hover:text-gray-600">✕ 关闭</button>
+            </div>
           </div>
           <div className="flex-1 overflow-auto">
             {activeSessionId && selectedSession ? (
               <>
                 {/* Tab Bar */}
                 <div className="flex border-b bg-white px-4 shrink-0 gap-0">
-                  {['basic', 'subsessions', 'messages', 'todos', 'shares'].map(t => (
+                  {['basic', 'subsessions', 'messages', 'todos'].map(t => (
                     <button key={t} onClick={() => setSearchParams(p => { p.set('tab', t); return p })}
                       className={`px-4 py-2 text-sm border-b-2 -mb-[1px] whitespace-nowrap ${
                         activeTab === t ? 'border-brand-500 text-brand-700 font-medium' : 'border-transparent text-gray-500 hover:text-gray-700'
                       }`}>
-                      {t === 'basic' ? '基础' : t === 'subsessions' ? '解析' : t === 'messages' ? '预览' : t === 'todos' ? '待办' : '分享'}
+                      {t === 'basic' ? '基础' : t === 'subsessions' ? '解析' : t === 'messages' ? '预览' : '待办'}
                     </button>
                   ))}
                 </div>
@@ -418,36 +422,40 @@ const listRef = useRef<HTMLDivElement>(null)
                           <p><span className="text-gray-500">时间:</span> {selectedSession.time_created ? new Date(selectedSession.time_created).toLocaleString() : '-'}</p>
                         </div>
                       </div>
-                      {/* Token Pie */}
-                      {tokenPieData.length > 0 && (
-                        <div>
-                          <h5 className="text-sm font-medium text-gray-700 mb-2">Token 明细</h5>
-                          <ResponsiveContainer width="100%" height={180}>
-                            <PieChart><Pie data={tokenPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value">
-                              {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
-                            </Pie><RechartsTooltip formatter={(v: number) => formatNumber(v)} /></PieChart>
-                          </ResponsiveContainer>
-                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                            {tokenPieData.map((entry, i) => (
-                              <div key={entry.name} className="flex items-center gap-1.5 text-xs text-gray-600">
-                                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{backgroundColor: TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]}}/>
-                                {entry.name}: {formatNumber(entry.value)}
+                      {((tokenPieData.length > 0) || (toolBarData.length > 0)) && (
+                        <div className="grid grid-cols-2 gap-4">
+                          {/* Token Pie */}
+                          {tokenPieData.length > 0 && (
+                            <div>
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">Token 明细</h5>
+                              <ResponsiveContainer width="100%" height={180}>
+                                <PieChart><Pie data={tokenPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value">
+                                  {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
+                                </Pie><RechartsTooltip formatter={(v: number) => formatNumber(v)} /></PieChart>
+                              </ResponsiveContainer>
+                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                                {tokenPieData.map((entry, i) => (
+                                  <div key={entry.name} className="flex items-center gap-1.5 text-xs text-gray-600">
+                                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{backgroundColor: TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]}}/>
+                                    {entry.name}: {formatNumber(entry.value)}
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {/* Tool Ranking */}
-                      {toolBarData.length > 0 && (
-                        <div>
-                          <h5 className="text-sm font-medium text-gray-700 mb-2">Tool 排行</h5>
-                          <ResponsiveContainer width="100%" height={toolBarData.length * 32 + 20}>
-                            <BarChart data={toolBarData} layout="vertical" margin={{left:80,right:20}}>
-                              <XAxis type="number" tickFormatter={v => formatNumber(v)} />
-                              <YAxis type="category" dataKey="name" width={80} tick={{fontSize:12}} />
-                              <Bar dataKey="count" fill="#3B82F6" radius={[0,4,4,0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
+                            </div>
+                          )}
+                          {/* Tool Ranking */}
+                          {toolBarData.length > 0 && (
+                            <div>
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">Tool 排行</h5>
+                              <ResponsiveContainer width="100%" height={toolBarData.length * 32 + 20}>
+                                <BarChart data={toolBarData} layout="vertical" margin={{left:80,right:20}}>
+                                  <XAxis type="number" tickFormatter={v => formatNumber(v)} />
+                                  <YAxis type="category" dataKey="name" width={80} tick={{fontSize:12}} />
+                                  <Bar dataKey="count" fill="#3B82F6" radius={[0,4,4,0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          )}
                         </div>
                       )}
                       {/* Skill List */}
@@ -458,6 +466,16 @@ const listRef = useRef<HTMLDivElement>(null)
                             {selectedSession.skillList.map((skillName, i) => (
                               <span key={i} className="px-2.5 py-0.5 rounded-full bg-purple-50 text-xs text-purple-700">{skillName}</span>
                             ))}
+                          </div>
+                        </div>
+                      )}
+                      {sessionShare && (
+                        <div className="border-t pt-4 mt-4">
+                          <h5 className="text-sm font-medium text-gray-700 mb-2">📤 分享信息</h5>
+                          <div className="flex items-center gap-3 text-sm bg-gray-50 rounded p-3">
+                            <span className="text-gray-500 truncate flex-1 font-mono text-xs">{sessionShare.url}</span>
+                            <button onClick={() => { navigator.clipboard.writeText(sessionShare.url) }} className="text-gray-400 hover:text-blue-600 text-sm">📋 复制</button>
+                            <button onClick={() => { window.open(sessionShare.url, '_blank') }} className="text-gray-400 hover:text-blue-600 text-sm">🌐 打开</button>
                           </div>
                         </div>
                       )}
@@ -508,27 +526,6 @@ const listRef = useRef<HTMLDivElement>(null)
                     </div>
                     )
                   })()}
-                  {activeTab === 'shares' && (
-                    <div>
-                      {sessionShare ? (
-                        <table className="w-full text-sm">
-                          <thead className="bg-gray-50">
-                            <tr className="border-b"><th className="text-left px-3 py-2 text-gray-500">分享ID</th><th className="text-left px-3 py-2 text-gray-500">创建时间</th><th className="text-center px-3 py-2 text-gray-500">操作</th></tr>
-                          </thead>
-                          <tbody>
-                            <tr className="border-b hover:bg-gray-50">
-                              <td className="px-3 py-2 font-mono text-xs">{sessionShare.id?.slice(0,16)}</td>
-                              <td className="px-3 py-2 text-xs text-gray-600">{new Date(sessionShare.time_created).toLocaleString()}</td>
-                              <td className="px-3 py-2 text-center">
-                                <button onClick={() => { navigator.clipboard.writeText(sessionShare.url) }} className="text-gray-400 hover:text-blue-600 mr-2 text-sm" title="复制链接">📋</button>
-                                <button onClick={() => { if (sessionShare.url) window.open(sessionShare.url, '_blank') }} className="text-gray-400 hover:text-blue-600 text-sm" title="浏览器打开">🌐</button>
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      ) : <p className="text-sm text-gray-400 py-4">暂无分享</p>}
-                    </div>
-                  )}
                   {activeTab === 'subsessions' && (
                     <div>
                       <p className="text-sm text-gray-700 mb-3">📋 解析模式 — 查看子会话的消息详情</p>
@@ -554,6 +551,20 @@ const listRef = useRef<HTMLDivElement>(null)
             )}
           </div>
         </div>
+        {showDelete && (
+          <ConfirmDialog isOpen={showDelete} onClose={() => setShowDelete(false)}
+            onConfirm={async () => {
+              try {
+                setShowDelete(false)
+                await invokeSafe(IPC_CHANNELS.SESSIONS_DELETE, activeSessionId)
+                setSearchParams(p => { p.delete('session'); p.delete('tab'); return p })
+              } catch {
+                alert('删除失败')
+              }
+            }}
+            title="确认删除" variant="danger" confirmLabel="确认删除"
+            message="确定要删除此会话吗？这将同时删除其所有子会话、消息记录和相关数据，此操作不可恢复。建议先备份数据库。" />
+        )}
       </>
     ) : (
       <div className="flex-1 flex flex-col">
