@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShareDTO, MessageDTO } from '../../../shared/types'
+import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShareDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatNumber, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
@@ -36,6 +36,7 @@ import {
 } from 'recharts'
 import MessageViewer from '../messages/MessageViewer'
 import SubSessionSelector from './SubSessionSelector'
+import SessionPreview from './SessionPreview'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -145,7 +146,6 @@ function Sessions() {
   const [sessionShare, setSessionShare] = useState<SessionShareDTO | null>(null)
   const [showSecret, setShowSecret] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
-  const [tabMsgs, setTabMsgs] = useState<MessageDTO[]>([])
   const [selectedMsgId, setSelectedMsgId] = useState('')
 
   // Sub-session selector
@@ -242,20 +242,6 @@ const listRef = useRef<HTMLDivElement>(null)
   }, [setSearchParams])
 
   // ─── Load session detail ─────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (activeTab !== 'subsessions') { setTabMsgs([]); return }
-    const targetId = selectedChildId || activeSessionId
-    if (!targetId) { setTabMsgs([]); return }
-    invokeSafe<{ data: MessageDTO[]; total: number }>(IPC_CHANNELS.MESSAGES_LIST, { sessionId: targetId, pageSize: 50 })
-      .then(r => setTabMsgs(r.data || [])).catch(() => setTabMsgs([]))
-  }, [activeTab, selectedChildId, activeSessionId])
-
-  useEffect(() => {
-    if (activeTab !== 'messages' || !selectedChildId) { setTabMsgs([]); return }
-    invokeSafe<{ data: MessageDTO[]; total: number }>(IPC_CHANNELS.MESSAGES_LIST, { sessionId: selectedChildId, pageSize: 200 })
-      .then(r => setTabMsgs(r.data || [])).catch(() => setTabMsgs([]))
-  }, [activeTab, selectedChildId])
 
   const openDetail = useCallback((sessionId: string) => {
     setSearchParams(prev => { prev.set('session', sessionId); return prev })
@@ -581,12 +567,7 @@ const listRef = useRef<HTMLDivElement>(null)
                     </>
                   )}
                   {activeTab === 'messages' && (
-                    <div>
-                      <SubSessionSelector childSessions={childSessions} selectedChildId={selectedChildId} onChange={setSelectedChildId} />
-                      {selectedChildId ? (
-                        tabMsgs.length === 0 ? <div className="flex items-center justify-center py-20 text-gray-400 text-sm">暂无消息</div> : <div className="space-y-4 p-2">{tabMsgs.map((msg, i) => (<div key={i} className={`p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-50 ml-8' : msg.role === 'assistant' ? 'bg-gray-50 mr-8' : 'bg-yellow-50 mx-4'}`}><div className="text-xs text-gray-400 mb-1">{msg.role}</div><div className="text-sm text-gray-800 whitespace-pre-wrap">{msg.content}</div></div>))}</div>
-                      ) : <div className="flex items-center justify-center py-20 text-gray-400 text-sm">请从上方下拉选择子会话</div>}
-                    </div>
+                    <SessionPreview activeSessionId={activeSessionId} childSessions={childSessions} />
                   )}
                 </div>
               </>
