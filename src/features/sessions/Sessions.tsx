@@ -20,6 +20,7 @@ import {
   EyeOff,
   Copy,
   Share2,
+  Calendar,
   ClipboardList,
 } from 'lucide-react'
 import {
@@ -90,6 +91,36 @@ function Sessions() {
   })
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [datePreset, setDatePreset] = useState('all')
+  const [dateOpen, setDateOpen] = useState(false)
+  const dateRef = useRef<HTMLDivElement>(null)
+
+  const DATE_PRESETS = [
+    { value: 'all', label: '全部' },
+    { value: 'today', label: '今天' },
+    { value: '3days', label: '近3天' },
+    { value: '7days', label: '近一周' },
+    { value: '30days', label: '近一月' },
+    { value: 'custom', label: '自定义' },
+  ]
+
+  function applyDateFilter(preset: string) {
+    const today = new Date().toISOString().slice(0, 10)
+    if (preset === 'today') { setStartDate(today); setEndDate(today) }
+    else if (preset === '3days') { setStartDate(new Date(Date.now()-3*86400000).toISOString().slice(0,10)); setEndDate(today) }
+    else if (preset === '7days') { setStartDate(new Date(Date.now()-7*86400000).toISOString().slice(0,10)); setEndDate(today) }
+    else if (preset === '30days') { setStartDate(new Date(Date.now()-30*86400000).toISOString().slice(0,10)); setEndDate(today) }
+    else { setStartDate(''); setEndDate('') }
+    setDatePreset(preset)
+    setPage(1)
+  }
+
+  // Close date dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (dateRef.current && !dateRef.current.contains(e.target as Node)) setDateOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   // Detail panel state
   const [selectedSession, setSelectedSession] = useState<SessionDetailDTO | null>(null)
@@ -437,83 +468,29 @@ const listRef = useRef<HTMLDivElement>(null)
             )}
           </div>
 
-          {/* Sort by */}
-          <select
-            value={sortBy}
-            onChange={(e) => {
-              setSortBy(e.target.value)
-              setPage(1)
-            }}
-            className="min-w-[130px] appearance-none rounded-md border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-          >
-            {SORT_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-
-          {/* Sort order toggle */}
-          <button
-            onClick={() => setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
-            className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            title={sortOrder === 'asc' ? '升序' : '降序'}
-          >
-            <ArrowUpDown size={14} />
-            {sortOrder === 'asc' ? '升序' : '降序'}
-          </button>
-
-          {/* Display mode — hierarchy view */}
-          <select
-            value={parentFilter}
-            onChange={(e) => { setParentFilter(e.target.value as 'root' | 'all' | 'children'); setPage(1) }}
-            className="min-w-[110px] appearance-none rounded-md border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-          >
-            <option value="root">根会话</option>
-            <option value="all">全部</option>
-            <option value="children">子会话</option>
-          </select>
-
-          {/* Date range filter */}
-          <div className="flex items-center gap-1.5">
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => {
-                const val = e.target.value
-                setStartDate(val)
-                setPage(1)
-                syncFiltersToUrl(val, endDate, projectId)
-              }}
-              className="rounded-md border border-gray-300 bg-white py-2 px-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              title="开始日期"
-            />
-            <span className="text-gray-400 text-sm">~</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => {
-                const val = e.target.value
-                setEndDate(val)
-                setPage(1)
-                syncFiltersToUrl(startDate, val, projectId)
-              }}
-              className="rounded-md border border-gray-300 bg-white py-2 px-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              title="结束日期"
-            />
-            {(startDate || endDate) && (
-              <button
-                onClick={() => {
-                  setStartDate('')
-                  setEndDate('')
-                  setPage(1)
-                  syncFiltersToUrl('', '', projectId)
-                }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-                title="清除日期筛选"
-              >
-                <X size={14} />
-              </button>
+          {/* Date quick selector */}
+          <div className="relative" ref={dateRef}>
+            <button onClick={() => setDateOpen(!dateOpen)}
+              className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap">
+              <Calendar size={14} />
+              {datePreset !== 'all' ? DATE_PRESETS.find(d => d.value === datePreset)?.label : '日期范围'}
+            </button>
+            {dateOpen && (
+              <div className="absolute z-30 top-full left-0 mt-1 w-44 bg-white border border-gray-200 rounded shadow-lg py-1">
+                {DATE_PRESETS.map(d => (
+                  <button key={d.value} onClick={() => { applyDateFilter(d.value); setDateOpen(false) }}
+                    className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 ${datePreset === d.value ? 'bg-brand-50 text-brand-700' : ''}`}>
+                    {d.label}
+                  </button>
+                ))}
+                {datePreset === 'custom' && (
+                  <div className="px-2 py-1 border-t mt-1">
+                    <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1) }} className="border rounded px-1 py-0.5 text-xs w-full mb-1" />
+                    <span className="text-xs text-gray-400">~</span>
+                    <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1) }} className="border rounded px-1 py-0.5 text-xs w-full mt-1" />
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
