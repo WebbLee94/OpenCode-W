@@ -37,6 +37,7 @@ import {
 import MessageViewer from '../messages/MessageViewer'
 import SubSessionSelector from './SubSessionSelector'
 import SessionPreview from './SessionPreview'
+import PreviewTabPagination from '../../components/PreviewTabPagination'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -151,6 +152,14 @@ function Sessions() {
   // Sub-session selector
   const [childSessions, setChildSessions] = useState<SessionDTO[]>([])
   const [selectedChildId, setSelectedChildId] = useState<string>('')
+
+  // Preview tab pagination (外置分页 — Commit 5.1)
+  const [previewPage, setPreviewPage] = useState(1)
+  const [previewPageSize, setPreviewPageSize] = useState(() => {
+    const saved = localStorage.getItem('dbscope-preview-page-size')
+    return saved ? parseInt(saved, 10) : 50
+  })
+  const [previewTotal, setPreviewTotal] = useState(0)
 
   // Inline title edit
   const [editingTitle, setEditingTitle] = useState(false)
@@ -480,7 +489,7 @@ const listRef = useRef<HTMLDivElement>(null)
                     </div>
                   </div>
                 )}
-                {activeTab !== 'subsessions' && (
+                {activeTab !== 'subsessions' && activeTab !== 'messages' && (
                   <div className="overflow-y-auto h-full p-4">
                     {activeTab === 'basic' && (
                       <div className="space-y-6">
@@ -605,11 +614,39 @@ const listRef = useRef<HTMLDivElement>(null)
                       )
                     })()}
                     {activeTab === 'messages' && (
-                      <SessionPreview activeSessionId={activeSessionId} childSessions={childSessions} />
+                      <div className="flex flex-col h-full">
+                        <div className="flex-1 overflow-y-auto p-4">
+                          <SessionPreview
+                            activeSessionId={activeSessionId}
+                            childSessions={childSessions}
+                            page={previewPage}
+                            pageSize={previewPageSize}
+                            total={previewTotal}
+                            onPageChange={setPreviewPage}
+                            onPageSizeChange={setPreviewPageSize}
+                            onTotalChange={setPreviewTotal}
+                            selectedChildId={selectedChildId}
+                            onSelectedChildIdChange={setSelectedChildId}
+                          />
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
               </div>
+              {activeTab === 'messages' && (
+                <PreviewTabPagination
+                  page={previewPage}
+                  total={previewTotal}
+                  pageSize={previewPageSize}
+                  onPageChange={setPreviewPage}
+                  onPageSizeChange={(s) => {
+                    setPreviewPageSize(s)
+                    localStorage.setItem('dbscope-preview-page-size', String(s))
+                    setPreviewPage(1)
+                  }}
+                />
+              )}
             </>
           ) : (
             <p className="text-gray-400 text-sm p-4">加载中...</p>
