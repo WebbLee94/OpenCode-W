@@ -34,6 +34,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import MessageViewer from '../messages/MessageViewer'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -596,34 +597,7 @@ const listRef = useRef<HTMLDivElement>(null)
                     </div>
                     )
                   })()}
-                  {activeTab === 'subsessions' && (
-                    <div>
-                      <div className="relative inline-block mb-3" ref={subDropdownRef}>
-                        <button onClick={() => setSubDropdownOpen(!subDropdownOpen)} className="text-sm text-gray-500 hover:text-gray-700 border rounded px-2 py-0.5">
-                          ▼ {selectedChildId ? childSessions.find(c => c.id === selectedChildId)?.title?.slice(0,20) || '已选' : '全部子会话'}
-                        </button>
-                        {subDropdownOpen && (
-                          <div className="absolute z-20 top-full left-0 mt-1 bg-white border rounded shadow-lg py-1 w-64 max-h-48 overflow-y-auto">
-                            <button onClick={() => { setSelectedChildId(''); setSubDropdownOpen(false) }} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 font-medium">全部子会话</button>
-                            {childSessions.map(c => (
-                              <button key={c.id} onClick={() => { setSelectedChildId(c.id); setSubDropdownOpen(false) }}
-                                className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 ${selectedChildId === c.id ? 'bg-brand-50' : ''}`}>
-                                {c.title || '无标题'}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex gap-0 flex-1 overflow-hidden">
-                        <div className="w-[35%] border-r overflow-y-auto">
-                          {tabMsgs.length === 0 ? (<div className="flex items-center justify-center py-20 text-gray-400 text-sm">暂无消息</div>) : tabMsgs.map((msg, i) => (<div key={msg.id || i} onClick={() => setSelectedMsgId(msg.id)} className={`px-3 py-2 border-b cursor-pointer text-sm hover:bg-gray-50 ${selectedMsgId === msg.id ? 'bg-brand-50' : ''}`}><span className="text-xs text-gray-400">{msg.role || '?'}</span><span className="ml-2 text-gray-700 truncate">{msg.content?.slice(0, 60)}</span></div>))}
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-4">
-                          {(() => { const m = tabMsgs.find(m => m.id === selectedMsgId); return m ? <div className="text-sm whitespace-pre-wrap">{m.content}</div> : <div className="flex items-center justify-center py-20 text-gray-400 text-sm">选择消息查看详情</div> })()}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  {activeTab === 'subsessions' && <MessageViewer sessionId={(selectedChildId || activeSessionId)!} />}
                   {activeTab === 'messages' && (
                     <div>
                       <div className="relative inline-block mb-3" ref={subDropdownRef}>
