@@ -205,7 +205,7 @@ function Dashboard() {
       setProviderStats(dashboardCache.providerStats ?? [])
       setFastLoading(false)
       setSlowLoading(false)
-      return
+      // Don't return — still refresh Route B data below
     }
 
     setError(null)
