@@ -144,6 +144,14 @@ function Sessions() {
   const [showSecret, setShowSecret] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
 
+  // Sub-session dropdown
+  const [childSessions, setChildSessions] = useState<SessionDTO[]>([])
+  const [selectedChildId, setSelectedChildId] = useState<string>('')
+
+  // Inline title edit
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeSessionId = searchParams.get('session') || null
@@ -255,6 +263,9 @@ const listRef = useRef<HTMLDivElement>(null)
     invokeSafe<SessionShareDTO | null>(IPC_CHANNELS.SESSION_SHARE_GET, sessionId)
       .then((result) => setSessionShare(result))
       .catch(() => setSessionShare(null))
+
+    // Load children for sub-session dropdown
+    invokeSafe<SessionDTO[]>(IPC_CHANNELS.SESSIONS_CHILDREN, sessionId).then(setChildSessions).catch(() => setChildSessions([]))
   }, [])
 
   const closeDetail = useCallback(() => {
@@ -415,7 +426,24 @@ const listRef = useRef<HTMLDivElement>(null)
                   {activeTab === 'basic' && (
                     <div className="space-y-6">
                       <div>
-                        <h4 className="text-base font-semibold text-gray-900 mb-3">{selectedSession.title || '无标题'}</h4>
+                        <div className="flex items-center gap-2 mb-3">
+                          {editingTitle ? (
+                            <input value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                              onBlur={async () => {
+                                if (editTitle.trim() && editTitle !== selectedSession.title) {
+                                  await invokeSafe(IPC_CHANNELS.SESSIONS_RENAME, { sessionId: activeSessionId, title: editTitle.trim() })
+                                }
+                                setEditingTitle(false)
+                              }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                              className="border rounded px-2 py-1 text-sm font-semibold" autoFocus />
+                          ) : (
+                            <h4 className="text-base font-semibold text-gray-900 cursor-pointer hover:text-brand-600"
+                              onClick={() => { setEditTitle(selectedSession?.title || ''); setEditingTitle(true) }}>
+                              {selectedSession?.title || '无标题'} ✏️
+                            </h4>
+                          )}
+                        </div>
                         <div className="space-y-2 text-sm">
                           <p><span className="text-gray-500">目录:</span> {selectedSession.directory || '-'}</p>
                           <p><span className="text-gray-500">模型:</span> {selectedSession.model || '-'}</p>
@@ -490,6 +518,20 @@ const listRef = useRef<HTMLDivElement>(null)
                     })
                     return (
                     <div>
+                      <div className="relative inline-block group mb-3">
+                        <button className="text-sm text-gray-500 hover:text-gray-700 border rounded px-2 py-0.5">
+                          ▼ {selectedChildId ? childSessions.find(c => c.id === selectedChildId)?.title?.slice(0,20) || '已选' : '全部子会话'}
+                        </button>
+                        <div className="absolute z-20 top-full left-0 mt-1 bg-white border rounded shadow-lg py-1 w-64 hidden group-hover:block max-h-48 overflow-y-auto">
+                          <button onClick={() => setSelectedChildId('')} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 font-medium">全部子会话</button>
+                          {childSessions.map(c => (
+                            <button key={c.id} onClick={() => setSelectedChildId(c.id)}
+                              className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 ${selectedChildId === c.id ? 'bg-brand-50' : ''}`}>
+                              {c.title || '无标题'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <h5 className="text-sm font-medium text-gray-700 mb-3">待办列表 ({filteredTodos.length})</h5>
                       <div className="flex gap-2 mb-3">
                         <input type="text" placeholder="搜索待办..." value={todoSearch} onChange={e => setTodoSearch(e.target.value)}
@@ -528,6 +570,20 @@ const listRef = useRef<HTMLDivElement>(null)
                   })()}
                   {activeTab === 'subsessions' && (
                     <div>
+                      <div className="relative inline-block group mb-3">
+                        <button className="text-sm text-gray-500 hover:text-gray-700 border rounded px-2 py-0.5">
+                          ▼ {selectedChildId ? childSessions.find(c => c.id === selectedChildId)?.title?.slice(0,20) || '已选' : '全部子会话'}
+                        </button>
+                        <div className="absolute z-20 top-full left-0 mt-1 bg-white border rounded shadow-lg py-1 w-64 hidden group-hover:block max-h-48 overflow-y-auto">
+                          <button onClick={() => setSelectedChildId('')} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 font-medium">全部子会话</button>
+                          {childSessions.map(c => (
+                            <button key={c.id} onClick={() => setSelectedChildId(c.id)}
+                              className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 ${selectedChildId === c.id ? 'bg-brand-50' : ''}`}>
+                              {c.title || '无标题'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <p className="text-sm text-gray-700 mb-3">📋 解析模式 — 查看子会话的消息详情</p>
                       <div className="text-sm text-gray-400">
                         点击子会话列表中的任一项以查看消息内容。<br/>
@@ -537,6 +593,20 @@ const listRef = useRef<HTMLDivElement>(null)
                   )}
                   {activeTab === 'messages' && (
                     <div>
+                      <div className="relative inline-block group mb-3">
+                        <button className="text-sm text-gray-500 hover:text-gray-700 border rounded px-2 py-0.5">
+                          ▼ {selectedChildId ? childSessions.find(c => c.id === selectedChildId)?.title?.slice(0,20) || '已选' : '全部子会话'}
+                        </button>
+                        <div className="absolute z-20 top-full left-0 mt-1 bg-white border rounded shadow-lg py-1 w-64 hidden group-hover:block max-h-48 overflow-y-auto">
+                          <button onClick={() => setSelectedChildId('')} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 font-medium">全部子会话</button>
+                          {childSessions.map(c => (
+                            <button key={c.id} onClick={() => setSelectedChildId(c.id)}
+                              className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 ${selectedChildId === c.id ? 'bg-brand-50' : ''}`}>
+                              {c.title || '无标题'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <p className="text-sm text-gray-700 mb-3">📖 预览模式 — 子会话对话流</p>
                       <div className="text-sm text-gray-400">
                         选择子会话后，此处将展示完整的对话记录。<br/>

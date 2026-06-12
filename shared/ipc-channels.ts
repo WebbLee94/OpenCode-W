@@ -24,6 +24,7 @@ export const IPC_CHANNELS = {
   SESSIONS_DELETE: 'sessions:delete',
   SESSIONS_PARENT: 'sessions:parent',
   SESSIONS_CHILDREN: 'sessions:children',
+  SESSIONS_RENAME: 'sessions:rename',
 
   // Messages
   MESSAGES_LIST: 'messages:list',

@@ -253,6 +253,15 @@ export function registerHandlers(): void {
       }
   )
 
+  // ─── Session Rename ────────────────────────────────────────────
+
+  ipcMain.handle('sessions:rename', async (_event, { sessionId, title }: { sessionId: string; title: string }) => {
+    try {
+      dbManager.getDb().prepare('UPDATE session SET title = ? WHERE id = ?').run(title, sessionId)
+      return { success: true }
+    } catch (e: any) { return { success: false, error: e.message } }
+  })
+
   // ─── Route B: Session Parent/Children ────────────────────────────
 
   ipcMain.handle(IPC_CHANNELS.SESSIONS_PARENT, (_event, sessionId: string): IpcResult<SessionDTO | null> => {

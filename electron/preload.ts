@@ -17,7 +17,7 @@ const ALLOWED_CHANNELS = [
   'session-share:get', 'session-shares:list',
   'accounts:list', 'accounts:active', 'accounts:usage',
   'events:list', 'events:detail',
-  'sessions:parent', 'sessions:children',
+  'sessions:parent', 'sessions:children', 'sessions:rename',
   'dashboard:projects', 'dashboard:workspaces', 'dashboard:modelRanking', 'dashboard:providerStats',
 ]
 
