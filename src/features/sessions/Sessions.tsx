@@ -445,7 +445,7 @@ const listRef = useRef<HTMLDivElement>(null)
                       className={`px-4 py-2 text-sm border-b-2 -mb-[1px] whitespace-nowrap ${
                         activeTab === t ? 'border-brand-500 text-brand-700 font-medium' : 'border-transparent text-gray-500 hover:text-gray-700'
                       }`}>
-                      {t === 'basic' ? '基础' : t === 'subsessions' ? '子会话' : t === 'messages' ? '消息' : t === 'todos' ? '待办' : '分享'}
+                      {t === 'basic' ? '基础' : t === 'subsessions' ? '解析' : t === 'messages' ? '预览' : t === 'todos' ? '待办' : '分享'}
                     </button>
                   ))}
                 </div>
@@ -470,6 +470,14 @@ const listRef = useRef<HTMLDivElement>(null)
                               {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
                             </Pie><RechartsTooltip formatter={(v: number) => formatNumber(v)} /></PieChart>
                           </ResponsiveContainer>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                            {tokenPieData.map((entry, i) => (
+                              <div key={entry.name} className="flex items-center gap-1.5 text-xs text-gray-600">
+                                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{backgroundColor: TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]}}/>
+                                {entry.name}: {formatNumber(entry.value)}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                       {/* Tool Ranking */}
@@ -490,8 +498,8 @@ const listRef = useRef<HTMLDivElement>(null)
                         <div>
                           <h5 className="text-sm font-medium text-gray-700 mb-2">Skill 列表</h5>
                           <div className="flex flex-wrap gap-2">
-                            {selectedSession.skillList.map(s => (
-                              <span key={s.skillName} className="px-2.5 py-0.5 rounded-full bg-purple-50 text-xs text-purple-700">{s.skillName} ({s.count})</span>
+                            {selectedSession.skillList.map((skillName, i) => (
+                              <span key={i} className="px-2.5 py-0.5 rounded-full bg-purple-50 text-xs text-purple-700">{skillName}</span>
                             ))}
                           </div>
                         </div>
