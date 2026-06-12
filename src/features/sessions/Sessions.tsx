@@ -161,6 +161,9 @@ function Sessions() {
   })
   const [previewTotal, setPreviewTotal] = useState(0)
 
+  // Todos tab pagination (Commit 6.1)
+  const [todoPage, setTodoPage] = useState(1)
+
   // Inline title edit
   const [editingTitle, setEditingTitle] = useState(false)
   const [editTitle, setEditTitle] = useState('')
@@ -575,10 +578,14 @@ const listRef = useRef<HTMLDivElement>(null)
                         if (todoPriorityFilter && t.priority !== todoPriorityFilter) return false
                         return true
                       })
+                      const TODO_PAGE_SIZE = 20
+                      const totalPages = Math.max(1, Math.ceil(filteredTodos.length / TODO_PAGE_SIZE))
+                      const pagedTodos = filteredTodos.slice((todoPage - 1) * TODO_PAGE_SIZE, todoPage * TODO_PAGE_SIZE)
+
                       return (
-                      <div>
-                        <h5 className="text-sm font-medium text-gray-700 mb-3">待办列表 ({filteredTodos.length})</h5>
-                        <div className="flex gap-2 mb-3">
+                      <div className="flex flex-col h-full">
+                        {/* 顶部 sticky — 搜索/筛选行 */}
+                        <div className="shrink-0 bg-white border-b px-4 py-2 flex gap-2 flex-wrap">
                           <input type="text" placeholder="搜索待办..." value={todoSearch} onChange={e => setTodoSearch(e.target.value)}
                             className="border rounded px-2 py-1 text-sm w-48" />
                           <select value={todoStatusFilter} onChange={e => setTodoStatusFilter(e.target.value)}
@@ -597,19 +604,70 @@ const listRef = useRef<HTMLDivElement>(null)
                             <option value="low">低</option>
                           </select>
                         </div>
-                        {filteredTodos.length > 0 ? (
-                          <div className="space-y-2">
-                            {filteredTodos.map(todo => (
-                              <div key={`${todo.session_id}:${todo.position}`} className="rounded border p-2 bg-gray-50/50">
-                                <span className="text-xs text-gray-400 mr-1">[{todo.position}]</span>
-                                <span className="text-xs">{todo.content?.slice(0, 120)}</span>
-                                <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${todo.status==='completed'?'bg-green-100 text-green-700':'bg-yellow-100 text-yellow-700'}`}>
-                                  {todo.status}
-                                </span>
-                              </div>
-                            ))}
+
+                        {/* 中间 — 表格 */}
+                        <div className="flex-1 overflow-y-auto">
+                          <table className="w-full text-sm">
+                            <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
+                              <tr>
+                                <th className="w-12 px-2 py-2 text-center font-medium text-gray-500">#</th>
+                                <th className="px-2 py-2 text-left font-medium text-gray-500">内容</th>
+                                <th className="w-20 px-2 py-2 text-center font-medium text-gray-500">状态</th>
+                                <th className="w-16 px-2 py-2 text-center font-medium text-gray-500">优先级</th>
+                                <th className="px-2 py-2 text-left font-medium text-gray-500">所属会话</th>
+                                <th className="w-14 px-2 py-2 text-center font-medium text-gray-500">位置</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {pagedTodos.length > 0 ? pagedTodos.map((todo, idx) => (
+                                <tr key={`${todo.session_id}:${todo.position}`} className="border-b border-gray-100 hover:bg-gray-50/50">
+                                  <td className="px-2 py-2 text-center text-gray-400 text-xs">{(todoPage - 1) * TODO_PAGE_SIZE + idx + 1}</td>
+                                  <td className="px-2 py-2 truncate max-w-md" title={todo.content}>
+                                    {truncateText(todo.content || '', 80)}
+                                  </td>
+                                  <td className="px-2 py-2 text-center">
+                                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                      todo.status === 'completed' ? 'bg-green-100 text-green-700'
+                                      : todo.status === 'cancelled' ? 'bg-gray-100 text-gray-500'
+                                      : todo.status === 'in_progress' ? 'bg-blue-100 text-blue-700'
+                                      : 'bg-yellow-100 text-yellow-700'
+                                    }`}>
+                                      {todo.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-2 text-center">
+                                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                      todo.priority === 'high' ? 'bg-red-100 text-red-700'
+                                      : todo.priority === 'medium' ? 'bg-yellow-100 text-yellow-700'
+                                      : 'bg-green-100 text-green-700'
+                                    }`}>
+                                      {todo.priority || '-'}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-2 truncate max-w-xs text-gray-600 text-xs">
+                                    {todo.session_title || todo.session_id.slice(0, 8)}
+                                  </td>
+                                  <td className="px-2 py-2 text-center text-gray-500 text-xs">[{todo.position}]</td>
+                                </tr>
+                              )) : (
+                                <tr><td colSpan={6} className="text-center text-gray-400 py-8 text-sm">暂无待办</td></tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* 底部 sticky — 分页 */}
+                        {filteredTodos.length > 0 && (
+                          <div className="shrink-0 border-t bg-white px-3 py-2 flex items-center justify-between text-xs text-gray-500">
+                            <button onClick={() => setTodoPage(p => Math.max(1, p - 1))} disabled={todoPage <= 1} className="disabled:opacity-30 hover:text-gray-700">
+                              <ChevronLeft size={14} />
+                            </button>
+                            <span>{todoPage}/{totalPages} · 共 {filteredTodos.length} 条</span>
+                            <button onClick={() => setTodoPage(p => Math.min(totalPages, p + 1))} disabled={todoPage >= totalPages} className="disabled:opacity-30 hover:text-gray-700">
+                              <ChevronRight size={14} />
+                            </button>
                           </div>
-                        ) : <p className="text-sm text-gray-400">暂无待办</p>}
+                        )}
                       </div>
                       )
                     })()}
