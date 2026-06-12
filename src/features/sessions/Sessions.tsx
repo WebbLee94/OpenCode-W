@@ -726,7 +726,7 @@ const listRef = useRef<HTMLDivElement>(null)
         )}
       </>
     ) : (
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col h-full">
       {/* Full list header & table */}
       <div className="shrink-0 border-b border-gray-200 bg-white px-6 py-4">
         <div className="mb-4 flex items-center justify-between">
@@ -884,7 +884,7 @@ const listRef = useRef<HTMLDivElement>(null)
 
       {/* Pagination */}
       {total > 0 && (
-        <div className="shrink-0 flex items-center justify-between border-t border-gray-200 bg-white px-6 py-3">
+        <div className="sticky bottom-0 border-t bg-white px-3 py-2 flex items-center justify-between text-xs text-gray-500">
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">
               显示 {startIdx}-{endIdx} / 共 {formatNumber(total)} 条
