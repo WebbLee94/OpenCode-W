@@ -85,17 +85,18 @@ export function registerHandlers(): void {
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
       // Validate sort column to prevent SQL injection
-      const allowedSortColumns = ['time_created', 'time_updated', 'title', 'cost', 'msg_count', 'total_tokens', 'data_size', 'tokens_input', 'tokens_output']
+      const allowedSortColumns = ['time_created', 'time_updated', 'title', 'cost', 'msg_count', 'total_tokens', 'data_size', 'tokens_input', 'tokens_output', 'childCount']
       const safeSortBy = allowedSortColumns.includes(sortBy) ? sortBy : 'time_updated'
       const safeSortOrder = sortOrder === 'asc' ? 'ASC' : 'DESC'
-      const computedColumns = ['msg_count', 'total_tokens', 'data_size']
+      const computedColumns = ['msg_count', 'total_tokens', 'data_size', 'childCount']
       const orderExpr = computedColumns.includes(safeSortBy) ? safeSortBy : `s.${safeSortBy}`
 
       const runQuery = (wc: string) => {
+        const childSelect = checkParentColumn() ? ', (SELECT COUNT(*) FROM session c WHERE c.parent_id = s.id) as childCount' : ', 0 as childCount'
         const countRow = dbManager.rawGet<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM session s ${wc}`, params)
         const total = countRow?.cnt ?? 0
         const rows = dbManager.rawQuery<Record<string, unknown>>(
-          `SELECT s.*, COALESCE(msg_cnt.cnt, 0) as msg_count, (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0)) as total_tokens, COALESCE(part_size.total, 0) as data_size FROM session s LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id ${wc} ORDER BY ${orderExpr} ${safeSortOrder} LIMIT ? OFFSET ?`,
+          `SELECT s.*, COALESCE(msg_cnt.cnt, 0) as msg_count, (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0)) as total_tokens, COALESCE(part_size.total, 0) as data_size${childSelect} FROM session s LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id ${wc} ORDER BY ${orderExpr} ${safeSortOrder} LIMIT ? OFFSET ?`,
           [...params, pageSize, offset]
         )
         return { total, rows }

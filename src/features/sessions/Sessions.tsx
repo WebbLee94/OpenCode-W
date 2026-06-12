@@ -525,7 +525,9 @@ const listRef = useRef<HTMLDivElement>(null)
                 <th onClick={() => handleHeaderSort('title')} className="py-3 pr-4 text-left font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none">
                   标题 {sortBy === 'title' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
                 </th>
-                <th className="px-4 py-3 text-right font-medium text-gray-500">消息数</th>
+                <th onClick={() => handleHeaderSort('childCount')} className="px-4 py-3 text-right font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none">
+                  子会话数 {sortBy === 'childCount' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
+                </th>
                 <th onClick={() => handleHeaderSort('data_size')} className="px-4 py-3 text-right font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none">数据大小</th>
                 <th onClick={() => handleHeaderSort('total_tokens')} className="px-4 py-3 text-right font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none">
                   Token消耗 {sortBy === 'total_tokens' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}
@@ -551,7 +553,7 @@ const listRef = useRef<HTMLDivElement>(null)
                   <td className="max-w-xs truncate py-3 pr-4 font-medium text-gray-900" title={session.title || '无标题'}>
                     {session.title || '无标题'}
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-600">{formatNumber(session.msg_count)}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{((session as any).childCount ?? 0).toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-gray-600">{formatBytes(session.data_size)}</td>
                   <td className="px-4 py-3 text-right text-gray-600">
                     {formatNumber(session.tokens_input + session.tokens_output)}
