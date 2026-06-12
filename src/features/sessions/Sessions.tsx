@@ -458,8 +458,13 @@ const listRef = useRef<HTMLDivElement>(null)
                   ))}
                 </div>
                 {/* SubSessionSelector 栏 */}
-                <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50/50">
+                <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50/50 gap-2">
                   <SubSessionSelector childSessions={childSessions} selectedChildId={selectedChildId} onChange={setSelectedChildId} />
+                  <div className="text-xs text-gray-500">
+                    {selectedChildId
+                      ? `当前子会话：${childSessions.find(c => c.id === selectedChildId)?.title?.slice(0, 16) || '已选'}`
+                      : `共 ${childSessions.length} 个子会话`}
+                  </div>
                 </div>
               </div>
 
