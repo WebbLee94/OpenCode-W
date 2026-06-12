@@ -25,6 +25,10 @@ hljs.registerLanguage('sql', sql)
 hljs.registerLanguage('css', css)
 hljs.registerLanguage('html', html)
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
+const DEFAULT_PAGE_SIZE = 10
+const PAGE_SIZE_STORAGE_KEY = 'dbscope-messageviewer-page-size'
+
 interface MessageViewerProps { sessionId: string }
 
 export default function MessageViewer({ sessionId }: MessageViewerProps) {
@@ -32,7 +36,15 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
-  const pageSize = 50
+  const [pageSize, setPageSizeState] = useState(() => {
+    const saved = localStorage.getItem(PAGE_SIZE_STORAGE_KEY)
+    return saved ? parseInt(saved, 10) : DEFAULT_PAGE_SIZE
+  })
+  const setPageSize = (size: number) => {
+    localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(size))
+    setPageSizeState(size)
+    setPage(1)
+  }
   const [detail, setDetail] = useState<MessageDetailDTO | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [expandedPart, setExpandedPart] = useState<number | null>(null)
@@ -41,7 +53,7 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
     setLoading(true)
     invokeSafe<{ data: MessageDTO[]; total: number }>(IPC_CHANNELS.MESSAGES_LIST, { sessionId, page, pageSize })
       .then(r => { setMessages(r.data || []); setTotal(r.total) }).catch(() => { setMessages([]); setTotal(0) }).finally(() => setLoading(false))
-  }, [sessionId, page])
+  }, [sessionId, page, pageSize])
 
   async function loadDetail(msgId: string) {
     setDetailLoading(true)
@@ -117,10 +129,15 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
             </div>
           ))}
         </div>
-        {total > pageSize && (
+        {total > 0 && (
           <div className="flex items-center justify-between px-3 py-2 border-t bg-white shrink-0 text-xs text-gray-500">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="disabled:opacity-30 hover:text-gray-700"><ChevronLeft size={14} /></button>
-            <span>{page}/{totalPages} · {total} 条</span>
+            <div className="flex items-center gap-2">
+              <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="border rounded px-1.5 py-0.5 text-xs">
+                {PAGE_SIZE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <span>{page}/{totalPages} · {total} 条</span>
+            </div>
             <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="disabled:opacity-30 hover:text-gray-700"><ChevronRight size={14} /></button>
           </div>
         )}
