@@ -3,6 +3,7 @@ import type { BackupDTO, BackupPreviewDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatNumber, formatRelativeTime } from '../../lib/format'
+import PageHeader from '../../components/PageHeader'
 import { HardDrive, Archive, Trash2, RotateCcw, Download, Upload, AlertTriangle, Check, X, Clock } from 'lucide-react'
 
 function Backup() {
@@ -123,7 +124,10 @@ function Backup() {
 
   return (
     <div className="p-6 h-full flex flex-col">
-      <h2 className="text-2xl font-semibold text-gray-900 mb-6">备份与恢复</h2>
+      <PageHeader
+        icon={<HardDrive size={24} />}
+        title="备份与恢复"
+      />
 
       {/* ==================== Auto-Backup Settings ==================== */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">

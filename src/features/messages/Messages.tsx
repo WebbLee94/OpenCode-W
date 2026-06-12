@@ -18,6 +18,7 @@ import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
 import { useToast } from '../../hooks/useToast'
 import { RoleBadge, PartTypeBadge, StatusBadge, ROLE_CONFIG } from './badges'
+import PaginationBar from '../../components/PaginationBar'
 
 // Register highlight.js languages
 hljs.registerLanguage('typescript', ts)
@@ -620,45 +621,14 @@ function Messages() {
             )}
 
             {/* Pagination - sticky bottom */}
-            {totalPages > 1 && (
-              <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 flex items-center justify-between px-4 py-2">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => loadMessages(page - 1)}
-                    disabled={page <= 1}
-                    className="px-3 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    上一页
-                  </button>
-                  <span className="text-xs text-gray-500">
-                    {page} / {totalPages}
-                  </span>
-                  <button
-                    onClick={() => loadMessages(page + 1)}
-                    disabled={page >= totalPages}
-                    className="px-3 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    下一页
-                  </button>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-gray-400">每页</span>
-                  {PAGE_SIZE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt}
-                      onClick={() => handlePageSizeChange(opt)}
-                      className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                        pageSize === opt
-                          ? 'bg-brand-500 text-white'
-                          : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            <PaginationBar
+              page={page}
+              total={total}
+              pageSize={pageSize}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              onPageChange={loadMessages}
+              onPageSizeChange={handlePageSizeChange}
+            />
           </div>
         </div>
 

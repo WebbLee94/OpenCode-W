@@ -3,6 +3,7 @@ import type { AccountDTO, AccountStateDTO, AccountUsageItem } from '../../../sha
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatDateTime } from '../../lib/format'
+import PageHeader from '../../components/PageHeader'
 import { UserCircle, Crown, Globe, Building2, Clock, Mail } from 'lucide-react'
 
 // ─── Accounts Page ───────────────────────────────────────────────────────────
@@ -35,10 +36,10 @@ function Accounts() {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="shrink-0 border-b border-gray-200 bg-white px-6 py-4">
-        <div className="flex items-center gap-2">
-          <UserCircle size={24} className="text-brand-600" />
-          <h2 className="text-2xl font-semibold text-gray-900">账户管理</h2>
-        </div>
+        <PageHeader
+          icon={<UserCircle size={24} />}
+          title="账户管理"
+        />
       </div>
 
       <div className="flex-1 overflow-auto px-6 py-6 space-y-6">

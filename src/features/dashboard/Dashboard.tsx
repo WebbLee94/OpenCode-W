@@ -8,8 +8,6 @@ import type {
   TrendComparison,
   TimeRange,
   TokenGroupDataPoint,
-  ProjectStatsItem,
-  WorkspaceStatsItem,
   ModelRankingItem,
   ProviderStatsItem,
 } from '@shared/types'
@@ -31,6 +29,7 @@ import {
   Unplug,
   Heart,
   Download,
+  LayoutDashboard,
 } from 'lucide-react'
 import { useToast } from '../../hooks/useToast'
 import {
@@ -50,6 +49,7 @@ import {
 } from 'recharts'
 import StatCard from '@/components/StatCard'
 import TooltipHint from '@/components/TooltipHint'
+import PageHeader from '@/components/PageHeader'
 import { formatBytes, formatNumber } from '@/lib/format'
 
 // ── Color palette ──────────────────────────────────────────────────
@@ -86,8 +86,6 @@ interface DashboardCache {
   timeRange: TimeRange | undefined
   timePreset: TimePreset
   groupBy: GroupBy
-  projectStats: ProjectStatsItem[]
-  workspaceStats: WorkspaceStatsItem[]
   modelRanking: ModelRankingItem[]
   providerStats: ProviderStatsItem[]
 }
@@ -104,14 +102,12 @@ function Dashboard() {
   const [skillUsage, setSkillUsage] = useState<SkillUsage[]>(dashboardCache?.skillUsage ?? [])
   const [trendComparison, setTrendComparison] = useState<TrendComparison | null>(dashboardCache?.trendComparison ?? null)
   const [tokenGroupData, setTokenGroupData] = useState<TokenGroupDataPoint[]>(dashboardCache?.tokenGroupData ?? [])
-  const [projectStats, setProjectStats] = useState<ProjectStatsItem[]>([])
-  const [workspaceStats, setWorkspaceStats] = useState<WorkspaceStatsItem[]>([])
-  const [modelRanking, setModelRanking] = useState<ModelRankingItem[]>([])
-  const [providerStats, setProviderStats] = useState<ProviderStatsItem[]>([])
+  const [modelRanking, setModelRanking] = useState<ModelRankingItem[]>(dashboardCache?.modelRanking ?? [])
+  const [providerStats, setProviderStats] = useState<ProviderStatsItem[]>(dashboardCache?.providerStats ?? [])
 
   // Time range & grouping state
-  const [timePreset, setTimePreset] = useState<TimePreset>(30)
-  const [timeRange, setTimeRange] = useState<TimeRange | undefined>(dashboardCache?.timeRange ?? computeTimeRange(30))
+  const [timePreset, setTimePreset] = useState<TimePreset>(dashboardCache?.timePreset ?? 30)
+  const [timeRange, setTimeRange] = useState<TimeRange | undefined>(dashboardCache?.timeRange ?? computeTimeRange(dashboardCache?.timePreset ?? 30))
   const [groupBy, setGroupBy] = useState<GroupBy>(dashboardCache?.groupBy ?? 'day')
   const [showComparison, setShowComparison] = useState(true)
   const [customStart, setCustomStart] = useState<string>('')
@@ -165,24 +161,20 @@ function Dashboard() {
   // ── Load slow data (tools + skills + trends) ─────────────────────
   const loadSlowData = useCallback(async (tr: TimeRange | undefined) => {
     setSlowLoading(true)
-    const [tools, skills, trendComp, projects, workspaces, models, providers] = await Promise.all([
+    const [tools, skills, trendComp, models, providers] = await Promise.all([
       invokeSafe<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, tr),
       invokeSafe<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE, tr),
       invokeSafe<TrendComparison>(IPC_CHANNELS.DASHBOARD_TRENDS, tr),
-      invokeSafe<ProjectStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROJECTS, tr).catch(() => [] as ProjectStatsItem[]),
-      invokeSafe<WorkspaceStatsItem[]>(IPC_CHANNELS.DASHBOARD_WORKSPACES).catch(() => [] as WorkspaceStatsItem[]),
       invokeSafe<ModelRankingItem[]>(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, tr).catch(() => [] as ModelRankingItem[]),
       invokeSafe<ProviderStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, tr).catch(() => [] as ProviderStatsItem[]),
     ])
     setToolRanking(tools ?? [])
     setSkillUsage(skills ?? [])
     setTrendComparison(trendComp)
-    setProjectStats(projects ?? [])
-    setWorkspaceStats(workspaces ?? [])
     setModelRanking(models ?? [])
     setProviderStats(providers ?? [])
     setSlowLoading(false)
-    return { tools: tools ?? [], skills: skills ?? [], trendComp, projects: projects ?? [], workspaces: workspaces ?? [], models: models ?? [], providers: providers ?? [] }
+    return { tools: tools ?? [], skills: skills ?? [], trendComp, models: models ?? [], providers: providers ?? [] }
   }, [])
 
   // ── Load all data with async groups ──────────────────────────────
@@ -199,8 +191,6 @@ function Dashboard() {
       setTimeRange(dashboardCache.timeRange)
       setTimePreset(dashboardCache.timePreset)
       setGroupBy(dashboardCache.groupBy)
-      setProjectStats(dashboardCache.projectStats ?? [])
-      setWorkspaceStats(dashboardCache.workspaceStats ?? [])
       setModelRanking(dashboardCache.modelRanking ?? [])
       setProviderStats(dashboardCache.providerStats ?? [])
       setFastLoading(false)
@@ -228,8 +218,6 @@ function Dashboard() {
         timeRange,
         timePreset,
         groupBy,
-        projectStats: slowResult.projects,
-        workspaceStats: slowResult.workspaces,
         modelRanking: slowResult.models,
         providerStats: slowResult.providers,
       }
@@ -257,8 +245,6 @@ function Dashboard() {
         timeRange,
         timePreset,
         groupBy,
-        projectStats: slowResult.projects,
-        workspaceStats: slowResult.workspaces,
         modelRanking: slowResult.models,
         providerStats: slowResult.providers,
       }
@@ -284,8 +270,6 @@ function Dashboard() {
         setTimeRange(dashboardCache.timeRange)
         setTimePreset(dashboardCache.timePreset)
         setGroupBy(dashboardCache.groupBy)
-        setProjectStats(dashboardCache.projectStats ?? [])
-        setWorkspaceStats(dashboardCache.workspaceStats ?? [])
         setModelRanking(dashboardCache.modelRanking ?? [])
         setProviderStats(dashboardCache.providerStats ?? [])
         setConnected(true)
@@ -422,8 +406,6 @@ function Dashboard() {
         timeRange: tr,
         timePreset: days,
         groupBy,
-        projectStats: slowResult.projects,
-        workspaceStats: slowResult.workspaces,
         modelRanking: slowResult.models,
         providerStats: slowResult.providers,
       }
@@ -455,8 +437,6 @@ function Dashboard() {
         timeRange,
         timePreset,
         groupBy: gb,
-        projectStats: slowResult.projects,
-        workspaceStats: slowResult.workspaces,
         modelRanking: slowResult.models,
         providerStats: slowResult.providers,
       }
@@ -546,56 +526,53 @@ function Dashboard() {
         </div>
       )}
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Dashboard</h2>
-          {dbPath && (
-            <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[500px]" title={dbPath}>
-              {dbPath}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center">
+      <PageHeader
+        icon={<LayoutDashboard size={24} />}
+        title="首页仪表盘"
+        description={dbPath || undefined}
+        right={
+          <div className="flex items-center gap-2">
+            <div className="flex items-center">
+              <button
+                onClick={handleVacuum}
+                disabled={actionLoading !== null}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-brand-600 border border-brand-300 rounded-md hover:bg-brand-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {actionLoading === 'vacuum' ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Sparkles size={14} />
+                )}
+                一键 VACUUM
+              </button>
+              <TooltipHint text={'清理数据库碎片，回收已删除数据占用的空间\n\n适用场景：删除会话/消息后，数据库文件未变小时'} />
+            </div>
+            <div className="flex items-center">
+              <button
+                onClick={handleCheckpoint}
+                disabled={actionLoading !== null}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-600 border border-amber-300 rounded-md hover:bg-amber-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {actionLoading === 'checkpoint' ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <FileCheck size={14} />
+                )}
+                WAL Checkpoint
+              </button>
+              <TooltipHint text={'将待写入的变更合并到主数据库\n\n适用场景：备份前执行，或 WAL 文件过大时'} />
+            </div>
             <button
-              onClick={handleVacuum}
-              disabled={actionLoading !== null}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-brand-600 border border-brand-300 rounded-md hover:bg-brand-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-600 border border-green-300 rounded-md hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {actionLoading === 'vacuum' ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Sparkles size={14} />
-              )}
-              一键 VACUUM
+              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+              刷新
             </button>
-            <TooltipHint text={'清理数据库碎片，回收已删除数据占用的空间\n\n适用场景：删除会话/消息后，数据库文件未变小时'} />
           </div>
-          <div className="flex items-center">
-            <button
-              onClick={handleCheckpoint}
-              disabled={actionLoading !== null}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-600 border border-amber-300 rounded-md hover:bg-amber-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {actionLoading === 'checkpoint' ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <FileCheck size={14} />
-              )}
-              WAL Checkpoint
-            </button>
-            <TooltipHint text={'将待写入的变更合并到主数据库\n\n适用场景：备份前执行，或 WAL 文件过大时'} />
-          </div>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-600 border border-green-300 rounded-md hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-            刷新
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* ── ROW 2: 数据库概览 + 4卡片 ────────────────────────────── */}
       <div>
@@ -727,46 +704,48 @@ function Dashboard() {
         )}
       </div>
 
-      {/* ── Route B: ROW 4.5 项目与工作区统计 ──────────────────────── */}
-      {(projectStats.length > 0 || workspaceStats.length > 0) && (
-        <div>
-          <p className="text-xs text-gray-400 font-medium mb-2">📂 项目与工作区统计</p>
-          <div className="grid grid-cols-4 gap-3 mb-3">
-            <div className="bg-white border border-gray-200 rounded-lg p-3">
-              <div className="text-xs text-gray-400">项目数</div>
-              <div className="text-lg font-semibold text-gray-900">{projectStats.length}</div>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-lg p-3">
-              <div className="text-xs text-gray-400">工作区数</div>
-              <div className="text-lg font-semibold text-gray-900">{workspaceStats.length}</div>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-lg p-3">
-              <div className="text-xs text-gray-400">项目总会话</div>
-              <div className="text-lg font-semibold text-gray-900">{projectStats.reduce((s, p) => s + p.sessionCount, 0).toLocaleString()}</div>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-lg p-3">
-              <div className="text-xs text-gray-400">总使用时长 (h)</div>
-              <div className="text-lg font-semibold text-gray-900">{workspaceStats.reduce((s, w) => s + w.totalTimeHours, 0).toFixed(0)}</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Route B: ROW 4.7 模型 & Provider 统计 ───────────────────── */}
+      {/* ── Route B: ROW 4.7 模型 & Provider 统计（柱状图）───────────── */}
       {modelRanking.length > 0 && (
         <div>
           <p className="text-xs text-gray-400 font-medium mb-2">🤖 模型 & Provider 统计</p>
-          <div className="grid grid-cols-3 gap-3 mb-3">
-            {modelRanking.slice(0, 5).map(m => (
-              <div key={m.model} className="bg-white border border-gray-200 rounded-lg p-3">
-                <div className="text-xs text-gray-400 truncate">{m.model?.startsWith('{') ? (() => { try { const p = JSON.parse(m.model); return p.id || p.name || m.model } catch { return m.model } })() : m.model}</div>
-                <div className="text-lg font-semibold text-gray-900">{m.sessionCount.toLocaleString()}</div>
-                <div className="text-xs text-gray-500">{m.tokenCount.toLocaleString()} tokens · ${m.totalCost.toFixed(2)}</div>
-              </div>
-            ))}
+          <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
+            {(() => {
+              const sorted = modelRanking
+                .slice()
+                .sort((a, b) => b.sessionCount - a.sessionCount)
+                .slice(0, 10)
+              const max = Math.max(...sorted.map(m => m.sessionCount), 1)
+              return sorted.map((m, idx) => {
+                let modelLabel = m.model
+                let providerLabel = ''
+                if (m.model?.startsWith('{')) {
+                  try {
+                    const p = JSON.parse(m.model)
+                    modelLabel = p.id || p.name || m.model
+                    providerLabel = p.provider || ''
+                  } catch { /* keep raw */ }
+                }
+                const pct = (m.sessionCount / max) * 100
+                return (
+                  <div key={`${providerLabel}-${modelLabel}-${idx}`} className="flex items-center gap-2 text-sm min-w-0">
+                    <span className="w-6 text-right text-gray-400 text-xs shrink-0">{idx + 1}</span>
+                    <span className="w-64 truncate text-gray-700 shrink-0" title={`${providerLabel ? providerLabel + ' / ' : ''}${modelLabel}`}>
+                      {providerLabel && <span className="text-gray-500">{providerLabel}</span>}
+                      {providerLabel && ' / '}
+                      <span className="font-mono">{modelLabel}</span>
+                    </span>
+                    <div className="flex-1 h-5 bg-gray-100 rounded relative overflow-hidden min-w-0">
+                      <div className="h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="w-20 text-right text-gray-600 text-xs font-mono shrink-0">{m.sessionCount.toLocaleString()} 会话</span>
+                    <span className="w-24 text-right text-gray-500 text-xs font-mono shrink-0">${m.totalCost.toFixed(2)}</span>
+                  </div>
+                )
+              })
+            })()}
           </div>
           {providerStats.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 mt-3">
               {providerStats.map(p => (
                 <span key={p.provider} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
                   {p.provider}: {p.sessionCount.toLocaleString()} 会话 · ${p.totalCost.toFixed(2)}

@@ -13,15 +13,38 @@ import { useState, useEffect, useCallback } from 'react'
 import { invokeSafe, isElectron } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 import { ToastProvider } from './components/ToastProvider'
+import SidebarGroup from './components/SidebarGroup'
+import type { LucideIcon } from 'lucide-react'
 
-const navItems = [
-  { to: '/', label: '首页仪表盘', icon: LayoutDashboard },
-  { to: '/sessions', label: '会话浏览', icon: MessageSquare },
-  { to: '/todos', label: '待办管理', icon: ClipboardList },
-  { to: '/accounts', label: '账户管理', icon: UserCircle },
-  { to: '/cleanup', label: '清理向导', icon: Trash2 },
-  { to: '/backup', label: '备份恢复', icon: HardDrive },
-  { to: '/shares', label: '分享管理', icon: Share2 },
+interface NavItemDef {
+  to: string
+  label: string
+  icon: LucideIcon
+}
+
+const navGroups: { label: string; items: NavItemDef[] }[] = [
+  {
+    label: '概览',
+    items: [
+      { to: '/', label: '首页仪表盘', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: '数据',
+    items: [
+      { to: '/sessions', label: '会话浏览', icon: MessageSquare },
+      { to: '/todos', label: '待办管理', icon: ClipboardList },
+      { to: '/shares', label: '分享管理', icon: Share2 },
+      { to: '/accounts', label: '账户管理', icon: UserCircle },
+    ],
+  },
+  {
+    label: '工具',
+    items: [
+      { to: '/cleanup', label: '清理向导', icon: Trash2 },
+      { to: '/backup', label: '备份恢复', icon: HardDrive },
+    ],
+  },
 ]
 
 function Breadcrumb() {
@@ -121,23 +144,27 @@ function Layout() {
             </div>
           </div>
         </div>
-        <div className="flex-1 p-2 space-y-1">
-          {navItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-                  isActive
-                    ? 'bg-brand-50 text-brand-700 font-medium'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                }`
-              }
-            >
-              <Icon size={18} />
-              {label}
-            </NavLink>
+        <div className="flex-1 p-2 overflow-y-auto">
+          {navGroups.map(group => (
+            <SidebarGroup key={group.label} label={group.label}>
+              {group.items.map(({ to, label, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === '/'}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+                      isActive
+                        ? 'bg-brand-50 text-brand-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`
+                  }
+                >
+                  <Icon size={18} />
+                  {label}
+                </NavLink>
+              ))}
+            </SidebarGroup>
           ))}
         </div>
         {/* Database connection status */}

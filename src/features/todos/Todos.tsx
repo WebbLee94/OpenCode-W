@@ -4,11 +4,12 @@ import type { TodoDTO, TodoFilter } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatNumber, truncateText } from '../../lib/format'
+import PageHeader from '../../components/PageHeader'
+import PaginationBar from '../../components/PaginationBar'
 import {
   Search,
-  ChevronLeft,
-  ChevronRight,
   X,
+  ChevronRight,
   ClipboardList,
   MessageSquare,
   FolderOpen,
@@ -145,25 +146,17 @@ function Todos() {
       .finally(() => setLoading(false))
   }, [debouncedSearch, status, priority, projectId, page, pageSize])
 
-  // ─── Pagination helpers ──────────────────────────────────────────────
-
-  const totalPages = Math.ceil(total / pageSize)
-  const startIdx = (page - 1) * pageSize + 1
-  const endIdx = Math.min(page * pageSize, total)
-
   // ─── Render ──────────────────────────────────────────────────────────
 
   return (
     <div className="flex h-full flex-col">
       {/* Header & Filters */}
       <div className="shrink-0 border-b border-gray-200 bg-white px-6 py-4">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ClipboardList size={24} className="text-brand-600" />
-            <h2 className="text-2xl font-semibold text-gray-900">待办管理</h2>
-          </div>
-          <span className="text-sm text-gray-500">共 {formatNumber(total)} 条待办</span>
-        </div>
+        <PageHeader
+          icon={<ClipboardList size={24} />}
+          title="待办管理"
+          right={<span className="text-sm text-gray-500">共 {formatNumber(total)} 条待办</span>}
+        />
 
         <div className="flex items-center gap-3">
           {/* Search */}
@@ -241,7 +234,7 @@ function Todos() {
             ))}
           </select>
 
-          {/* Reset overrides button — removed (v2.1) */}
+          {/* Reset overrides button — removed (v1.1.0) */}
         </div>
       </div>
 
@@ -311,50 +304,15 @@ function Todos() {
       </div>
 
       {/* Pagination */}
-      {total > 0 && (
-        <div className="shrink-0 flex items-center justify-between border-t border-gray-200 bg-white px-6 py-3">
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500">
-              显示 {startIdx}-{endIdx} / 共 {formatNumber(total)} 条
-            </span>
-            <div className="flex items-center gap-1.5 text-sm text-gray-500">
-              <span>每页</span>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  const newSize = Number(e.target.value)
-                  setPageSize(newSize)
-                  localStorage.setItem('dbscope-todos-page-size', String(newSize))
-                  setPage(1)
-                }}
-                className="appearance-none rounded border border-gray-300 bg-white px-2 py-0.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              >
-                {PAGE_SIZE_OPTIONS.map((size) => (
-                  <option key={size} value={size}>{size}</option>
-                ))}
-              </select>
-              <span>条</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-sm text-gray-500">{page} / {totalPages || 1}</span>
-            <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
-      )}
+      <PaginationBar
+        page={page}
+        total={total}
+        pageSize={pageSize}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        onPageChange={setPage}
+        onPageSizeChange={(s) => { setPageSize(s); localStorage.setItem('dbscope-todos-page-size', String(s)); setPage(1) }}
+        sticky={false}
+      />
     </div>
   )
 }

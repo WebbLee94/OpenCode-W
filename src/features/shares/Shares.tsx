@@ -4,7 +4,9 @@ import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe, openExternal } from '../../lib/ipc'
 import { formatRelativeTime, truncateText } from '../../lib/format'
 import { useNavigate } from 'react-router'
-import { ChevronLeft, ChevronRight, Share2 } from 'lucide-react'
+import { Share2 } from 'lucide-react'
+import PageHeader from '../../components/PageHeader'
+import PaginationBar from '../../components/PaginationBar'
 
 function Shares() {
   const [shares, setShares] = useState<SessionShareDTO[]>([])
@@ -21,20 +23,16 @@ function Shares() {
       .finally(() => setLoading(false))
   }, [page])
 
-  const totalPages = Math.ceil(total / pageSize)
-
   return (
     <div className="flex h-full flex-col">
       <div className="shrink-0 border-b border-gray-200 bg-white px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Share2 size={24} className="text-brand-600" />
-            <h2 className="text-2xl font-semibold text-gray-900">分享管理</h2>
-          </div>
-          <span className="text-sm text-gray-500">共 {total} 条分享</span>
-        </div>
+        <PageHeader
+          icon={<Share2 size={24} />}
+          title="分享管理"
+          right={<span className="text-sm text-gray-500">共 {total} 条分享</span>}
+        />
       </div>
-      <div className="flex-1 overflow-auto px-6">
+      <div className="flex-1 overflow-auto px-6 py-0">
         {loading && shares.length === 0 ? (
           <div className="flex items-center justify-center py-20 text-gray-400">加载中...</div>
         ) : shares.length === 0 ? (
@@ -69,18 +67,15 @@ function Shares() {
           </table>
         )}
       </div>
-      {total > pageSize && (
-        <div className="shrink-0 flex items-center justify-between border-t border-gray-200 bg-white px-6 py-3">
-          <span className="text-sm text-gray-500">显示 {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} / {total}</span>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft size={16} /></button>
-            <span className="text-sm text-gray-500">{page} / {totalPages || 1}</span>
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"><ChevronRight size={16} /></button>
-          </div>
-        </div>
-      )}
+      <PaginationBar
+        page={page}
+        total={total}
+        pageSize={pageSize}
+        pageSizeOptions={[10, 20, 50]}
+        onPageChange={setPage}
+        onPageSizeChange={() => { /* pageSize is fixed in Shares */ }}
+        sticky={false}
+      />
     </div>
   )
 }

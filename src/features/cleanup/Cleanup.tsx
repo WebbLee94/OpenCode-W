@@ -3,6 +3,7 @@ import type { CleanupPreviewDTO, CleanupFilter, CleanupResultDTO, CleanupStrateg
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatNumber } from '../../lib/format'
+import PageHeader from '../../components/PageHeader'
 import { Shield, AlertTriangle, Check, Clock, HardDrive, FolderOpen, Code, ChevronRight, ChevronLeft, Trash2, RotateCcw } from 'lucide-react'
 
 type WizardStep = 1 | 2 | 3
@@ -619,7 +620,10 @@ function Cleanup() {
 
   return (
     <div className="p-6 h-full flex flex-col">
-      <h2 className="text-2xl font-semibold text-gray-900 mb-6">清理向导</h2>
+      <PageHeader
+        icon={<Trash2 size={24} />}
+        title="清理向导"
+      />
 
       {/* Step indicator */}
       {!result && (
