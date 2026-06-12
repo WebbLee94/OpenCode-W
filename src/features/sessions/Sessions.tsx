@@ -241,6 +241,7 @@ const listRef = useRef<HTMLDivElement>(null)
   // ─── Load session detail ─────────────────────────────────────────────────
 
   const openDetail = useCallback((sessionId: string) => {
+    setSearchParams(prev => { prev.set('session', sessionId); return prev })
     setDetailLoading(true)
     setPanelOpen(true)
     setSelectedSession(null)
