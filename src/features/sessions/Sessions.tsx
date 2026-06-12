@@ -155,6 +155,7 @@ function Sessions() {
 
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const activeSessionId = searchParams.get('session') || null
 const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 const urlSyncedRef = useRef(false)
 const [focusedIndex, setFocusedIndex] = useState(-1)
