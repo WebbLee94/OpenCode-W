@@ -267,7 +267,7 @@ export function registerHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SESSIONS_CHILDREN, (_event, sessionId: string): IpcResult<SessionDTO[]> => {
     if (!checkParentColumn()) return { success: true, data: [] }
     try {
-      const children = dbManager.rawQuery<SessionDTO>('SELECT id, title, time_created, time_updated, msg_count, tokens_input, tokens_output, directory, project_id FROM session WHERE parent_id = ? ORDER BY time_created ASC', [sessionId])
+      const children = dbManager.rawQuery<SessionDTO>('SELECT id, title, time_created, time_updated, tokens_input, tokens_output, directory, project_id FROM session WHERE parent_id = ? ORDER BY time_created ASC', [sessionId])
       console.log('[ipc] SESSIONS_CHILDREN parent:', sessionId, '→ found:', children.length)
       return { success: true, data: children }
     } catch (error) { return { success: false, error: (error as Error).message } }
