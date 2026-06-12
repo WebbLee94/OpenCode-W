@@ -434,7 +434,18 @@ const listRef = useRef<HTMLDivElement>(null)
             <button onClick={() => setSearchParams(p => { p.delete('session'); return p })} className="text-gray-400 hover:text-gray-600">✕ 关闭</button>
           </div>
           <div className="flex-1 overflow-auto p-4">
-            <p className="text-gray-400 text-sm">Tab 内容区（待 Phase 3 实现）</p>
+            {activeSessionId && selectedSession ? (
+              <div className="space-y-6">
+                <div>
+                  <p className="text-sm text-gray-500">名称: {selectedSession.title || '无标题'}</p>
+                  <p className="text-sm text-gray-500">目录: {selectedSession.directory || '-'}</p>
+                  <p className="text-sm text-gray-500">模型: {selectedSession.model || '-'}</p>
+                  <p className="text-sm text-gray-500">时间: {selectedSession.time_created ? formatRelativeTime(selectedSession.time_created) : '-'}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-400 text-sm">加载中...</p>
+            )}
           </div>
         </div>
       </>
