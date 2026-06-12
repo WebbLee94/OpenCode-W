@@ -278,9 +278,24 @@ export function registerHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SESSIONS_CHILDREN, (_event, sessionId: string): IpcResult<SessionDTO[]> => {
     if (!checkParentColumn()) return { success: true, data: [] }
     try {
-      const children = dbManager.rawQuery<SessionDTO>('SELECT id, title, time_created, time_updated, tokens_input, tokens_output, directory, project_id FROM session WHERE parent_id = ? ORDER BY time_created ASC', [sessionId])
-      console.log('[ipc] SESSIONS_CHILDREN parent:', sessionId, '→ found:', children.length)
-      return { success: true, data: children }
+      const children = dbManager.rawQuery<Record<string, unknown>>(
+        `SELECT
+          s.id, s.title, s.directory, s.model, s.agent, s.project_id,
+          s.tokens_input, s.tokens_output, s.tokens_reasoning,
+          s.tokens_cache_read, s.tokens_cache_write, s.cost,
+          s.time_created, s.time_updated,
+          COALESCE(msg_cnt.cnt, 0) as msg_count,
+          (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0)) as total_tokens,
+          COALESCE(part_size.total, 0) as data_size
+        FROM session s
+        LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id
+        LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id
+        WHERE s.parent_id = ?
+        ORDER BY s.time_created ASC`,
+        [sessionId]
+      )
+      const mapped = children.map(mapSessionRow)
+      return { success: true, data: mapped }
     } catch (error) { return { success: false, error: (error as Error).message } }
   })
 

@@ -42,14 +42,14 @@ function MarkdownBlock({ content }: { content: string }) {
       if (match && hljs.getLanguage(match[1])) {
         try {
           const highlighted = hljs.highlight(code, { language: match[1] }).value
-          return <pre className="hljs bg-gray-900 text-gray-100 p-3 rounded overflow-x-auto text-sm"><code dangerouslySetInnerHTML={{ __html: highlighted }} /></pre>
+          return <pre className="hljs bg-gray-900 text-gray-100 p-3 rounded text-sm whitespace-pre-wrap break-all max-w-full !overflow-hidden"><code dangerouslySetInnerHTML={{ __html: highlighted }} /></pre>
         } catch { /* fallthrough */ }
       }
-      return <pre className="bg-gray-100 p-3 rounded overflow-x-auto text-sm"><code>{code}</code></pre>
+      return <pre className="bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap break-all max-w-full !overflow-hidden"><code>{code}</code></pre>
     }
   }), [])
   return (
-    <div className="prose prose-sm max-w-none text-gray-800">
+    <div className="prose prose-sm text-gray-800 break-words min-w-0 markdown-content [&_pre]:!overflow-hidden [&_pre]:max-w-full [&_table]:!overflow-hidden">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{content}</ReactMarkdown>
     </div>
   )
@@ -148,7 +148,7 @@ export default function ConversationView({ messages, loading }: ConversationView
   }
 
   return (
-    <div className="space-y-4 max-w-3xl mx-auto">
+    <div className="space-y-4 w-full min-w-0">
       {messages.map(msg => {
         if (msg.role === 'system') {
           return (
@@ -160,16 +160,16 @@ export default function ConversationView({ messages, loading }: ConversationView
         }
 
         const containerClass = msg.role === 'user'
-          ? 'ml-8 bg-brand-50 border border-brand-100'
+          ? 'ml-auto mr-8 w-1/2 bg-brand-50 border border-brand-100'
           : msg.role === 'tool'
             ? 'mx-4 bg-orange-50/30 border border-orange-200'
-            : 'mr-8 bg-white border border-gray-200'
+            : 'mr-auto ml-8 w-[90%] bg-white border border-gray-200'
 
         const detail = details.get(msg.id)
         const isLoadingDetail = loadingDetail.has(msg.id)
 
         return (
-          <div key={msg.id} className={`rounded-lg p-3 ${containerClass}`}>
+          <div key={msg.id} className={`rounded-lg p-3 min-w-0 max-w-full overflow-hidden ${containerClass}`}>
             <div className="flex items-center justify-between mb-2">
               <RoleBadge role={msg.role} />
               <span className="text-xs text-gray-400">{formatRelativeTime(msg.time_created)}</span>

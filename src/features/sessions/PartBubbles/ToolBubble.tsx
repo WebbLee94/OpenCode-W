@@ -49,11 +49,11 @@ export default function ToolBubble({ part }: { part: PartDTO }) {
       defaultExpanded={false}
     >
       {hasDetail && (
-        <div className="space-y-2 text-xs">
+        <div className="space-y-2 text-xs min-w-0 max-w-full">
           {hasInput && (
             <div>
               <div className="text-gray-500 mb-1">Input:</div>
-              <pre className="bg-gray-800 text-gray-100 p-2 rounded overflow-auto max-h-48 whitespace-pre-wrap break-all">
+              <pre className="bg-gray-800 text-gray-100 p-2 rounded max-h-48 overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-all">
                 {part.input}
               </pre>
             </div>
@@ -61,7 +61,7 @@ export default function ToolBubble({ part }: { part: PartDTO }) {
           {hasOutput && (
             <div>
               <div className="text-gray-500 mb-1">Output:</div>
-              <pre className="bg-gray-800 text-gray-100 p-2 rounded overflow-auto max-h-48 whitespace-pre-wrap break-all">
+              <pre className="bg-gray-800 text-gray-100 p-2 rounded max-h-48 overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-all">
                 {part.output}
               </pre>
             </div>
@@ -69,7 +69,7 @@ export default function ToolBubble({ part }: { part: PartDTO }) {
           {hasError && (
             <div>
               <div className="text-red-500 mb-1">Error:</div>
-              <pre className="bg-red-50 text-red-800 p-2 rounded overflow-auto max-h-48 whitespace-pre-wrap break-all border border-red-200">
+              <pre className="bg-red-50 text-red-800 p-2 rounded max-h-48 overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-all border border-red-200">
                 {part.error}
               </pre>
             </div>

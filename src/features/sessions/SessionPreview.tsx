@@ -40,7 +40,9 @@ export default function SessionPreview({
       params.childSessionIds = [selectedChildId]
     } else {
       params.parentSessionId = activeSessionId
-      params.childSessionIds = childSessions.map(c => c.id)
+      if (childSessions.length > 0) {
+        params.childSessionIds = childSessions.map(c => c.id)
+      }
     }
     invokeSafe<{ data: MessageDTO[]; total: number }>(
       IPC_CHANNELS.MESSAGES_LIST_BY_PARENT,
@@ -52,8 +54,8 @@ export default function SessionPreview({
   }, [activeSessionId, selectedChildId, page, pageSize, childSessions, onTotalChange])
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto px-2 py-2">
+    <div className="flex flex-col h-full w-full min-w-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 w-full min-w-0">
         <ConversationView messages={messages} loading={loading} />
       </div>
     </div>

@@ -19,3 +19,33 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 48px;
 }
+
+/* Stable scrollbar gutter — reserves space to prevent content shift when scrollbar appears */
+.scrollbar-stable {
+  scrollbar-gutter: stable;
+}
+
+/* Markdown container — force overflow containment
+   Tailwind Typography (`.prose pre { overflow-x: auto }`) has higher specificity
+   than utility classes alone, so we need this dedicated class. */
+.markdown-content {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  overflow: hidden;
+}
+.markdown-content * {
+  max-width: 100% !important;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+.markdown-content pre {
+  white-space: pre-wrap !important;
+  table-layout: fixed;
+}
+.markdown-content table {
+  display: block;
+  overflow-x: auto !important;
+}
+

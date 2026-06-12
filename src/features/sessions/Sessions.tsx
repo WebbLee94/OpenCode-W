@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { useSearchParams } from 'react-router'
 import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShareDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe, openExternal } from '../../lib/ipc'
-import { formatBytes, formatNumber, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
+import { formatBytes, formatNumber, formatRelativeTime, truncateText } from '../../lib/format'
 import { useToast } from '../../hooks/useToast'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import {
@@ -11,17 +11,8 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  MessageSquare,
-  Trash2,
-  ArrowUpDown,
   FolderOpen,
-  AlertTriangle,
-  Eye,
-  EyeOff,
-  Copy,
-  Share2,
   Calendar,
-  ClipboardList,
 } from 'lucide-react'
 import {
   PieChart,
@@ -45,7 +36,32 @@ const DEFAULT_PAGE_SIZE = 20
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 
 const TOKEN_PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
-const TOOL_BAR_COLOR = '#6366f1'
+
+const TODO_STATUS_LABEL: Record<string, string> = {
+  pending: '待处理',
+  in_progress: '进行中',
+  completed: '已完成',
+  cancelled: '已取消',
+}
+
+const TODO_PRIORITY_LABEL: Record<string, string> = {
+  high: '高',
+  medium: '中',
+  low: '低',
+}
+
+const TODO_STATUS_BADGE: Record<string, string> = {
+  completed: 'bg-green-100 text-green-700',
+  cancelled: 'bg-gray-100 text-gray-500',
+  in_progress: 'bg-blue-100 text-blue-700',
+  pending: 'bg-yellow-100 text-yellow-700',
+}
+
+const TODO_PRIORITY_BADGE: Record<string, string> = {
+  high: 'bg-red-100 text-red-700',
+  medium: 'bg-yellow-100 text-yellow-700',
+  low: 'bg-green-100 text-green-700',
+}
 
 // ─── Sessions Page ───────────────────────────────────────────────────────────
 
@@ -123,12 +139,6 @@ function Sessions() {
 
   // Detail panel state
   const [selectedSession, setSelectedSession] = useState<SessionDetailDTO | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [panelOpen, setPanelOpen] = useState(false)
-
-  // Delete confirmation
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   // Batch selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -138,16 +148,13 @@ function Sessions() {
 
   // Todos state (Session detail panel)
   const [sessionTodos, setSessionTodos] = useState<TodoDTO[]>([])
-  const [todoFilter, setTodoFilter] = useState<'all' | 'pending' | 'in_progress' | 'completed'>('all')
   const [todoSearch, setTodoSearch] = useState('')
   const [todoStatusFilter, setTodoStatusFilter] = useState('')
   const [todoPriorityFilter, setTodoPriorityFilter] = useState('')
 
   // Session share state
   const [sessionShare, setSessionShare] = useState<SessionShareDTO | null>(null)
-  const [showSecret, setShowSecret] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
-  const [selectedMsgId, setSelectedMsgId] = useState('')
 
   // Sub-session selector
   const [childSessions, setChildSessions] = useState<SessionDTO[]>([])
@@ -163,12 +170,12 @@ function Sessions() {
 
   // Todos tab pagination (Commit 6.1)
   const [todoPage, setTodoPage] = useState(1)
+  const [todoPageSize, setTodoPageSize] = useState(20)
 
   // Inline title edit
   const [editingTitle, setEditingTitle] = useState(false)
   const [editTitle, setEditTitle] = useState('')
 
-  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeSessionId = searchParams.get('session') || null
   const activeTab = searchParams.get('tab') || 'basic'
@@ -203,15 +210,12 @@ const listRef = useRef<HTMLDivElement>(null)
     }
 
     setLoading(true)
-    console.log('[Sessions] Fetching:', { page, pageSize, projectId: projectId || 'all', sortBy, startDate: startDate || 'none', endDate: endDate || 'none' })
     invokeSafe<{ data: SessionDTO[]; total: number; page: number; pageSize: number }>(IPC_CHANNELS.SESSIONS_LIST, filter)
       .then((result) => {
-        console.log('[Sessions] OK:', result.data?.length, 'rows, total:', result.total)
         setSessions(result.data)
         setTotal(result.total)
       })
-      .catch((err) => {
-        console.error('SESSIONS_LIST failed:', err)
+      .catch(() => {
         setSessions([])
         setTotal(0)
       })
@@ -257,45 +261,53 @@ const listRef = useRef<HTMLDivElement>(null)
 
   const openDetail = useCallback((sessionId: string) => {
     setSearchParams(prev => { prev.set('session', sessionId); return prev })
-    setDetailLoading(true)
-    setPanelOpen(true)
     setSelectedSession(null)
-    setSessionTodos([])
     setSessionShare(null)
-    setShowSecret(false)
     invokeSafe<SessionDetailDTO | null>(IPC_CHANNELS.SESSIONS_DETAIL, sessionId)
       .then((result) => {
         setSelectedSession(result)
       })
       .catch(() => setSelectedSession(null))
-      .finally(() => setDetailLoading(false))
 
     // Load share info for this session
     invokeSafe<SessionShareDTO | null>(IPC_CHANNELS.SESSION_SHARE_GET, sessionId)
       .then((result) => setSessionShare(result))
       .catch(() => setSessionShare(null))
+  }, [])
 
-    // Load children for sub-session dropdown, then load todos with merged parent + child IDs
-    // 修复「全部子会话」过滤只在前端列表过滤,实际后端只查父会话的 bug
-    invokeSafe<SessionDTO[]>(IPC_CHANNELS.SESSIONS_CHILDREN, sessionId)
+  // 当 activeSessionId 变化时,自动加载子会话和 todo (支持 URL 直接进入详情页)
+  useEffect(() => {
+    if (!activeSessionId) {
+      setChildSessions([])
+      setSessionTodos([])
+      return
+    }
+    // cancelled 标志防止切换 session 后写入过期数据
+    let cancelled = false
+    setChildSessions([])
+    setSessionTodos([])
+
+    // 加载子会话,然后查询父+子合并的 todos
+    invokeSafe<SessionDTO[]>(IPC_CHANNELS.SESSIONS_CHILDREN, activeSessionId)
       .then((children) => {
+        if (cancelled) return
         setChildSessions(children)
         return invokeSafe<TodoDTO[]>(IPC_CHANNELS.TODOS_BY_PARENT, {
-          parentSessionId: sessionId,
+          parentSessionId: activeSessionId,
           childSessionIds: children.map(c => c.id),
         })
       })
-      .then((todos) => setSessionTodos(todos))
+      .then((todos) => {
+        if (cancelled || !todos) return
+        setSessionTodos(todos)
+      })
       .catch(() => {
+        if (cancelled) return
         setChildSessions([])
         setSessionTodos([])
       })
-  }, [])
-
-  const closeDetail = useCallback(() => {
-    setPanelOpen(false)
-    setTimeout(() => setSelectedSession(null), 300) // wait for animation
-  }, [])
+    return () => { cancelled = true }
+  }, [activeSessionId])
 
   // ─── Key handler (keyboard nav) ────────────────────────────────────────────────
 
@@ -307,32 +319,8 @@ const listRef = useRef<HTMLDivElement>(null)
       e.preventDefault(); setFocusedIndex(prev => Math.max(prev - 1, 0))
     } else if (e.key === 'Enter' && focusedIndex >= 0) {
       openDetail(sessions[focusedIndex].id)
-    } else if (e.key === 'd' && focusedIndex >= 0 && !e.ctrlKey && !e.metaKey) {
-      const s = sessions[focusedIndex]; if (s) setDeleteConfirm(s.id)
     }
   }, [focusedIndex, sessions, openDetail])
-
-  // ─── Delete session ──────────────────────────────────────────────────────
-
-  const handleDelete = useCallback(
-    (sessionId: string) => {
-      setDeleteError(null)
-      invokeSafe(IPC_CHANNELS.SESSIONS_DELETE, sessionId)
-        .then(() => {
-          closeDetail()
-          // Reload current page
-          setPage((p) => p)
-          // Force re-fetch by triggering the effect
-          setSessions((prev) => prev.filter((s) => s.id !== sessionId))
-          setTotal((t) => t - 1)
-        })
-        .catch((err) => {
-          setDeleteError((err as Error).message || '删除会话失败')
-        })
-        .finally(() => setDeleteConfirm(null))
-    },
-    [closeDetail]
-  )
 
   // ─── Batch selection helpers ────────────────────────────────────────────
 
@@ -360,8 +348,6 @@ const listRef = useRef<HTMLDivElement>(null)
     setSelectedIds(new Set())
     setShowBatchDelete(false)
     addToast(`已删除 ${count} 个会话`, 'success')
-    // Refresh sessions list
-    setPage((p) => p)
     setSessions((prev) => prev.filter((s) => !selectedIds.has(s.id)))
     setTotal((t) => t - count)
   }
@@ -419,17 +405,17 @@ const listRef = useRef<HTMLDivElement>(null)
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div className={`flex h-full ${activeSessionId ? '' : 'flex-col'}`}>
+    <div className={`flex h-full min-w-0 ${activeSessionId ? '' : 'flex-col'}`}>
     {activeSessionId ? (
       <>
         {/* Detail panel */}
-        <div className="flex h-full flex-col">
+        <div className="flex h-full flex-col min-w-0">
           {activeSessionId && selectedSession ? (
             <>
               {/* 顶部 sticky — 头部 + Tab 栏 + SubSessionSelector */}
               <div className="shrink-0 bg-white">
                 {/* 头部 */}
-                <div className="flex items-center justify-between px-4 py-2 border-b">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200">
                   {editingTitle ? (
                     <input
                       value={editTitle}
@@ -459,7 +445,7 @@ const listRef = useRef<HTMLDivElement>(null)
                   </div>
                 </div>
                 {/* Tab Bar */}
-                <div className="flex border-b px-4 gap-0">
+                <div className="flex border-b border-gray-200 px-4 gap-0">
                   {['basic', 'subsessions', 'messages', 'todos'].map(t => (
                     <button key={t} onClick={() => setSearchParams(p => { p.set('tab', t); return p })}
                       className={`px-4 py-2 text-sm border-b-2 -mb-[1px] whitespace-nowrap ${
@@ -469,228 +455,208 @@ const listRef = useRef<HTMLDivElement>(null)
                     </button>
                   ))}
                 </div>
-                {/* SubSessionSelector 栏 */}
-                <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50/50 gap-2">
-                  <SubSessionSelector childSessions={childSessions} selectedChildId={selectedChildId} onChange={setSelectedChildId} />
-                  <div className="text-xs text-gray-500">
-                    {selectedChildId
-                      ? `当前子会话：${childSessions.find(c => c.id === selectedChildId)?.title?.slice(0, 16) || '已选'}`
-                      : `共 ${childSessions.length} 个子会话`}
+                {/* SubSessionSelector 栏 — 仅在解析/预览/待办 Tab 下显示 */}
+                {activeTab !== 'basic' && (
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50/50 gap-2">
+                    <SubSessionSelector childSessions={childSessions} selectedChildId={selectedChildId} onChange={setSelectedChildId} />
+                    <div className="text-xs text-gray-500">
+                      {selectedChildId
+                        ? `当前子会话：${childSessions.find(c => c.id === selectedChildId)?.title?.slice(0, 16) || '已选'}`
+                        : `共 ${childSessions.length} 个子会话`}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
-              {/* 中间 — 解析 Tab 独有 flex h-full 左右分栏 */}
+              {/* 中间 — 各 Tab 内容区域 */}
               <div className="flex-1 overflow-hidden">
                 {activeTab === 'subsessions' && (
-                  <div className="flex h-full">
-                    <div className="w-[35%] border-r border-gray-200 flex flex-col">
-                      <MessageViewer sessionId={(selectedChildId || activeSessionId)!} />
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-4">
-                      {/* 解析 Tab 右侧 — Part 明细（Commit 4.3 处理） */}
+                  <div className="h-full overflow-hidden min-w-0">
+                    <MessageViewer sessionId={(selectedChildId || activeSessionId)!} />
+                  </div>
+                )}
+                {activeTab === 'messages' && (
+                  <div className="flex flex-col h-full w-full">
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden w-full">
+                      <SessionPreview
+                        activeSessionId={activeSessionId}
+                        childSessions={childSessions}
+                        page={previewPage}
+                        pageSize={previewPageSize}
+                        total={previewTotal}
+                        onPageChange={setPreviewPage}
+                        onPageSizeChange={setPreviewPageSize}
+                        onTotalChange={setPreviewTotal}
+                        selectedChildId={selectedChildId}
+                        onSelectedChildIdChange={setSelectedChildId}
+                      />
                     </div>
                   </div>
                 )}
-                {activeTab !== 'subsessions' && activeTab !== 'messages' && (
+                {activeTab === 'basic' && (
                   <div className="overflow-y-auto h-full p-4">
-                    {activeTab === 'basic' && (
-                      <div className="space-y-6">
+                    <div className="space-y-6">
+                      <div>
+                        <h5 className="text-sm font-medium text-gray-700 mb-2">📋 基础信息</h5>
+                        <div className="space-y-2 text-sm">
+                          <p><span className="text-gray-500">目录:</span> {selectedSession.directory || '-'}</p>
+                          <p><span className="text-gray-500">模型:</span> {selectedSession.model || '-'}</p>
+                          <p><span className="text-gray-500">时间:</span> {selectedSession.time_created ? new Date(selectedSession.time_created).toLocaleString() : '-'}</p>
+                        </div>
+                      </div>
+                      {((tokenPieData.length > 0) || (toolBarData.length > 0)) && (
+                        <div className="grid grid-cols-2 gap-4">
+                          {/* Token Pie */}
+                          {tokenPieData.length > 0 && (
+                            <div>
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">💰 Token 明细</h5>
+                              <ResponsiveContainer width="100%" height={180}>
+                                <PieChart><Pie data={tokenPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value">
+                                  {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
+                                </Pie><RechartsTooltip formatter={(v: number) => formatNumber(v)} /></PieChart>
+                              </ResponsiveContainer>
+                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                                {tokenPieData.map((entry, i) => (
+                                  <div key={entry.name} className="flex items-center gap-1.5 text-xs text-gray-600">
+                                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{backgroundColor: TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]}}/>
+                                    {entry.name}: {formatNumber(entry.value)}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {/* Tool Ranking */}
+                          {toolBarData.length > 0 && (
+                            <div>
+                              <h5 className="text-sm font-medium text-gray-700 mb-2">🔧 Tool 排行</h5>
+                              <ResponsiveContainer width="100%" height={toolBarData.length * 32 + 20}>
+                                <BarChart data={toolBarData} layout="vertical" margin={{left:80,right:20}}>
+                                  <XAxis type="number" tickFormatter={v => formatNumber(v)} />
+                                  <YAxis type="category" dataKey="name" width={80} tick={{fontSize:12}} />
+                                  <Bar dataKey="count" fill="#3B82F6" radius={[0,4,4,0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* Skill List */}
+                      {selectedSession.skillList?.length > 0 && (
                         <div>
-                          <h5 className="text-sm font-medium text-gray-700 mb-2">📋 基础信息</h5>
-                          <div className="space-y-2 text-sm">
-                            <p><span className="text-gray-500">目录:</span> {selectedSession.directory || '-'}</p>
-                            <p><span className="text-gray-500">模型:</span> {selectedSession.model || '-'}</p>
-                            <p><span className="text-gray-500">时间:</span> {selectedSession.time_created ? new Date(selectedSession.time_created).toLocaleString() : '-'}</p>
+                          <h5 className="text-sm font-medium text-gray-700 mb-2">🎯 Skill 列表</h5>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedSession.skillList.map((skillName, i) => (
+                              <span key={i} className="px-2.5 py-0.5 rounded-full bg-purple-50 text-xs text-purple-700">{skillName}</span>
+                            ))}
                           </div>
                         </div>
-                        {((tokenPieData.length > 0) || (toolBarData.length > 0)) && (
-                          <div className="grid grid-cols-2 gap-4">
-                            {/* Token Pie */}
-                            {tokenPieData.length > 0 && (
-                              <div>
-                                <h5 className="text-sm font-medium text-gray-700 mb-2">💰 Token 明细</h5>
-                                <ResponsiveContainer width="100%" height={180}>
-                                  <PieChart><Pie data={tokenPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value">
-                                    {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
-                                  </Pie><RechartsTooltip formatter={(v: number) => formatNumber(v)} /></PieChart>
-                                </ResponsiveContainer>
-                                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                                  {tokenPieData.map((entry, i) => (
-                                    <div key={entry.name} className="flex items-center gap-1.5 text-xs text-gray-600">
-                                      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{backgroundColor: TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]}}/>
-                                      {entry.name}: {formatNumber(entry.value)}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {/* Tool Ranking */}
-                            {toolBarData.length > 0 && (
-                              <div>
-                                <h5 className="text-sm font-medium text-gray-700 mb-2">🔧 Tool 排行</h5>
-                                <ResponsiveContainer width="100%" height={toolBarData.length * 32 + 20}>
-                                  <BarChart data={toolBarData} layout="vertical" margin={{left:80,right:20}}>
-                                    <XAxis type="number" tickFormatter={v => formatNumber(v)} />
-                                    <YAxis type="category" dataKey="name" width={80} tick={{fontSize:12}} />
-                                    <Bar dataKey="count" fill="#3B82F6" radius={[0,4,4,0]} />
-                                  </BarChart>
-                                </ResponsiveContainer>
-                              </div>
-                            )}
+                      )}
+                      {sessionShare && (
+                        <div className="border-t border-gray-200 pt-4 mt-4">
+                          <h5 className="text-sm font-medium text-gray-700 mb-2">🔗 分享信息</h5>
+                          <div className="flex items-center gap-3 text-sm bg-gray-50 rounded p-3">
+                            <span className="text-gray-500 truncate flex-1 font-mono text-xs">{sessionShare.url}</span>
+                            <button onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(sessionShare.url)
+                                addToast('已复制链接', 'success')
+                              } catch {
+                                addToast('复制失败', 'error')
+                              }
+                            }} className="text-gray-400 hover:text-blue-600 text-sm">📋 复制</button>
+                            <button onClick={() => { openExternal(sessionShare.url) }} className="text-gray-400 hover:text-blue-600 text-sm">🌐 打开</button>
                           </div>
-                        )}
-                        {/* Skill List */}
-                        {selectedSession.skillList?.length > 0 && (
-                          <div>
-                            <h5 className="text-sm font-medium text-gray-700 mb-2">🎯 Skill 列表</h5>
-                            <div className="flex flex-wrap gap-2">
-                              {selectedSession.skillList.map((skillName, i) => (
-                                <span key={i} className="px-2.5 py-0.5 rounded-full bg-purple-50 text-xs text-purple-700">{skillName}</span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {sessionShare && (
-                          <div className="border-t pt-4 mt-4">
-                            <h5 className="text-sm font-medium text-gray-700 mb-2">🔗 分享信息</h5>
-                            <div className="flex items-center gap-3 text-sm bg-gray-50 rounded p-3">
-                              <span className="text-gray-500 truncate flex-1 font-mono text-xs">{sessionShare.url}</span>
-                              <button onClick={async () => {
-                                try {
-                                  await navigator.clipboard.writeText(sessionShare.url)
-                                  addToast('已复制链接', 'success')
-                                } catch {
-                                  addToast('复制失败', 'error')
-                                }
-                              }} className="text-gray-400 hover:text-blue-600 text-sm">📋 复制</button>
-                              <button onClick={() => { openExternal(sessionShare.url) }} className="text-gray-400 hover:text-blue-600 text-sm">🌐 打开</button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {activeTab === 'todos' && (() => {
-                      const filteredTodos = sessionTodos.filter(t => {
-                        if (selectedChildId && t.session_id !== selectedChildId) return false
-                        if (todoSearch && !t.content?.toLowerCase().includes(todoSearch.toLowerCase())) return false
-                        if (todoStatusFilter && t.status !== todoStatusFilter) return false
-                        if (todoPriorityFilter && t.priority !== todoPriorityFilter) return false
-                        return true
-                      })
-                      const TODO_PAGE_SIZE = 20
-                      const totalPages = Math.max(1, Math.ceil(filteredTodos.length / TODO_PAGE_SIZE))
-                      const pagedTodos = filteredTodos.slice((todoPage - 1) * TODO_PAGE_SIZE, todoPage * TODO_PAGE_SIZE)
-
-                      return (
-                      <div className="flex flex-col h-full">
-                        {/* 顶部 sticky — 搜索/筛选行 */}
-                        <div className="shrink-0 bg-white border-b px-4 py-2 flex gap-2 flex-wrap">
-                          <input type="text" placeholder="搜索待办..." value={todoSearch} onChange={e => setTodoSearch(e.target.value)}
-                            className="border rounded px-2 py-1 text-sm w-48" />
-                          <select value={todoStatusFilter} onChange={e => setTodoStatusFilter(e.target.value)}
-                            className="border rounded px-2 py-1 text-sm">
-                            <option value="">全部状态</option>
-                            <option value="pending">待处理</option>
-                            <option value="in_progress">进行中</option>
-                            <option value="completed">已完成</option>
-                            <option value="cancelled">已取消</option>
-                          </select>
-                          <select value={todoPriorityFilter} onChange={e => setTodoPriorityFilter(e.target.value)}
-                            className="border rounded px-2 py-1 text-sm">
-                            <option value="">全部优先级</option>
-                            <option value="high">高</option>
-                            <option value="medium">中</option>
-                            <option value="low">低</option>
-                          </select>
                         </div>
-
-                        {/* 中间 — 表格 */}
-                        <div className="flex-1 overflow-y-auto">
-                          <table className="w-full text-sm">
-                            <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
-                              <tr>
-                                <th className="w-12 px-2 py-2 text-center font-medium text-gray-500">#</th>
-                                <th className="px-2 py-2 text-left font-medium text-gray-500">内容</th>
-                                <th className="w-20 px-2 py-2 text-center font-medium text-gray-500">状态</th>
-                                <th className="w-16 px-2 py-2 text-center font-medium text-gray-500">优先级</th>
-                                <th className="px-2 py-2 text-left font-medium text-gray-500">所属会话</th>
-                                <th className="w-14 px-2 py-2 text-center font-medium text-gray-500">位置</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {pagedTodos.length > 0 ? pagedTodos.map((todo, idx) => (
-                                <tr key={`${todo.session_id}:${todo.position}`} className="border-b border-gray-100 hover:bg-gray-50/50">
-                                  <td className="px-2 py-2 text-center text-gray-400 text-xs">{(todoPage - 1) * TODO_PAGE_SIZE + idx + 1}</td>
-                                  <td className="px-2 py-2 truncate max-w-md" title={todo.content}>
-                                    {truncateText(todo.content || '', 80)}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                      todo.status === 'completed' ? 'bg-green-100 text-green-700'
-                                      : todo.status === 'cancelled' ? 'bg-gray-100 text-gray-500'
-                                      : todo.status === 'in_progress' ? 'bg-blue-100 text-blue-700'
-                                      : 'bg-yellow-100 text-yellow-700'
-                                    }`}>
-                                      {todo.status}
-                                    </span>
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                      todo.priority === 'high' ? 'bg-red-100 text-red-700'
-                                      : todo.priority === 'medium' ? 'bg-yellow-100 text-yellow-700'
-                                      : 'bg-green-100 text-green-700'
-                                    }`}>
-                                      {todo.priority || '-'}
-                                    </span>
-                                  </td>
-                                  <td className="px-2 py-2 truncate max-w-xs text-gray-600 text-xs">
-                                    {todo.session_title || todo.session_id.slice(0, 8)}
-                                  </td>
-                                  <td className="px-2 py-2 text-center text-gray-500 text-xs">[{todo.position}]</td>
-                                </tr>
-                              )) : (
-                                <tr><td colSpan={6} className="text-center text-gray-400 py-8 text-sm">暂无待办</td></tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        {/* 底部 sticky — 分页 */}
-                        {filteredTodos.length > 0 && (
-                          <div className="shrink-0 border-t bg-white px-3 py-2 flex items-center justify-between text-xs text-gray-500">
-                            <button onClick={() => setTodoPage(p => Math.max(1, p - 1))} disabled={todoPage <= 1} className="disabled:opacity-30 hover:text-gray-700">
-                              <ChevronLeft size={14} />
-                            </button>
-                            <span>{todoPage}/{totalPages} · 共 {filteredTodos.length} 条</span>
-                            <button onClick={() => setTodoPage(p => Math.min(totalPages, p + 1))} disabled={todoPage >= totalPages} className="disabled:opacity-30 hover:text-gray-700">
-                              <ChevronRight size={14} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      )
-                    })()}
-                    {activeTab === 'messages' && (
-                      <div className="flex flex-col h-full">
-                        <div className="flex-1 overflow-y-auto p-4">
-                          <SessionPreview
-                            activeSessionId={activeSessionId}
-                            childSessions={childSessions}
-                            page={previewPage}
-                            pageSize={previewPageSize}
-                            total={previewTotal}
-                            onPageChange={setPreviewPage}
-                            onPageSizeChange={setPreviewPageSize}
-                            onTotalChange={setPreviewTotal}
-                            selectedChildId={selectedChildId}
-                            onSelectedChildIdChange={setSelectedChildId}
-                          />
-                        </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 )}
+                {activeTab === 'todos' && (() => {
+                  const filteredTodos = sessionTodos.filter(t => {
+                    if (selectedChildId && t.session_id !== selectedChildId) return false
+                    if (todoSearch && !t.content?.toLowerCase().includes(todoSearch.toLowerCase())) return false
+                    if (todoStatusFilter && t.status !== todoStatusFilter) return false
+                    if (todoPriorityFilter && t.priority !== todoPriorityFilter) return false
+                    return true
+                  })
+                  const pagedTodos = filteredTodos.slice((todoPage - 1) * todoPageSize, todoPage * todoPageSize)
+
+                  return (
+                  <div className="flex flex-col h-full w-full">
+                    {/* 顶部 sticky — 搜索/筛选行 */}
+                    <div className="shrink-0 bg-white border-b border-gray-200 px-4 py-2 flex gap-2 flex-wrap">
+                      <input type="text" placeholder="搜索待办..." value={todoSearch} onChange={e => setTodoSearch(e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm w-48 bg-white text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                      <select value={todoStatusFilter} onChange={e => setTodoStatusFilter(e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm bg-white text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">
+                        <option value="">全部状态</option>
+                        <option value="pending">待处理</option>
+                        <option value="in_progress">进行中</option>
+                        <option value="completed">已完成</option>
+                        <option value="cancelled">已取消</option>
+                      </select>
+                      <select value={todoPriorityFilter} onChange={e => setTodoPriorityFilter(e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1 text-sm bg-white text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">
+                        <option value="">全部优先级</option>
+                        <option value="high">高</option>
+                        <option value="medium">中</option>
+                        <option value="low">低</option>
+                      </select>
+                    </div>
+
+                    {/* 中间 — 表格 */}
+                    <div className="flex-1 overflow-y-auto overflow-x-auto w-full">
+                      <table className="w-full text-sm table-fixed">
+                        <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="w-12 px-2 py-2 text-center font-medium text-gray-500">#</th>
+                            <th className="px-2 py-2 text-left font-medium text-gray-500">内容</th>
+                            <th className="w-20 px-2 py-2 text-center font-medium text-gray-500">状态</th>
+                            <th className="w-16 px-2 py-2 text-center font-medium text-gray-500">优先级</th>
+                            <th className="w-48 px-2 py-2 text-left font-medium text-gray-500">所属会话</th>
+                            <th className="w-14 px-2 py-2 text-center font-medium text-gray-500">位置</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pagedTodos.length > 0 ? pagedTodos.map((todo, idx) => (
+                            <tr key={`${todo.session_id}:${todo.position}`} className="border-b border-gray-100 hover:bg-gray-50/50">
+                              <td className="px-2 py-2 text-center text-gray-400 text-xs">{(todoPage - 1) * todoPageSize + idx + 1}</td>
+                              <td className="px-2 py-2 truncate" title={todo.content}>
+                                {truncateText(todo.content || '', 120)}
+                              </td>
+                              <td className="px-2 py-2 text-center">
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${TODO_STATUS_BADGE[todo.status] || 'bg-gray-100 text-gray-500'}`}>
+                                  {TODO_STATUS_LABEL[todo.status] || todo.status}
+                                </span>
+                              </td>
+                              <td className="px-2 py-2 text-center">
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${TODO_PRIORITY_BADGE[todo.priority] || 'bg-gray-100 text-gray-500'}`}>
+                                  {TODO_PRIORITY_LABEL[todo.priority] || todo.priority || '-'}
+                                </span>
+                              </td>
+                              <td className="px-2 py-2 truncate text-gray-600 text-xs" title={todo.session_title || todo.session_id}>
+                                {todo.session_title || todo.session_id.slice(0, 8)}
+                              </td>
+                              <td className="px-2 py-2 text-center text-gray-500 text-xs">[{todo.position}]</td>
+                            </tr>
+                          )) : (
+                            <tr><td colSpan={6} className="text-center text-gray-400 py-8 text-sm">暂无待办</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* 底部 sticky — 分页 */}
+                    <PreviewTabPagination
+                      page={todoPage}
+                      total={filteredTodos.length}
+                      pageSize={todoPageSize}
+                      onPageChange={setTodoPage}
+                      onPageSizeChange={(s) => { setTodoPageSize(s); setTodoPage(1) }}
+                    />
+                  </div>
+                  )
+                })()}
               </div>
               {activeTab === 'messages' && (
                 <PreviewTabPagination
@@ -767,7 +733,7 @@ const listRef = useRef<HTMLDivElement>(null)
             <ChevronRight size={14} className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 transition-transform ${projectOpen ? 'rotate-90' : 'rotate-0'}`} />
             {projectOpen && (
               <div className="absolute z-30 top-full left-0 mt-1 w-80 bg-white border border-gray-200 rounded shadow-lg max-h-64 overflow-hidden">
-                <div className="p-2 border-b">
+                <div className="p-2 border-b border-gray-200">
                   <input type="text" placeholder="搜索项目..." value={projectSearch}
                     onChange={e => setProjectSearch(e.target.value)}
                     className="w-full border rounded px-2 py-1 text-sm focus:border-brand-500 focus:outline-none" autoFocus />
@@ -804,7 +770,7 @@ const listRef = useRef<HTMLDivElement>(null)
                   </button>
                 ))}
                 {datePreset === 'custom' && (
-                  <div className="px-2 py-1 border-t mt-1">
+                  <div className="px-2 py-1 border-t border-gray-200 mt-1">
                     <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1) }} className="border rounded px-1 py-0.5 text-xs w-full mb-1" />
                     <span className="text-xs text-gray-400">~</span>
                     <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1) }} className="border rounded px-1 py-0.5 text-xs w-full mt-1" />
@@ -884,7 +850,7 @@ const listRef = useRef<HTMLDivElement>(null)
 
       {/* Pagination */}
       {total > 0 && (
-        <div className="sticky bottom-0 border-t bg-white px-3 py-2 flex items-center justify-between text-xs text-gray-500">
+        <div className="sticky bottom-0 border-t border-gray-200 bg-white px-3 py-2.5 h-[56px] flex items-center justify-between text-xs text-gray-500">
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">
               显示 {startIdx}-{endIdx} / 共 {formatNumber(total)} 条

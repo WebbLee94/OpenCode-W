@@ -168,7 +168,7 @@ function Layout() {
           )}
         </header>
         {/* Content */}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden">
           <Outlet />
         </main>
       </div>

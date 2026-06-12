@@ -30,6 +30,7 @@ db.exec(`
     model TEXT,
     agent TEXT,
     project_id TEXT,
+    parent_id TEXT,
     tokens_input INTEGER DEFAULT 0,
     tokens_output INTEGER DEFAULT 0,
     tokens_reasoning INTEGER DEFAULT 0,
@@ -63,6 +64,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_message_session ON message(session_id);
   CREATE INDEX IF NOT EXISTS idx_part_message ON part(message_id);
   CREATE INDEX IF NOT EXISTS idx_part_session ON part(session_id);
+
+  CREATE TABLE IF NOT EXISTS todo (
+    session_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    status TEXT NOT NULL,
+    priority TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    time_created INTEGER NOT NULL,
+    time_updated INTEGER NOT NULL,
+    PRIMARY KEY (session_id, position),
+    FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS todo_session_idx ON todo (session_id);
 `)
 
 // Generate realistic session data
@@ -96,6 +110,7 @@ for (let i = 0; i < 3; i++) {
     model: models[i],
     agent: agents[i],
     project_id: projects[i],
+    parent_id: null,
     tokens_input: tokensInput,
     tokens_output: tokensOutput,
     tokens_reasoning: tokensReasoning,
@@ -109,15 +124,36 @@ for (let i = 0; i < 3; i++) {
 
 // Insert sessions
 const insertSession = db.prepare(`
-  INSERT INTO session (id, title, directory, model, agent, project_id, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write, cost, time_created, time_updated)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO session (id, title, directory, model, agent, project_id, parent_id, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write, cost, time_created, time_updated)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `)
 
 for (const s of sessions) {
   insertSession.run(
-    s.id, s.title, s.directory, s.model, s.agent, s.project_id,
+    s.id, s.title, s.directory, s.model, s.agent, s.project_id, s.parent_id,
     s.tokens_input, s.tokens_output, s.tokens_reasoning, s.tokens_cache_read, s.tokens_cache_write,
     s.cost, s.time_created, s.time_updated
+  )
+}
+
+// Generate child (sub) sessions for the first parent session
+const childTitles = [
+  'Authentication middleware - 子任务 A',
+  'Authentication middleware - 子任务 B',
+]
+const parentSession = sessions[0]
+for (let i = 0; i < childTitles.length; i++) {
+  const childCreated = parentSession.time_created + (i + 1) * 1800000 // 30 min after parent
+  const childUpdated = childCreated + 600000
+  const childId = randomUUID()
+  const childTokensInput = 1500 + Math.floor(Math.random() * 4000)
+  const childTokensOutput = 800 + Math.floor(Math.random() * 3000)
+  const childCost = +(childTokensInput * 0.000003 + childTokensOutput * 0.000015).toFixed(6)
+
+  insertSession.run(
+    childId, childTitles[i], parentSession.directory, parentSession.model,
+    parentSession.agent, parentSession.project_id, parentSession.id,
+    childTokensInput, childTokensOutput, 0, 0, 0, childCost, childCreated, childUpdated
   )
 }
 
@@ -253,10 +289,73 @@ for (const p of parts) {
   insertPart.run(p.id, p.session_id, p.message_id, p.data, p.time_created)
 }
 
+// Generate todos — covers parent and sub sessions, varied status/priority
+const todoSamples: { sessionId: string; content: string; status: 'pending' | 'in_progress' | 'completed' | 'cancelled'; priority: 'high' | 'medium' | 'low' }[] = []
+let todoPos = 0
+
+// Parent session 1 — 4 todos
+for (let i = 0; i < 4; i++) {
+  const statuses: ('pending' | 'in_progress' | 'completed' | 'cancelled')[] = ['completed', 'in_progress', 'pending', 'completed']
+  const priorities: ('high' | 'medium' | 'low')[] = ['high', 'high', 'medium', 'low']
+  todoSamples.push({
+    sessionId: sessions[0].id,
+    content: `Phase ${i + 1}: ${['需求分析', '架构设计', '核心实现', '测试验证'][i]}`,
+    status: statuses[i],
+    priority: priorities[i],
+  })
+}
+
+// Parent session 2 — 2 todos
+for (let i = 0; i < 2; i++) {
+  todoSamples.push({
+    sessionId: sessions[1].id,
+    content: `子任务 ${i + 1}: 数据迁移与兼容性验证`,
+    status: i === 0 ? 'in_progress' : 'pending',
+    priority: i === 0 ? 'high' : 'medium',
+  })
+}
+
+// Parent session 3 — 3 todos
+for (let i = 0; i < 3; i++) {
+  todoSamples.push({
+    sessionId: sessions[2].id,
+    content: `优化项 ${i + 1}: ${['查询性能', '缓存命中率', '索引重建'][i]}`,
+    status: i === 0 ? 'completed' : (i === 1 ? 'in_progress' : 'pending'),
+    priority: 'medium',
+  })
+}
+
+// Each child session also gets todos — verifies the parent+child merged query
+const childRows = db.prepare('SELECT id, time_created FROM session WHERE parent_id = ?').all(sessions[0].id) as { id: string; time_created: number }[]
+for (const child of childRows) {
+  for (let i = 0; i < 2; i++) {
+    todoSamples.push({
+      sessionId: child.id,
+      content: `子任务-A-${i + 1}: 边界条件与异常处理`,
+      status: i === 0 ? 'completed' : 'in_progress',
+      priority: 'high',
+    })
+  }
+}
+
+const insertTodo = db.prepare(`
+  INSERT INTO todo (session_id, content, status, priority, position, time_created, time_updated)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`)
+
+const todoInsertStmt = db.transaction((items: typeof todoSamples) => {
+  for (const t of items) {
+    const now = Date.now()
+    insertTodo.run(t.sessionId, t.content, t.status, t.priority, todoPos++, now, now)
+  }
+})
+todoInsertStmt(todoSamples)
+
 // Verify data
 const sessionCount = (db.prepare('SELECT COUNT(*) as count FROM session').get() as { count: number }).count
 const messageCount = (db.prepare('SELECT COUNT(*) as count FROM message').get() as { count: number }).count
 const partCount = (db.prepare('SELECT COUNT(*) as count FROM part').get() as { count: number }).count
+const todoCount = (db.prepare('SELECT COUNT(*) as count FROM todo').get() as { count: number }).count
 
 db.close()
 
@@ -264,3 +363,4 @@ console.log(`Test database generated at: ${DB_PATH}`)
 console.log(`   Sessions: ${sessionCount}`)
 console.log(`   Messages: ${messageCount}`)
 console.log(`   Parts:    ${partCount}`)
+console.log(`   Todos:    ${todoCount}`)

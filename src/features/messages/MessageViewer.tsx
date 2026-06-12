@@ -71,30 +71,30 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
       if (inline) return <code className="bg-gray-100 px-1 rounded text-sm" {...props}>{children}</code>
       const match = /language-(\w+)/.exec(className || ''); const lang = match?.[1]; const code = String(children).replace(/\n$/, '')
       if (lang && hljs.getLanguage(lang)) {
-        try { const highlighted = hljs.highlight(code, { language: lang }).value; return <pre className="bg-gray-900 text-gray-100 p-3 rounded overflow-x-auto text-sm"><code dangerouslySetInnerHTML={{ __html: highlighted }} /></pre> } catch {}
+        try { const highlighted = hljs.highlight(code, { language: lang }).value; return <pre className="bg-gray-900 text-gray-100 p-3 rounded text-sm whitespace-pre-wrap break-all max-w-full !overflow-hidden"><code dangerouslySetInnerHTML={{ __html: highlighted }} /></pre> } catch {}
       }
-      return <pre className="bg-gray-100 p-3 rounded overflow-x-auto text-sm"><code>{code}</code></pre>
+      return <pre className="bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap break-all max-w-full !overflow-hidden"><code>{code}</code></pre>
     }
   }), [])
 
   function renderParts(parts: PartDTO[]) {
     return (
-      <div className="mt-4">
+      <div className="mt-4 min-w-0 max-w-full overflow-hidden break-words">
         <h5 className="text-xs font-medium text-gray-500 mb-2 uppercase">Part 明细</h5>
-        <table className="w-full text-xs">
-          <thead><tr className="bg-gray-50 border-b"><th className="text-left px-2 py-1 text-gray-500">类型</th><th className="text-left px-2 py-1 text-gray-500">大小</th><th className="text-left px-2 py-1 text-gray-500">摘要</th></tr></thead>
+        <table className="w-full text-xs table-fixed min-w-0">
+          <thead><tr className="bg-gray-50 border-b border-gray-200"><th className="text-left px-2 py-1 text-gray-500 w-36">类型</th><th className="text-left px-2 py-1 text-gray-500 w-20">大小</th><th className="text-left px-2 py-1 text-gray-500">摘要</th></tr></thead>
           <tbody>
             {parts.map((p, i) => (
-              <tr key={i} className="border-b hover:bg-gray-50 cursor-pointer" onClick={() => setExpandedPart(expandedPart === i ? null : i)}>
-                <td className="px-2 py-1"><PartTypeBadge type={p.type} />{p.type === 'tool' && p.status && <StatusBadge status={p.status} />}</td>
+              <tr key={i} className="border-b border-gray-200 hover:bg-gray-50 cursor-pointer" onClick={() => setExpandedPart(expandedPart === i ? null : i)}>
+                <td className="px-2 py-1 whitespace-nowrap"><PartTypeBadge type={p.type} />{p.type === 'tool' && p.status && <StatusBadge status={p.status} />}</td>
                 <td className={`px-2 py-1 font-mono ${sizeColor(p.data_size)}`}>{formatBytes(p.data_size)}</td>
-                <td className="px-2 py-1 text-gray-500 truncate max-w-xs">{p.summary || '-'}</td>
+                <td className="px-2 py-1 text-gray-500 align-top break-words">{p.summary || '-'}</td>
               </tr>
             ))}
             {parts.map((p, i) => expandedPart === i && (
-              <tr key={`expanded-${i}`} className="bg-gray-50/50 border-b">
+              <tr key={`expanded-${i}`} className="bg-gray-50/50 border-b border-gray-200">
                 <td colSpan={3} className="px-2 py-2">
-                  <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-40 whitespace-pre-wrap break-all">{JSON.stringify(p, null, 2)}</pre>
+                  <pre className="text-xs bg-gray-100 p-2 rounded max-w-full max-h-40 overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-all">{JSON.stringify(p, null, 2)}</pre>
                 </td>
               </tr>
             ))}
@@ -105,14 +105,14 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
   }
 
   return (
-    <div className="flex h-full">
-      <div className="w-[35%] border-r border-gray-200 flex flex-col">
-        <div className="flex-1 overflow-y-auto">
+    <div className="flex h-full w-full overflow-hidden">
+      <div className="w-[35%] shrink-0 border-r border-gray-200 flex flex-col min-w-0">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
           {loading && messages.length === 0 ? <div className="flex items-center justify-center py-20 text-gray-400 text-sm">加载中...</div>
           : messages.length === 0 ? <div className="flex items-center justify-center py-20 text-gray-400 text-sm">暂无消息</div>
           : messages.map(msg => (
             <div key={msg.id} onClick={() => loadDetail(msg.id)}
-              className={`px-3 py-2.5 border-b cursor-pointer hover:bg-gray-50 ${detail?.id === msg.id ? `${ROLE_CONFIG[msg.role]?.bgClass || 'bg-brand-50'} border-l-2 border-l-brand-500` : ''}`}>
+              className={`px-3 py-2.5 border-b border-gray-200 cursor-pointer hover:bg-gray-50 ${detail?.id === msg.id ? `${ROLE_CONFIG[msg.role]?.bgClass || 'bg-brand-50'} border-l-2 border-l-brand-500` : ''}`}>
               <div className="flex items-center justify-between mb-1"><RoleBadge role={msg.role} /><span className={`text-xs font-mono ${sizeColor(msg.data_size)}`}>{formatBytes(msg.data_size)}</span></div>
               <div className="text-xs text-gray-500 truncate mt-0.5">{truncateText(msg.content || '', 80)}</div>
               <div className="text-xs text-gray-400 mt-1">{formatRelativeTime(msg.time_created)}</div>
@@ -120,10 +120,10 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
           ))}
         </div>
         {total > 0 && (
-          <div className="flex items-center justify-between px-3 py-2 border-t bg-white shrink-0 text-xs text-gray-500">
+          <div className="flex items-center justify-between px-3 py-2.5 border-t border-gray-200 bg-white shrink-0 h-[56px] text-xs text-gray-500">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="disabled:opacity-30 hover:text-gray-700"><ChevronLeft size={14} /></button>
             <div className="flex items-center gap-2">
-              <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="border rounded px-1.5 py-0.5 text-xs">
+              <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="border border-gray-200 rounded px-1.5 py-0.5 text-xs">
                 {PAGE_SIZE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
               <span>{page}/{totalPages} · {total} 条</span>
@@ -132,12 +132,12 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
           </div>
         )}
       </div>
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 min-w-0 shrink overflow-y-auto overflow-x-auto p-4 scrollbar-stable">
         {detailLoading ? <div className="flex items-center justify-center py-20 text-gray-400 text-sm">加载中...</div>
         : detail ? (
-          <div>
-            <div className="flex items-center justify-between mb-4"><RoleBadge role={detail.role} /><span className="text-xs text-gray-400">{formatRelativeTime(detail.time_created)} · {formatBytes(detail.data_size)}</span></div>
-            <div className="prose prose-sm max-w-none text-gray-800"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{detail.content || ''}</ReactMarkdown></div>
+          <div className="min-w-0 max-w-full overflow-hidden break-words">
+            <div className="flex items-center justify-between mb-4 gap-2"><RoleBadge role={detail.role} /><span className="text-xs text-gray-400 shrink min-w-0 truncate">{formatRelativeTime(detail.time_created)} · {formatBytes(detail.data_size)}</span></div>
+            <div className="prose prose-sm text-gray-800 markdown-content w-full"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{detail.content || ''}</ReactMarkdown></div>
             {detail.parts && detail.parts.length > 0 && renderParts(detail.parts)}
           </div>
         ) : <div className="flex items-center justify-center py-20 text-gray-400 text-sm">选择左侧消息查看详情</div>}

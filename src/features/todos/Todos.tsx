@@ -36,30 +36,30 @@ const PRIORITY_OPTIONS = [
 
 // ─── Display Maps ────────────────────────────────────────────────────────────
 
-const STATUS_EMOJI: Record<string, string> = {
-  pending: '⏳',
-  in_progress: '🔄',
-  completed: '✅',
-  cancelled: '🚫',
-}
-
 const STATUS_LABEL: Record<string, string> = {
   pending: '待处理',
   in_progress: '进行中',
-  completed: '完成',
-  cancelled: '取消',
-}
-
-const PRIORITY_EMOJI: Record<string, string> = {
-  high: '🔴',
-  medium: '🟡',
-  low: '🟢',
+  completed: '已完成',
+  cancelled: '已取消',
 }
 
 const PRIORITY_LABEL: Record<string, string> = {
   high: '高',
   medium: '中',
   low: '低',
+}
+
+const STATUS_BADGE: Record<string, string> = {
+  completed: 'bg-green-100 text-green-700',
+  cancelled: 'bg-gray-100 text-gray-500',
+  in_progress: 'bg-blue-100 text-blue-700',
+  pending: 'bg-yellow-100 text-yellow-700',
+}
+
+const PRIORITY_BADGE: Record<string, string> = {
+  high: 'bg-red-100 text-red-700',
+  medium: 'bg-yellow-100 text-yellow-700',
+  low: 'bg-green-100 text-green-700',
 }
 
 
@@ -282,14 +282,14 @@ function Todos() {
                     </td>
                     {/* Status — read-only */}
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
-                        {STATUS_EMOJI[todo.status]} {STATUS_LABEL[todo.status]}
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_BADGE[todo.status] || 'bg-gray-100 text-gray-500'}`}>
+                        {STATUS_LABEL[todo.status] || todo.status}
                       </span>
                     </td>
                     {/* Priority — read-only */}
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
-                        {PRIORITY_EMOJI[todo.priority]} {PRIORITY_LABEL[todo.priority]}
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${PRIORITY_BADGE[todo.priority] || 'bg-gray-100 text-gray-500'}`}>
+                        {PRIORITY_LABEL[todo.priority] || todo.priority || '-'}
                       </span>
                     </td>
                     <td className="max-w-[200px] truncate px-4 py-3">

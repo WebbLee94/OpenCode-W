@@ -34,7 +34,7 @@ export default function PartBubbleShell({
   const hasExpandableContent = collapsible && Boolean(children)
 
   return (
-    <div className={`rounded-lg border p-2.5 text-sm ${VARIANT_STYLES[variant]}`}>
+    <div className={`rounded-lg border p-2.5 text-sm min-w-0 max-w-full overflow-hidden ${VARIANT_STYLES[variant]}`}>
       <div className="flex items-center gap-2">
         <span className="text-base">{icon}</span>
         <div className="flex-1 min-w-0">
