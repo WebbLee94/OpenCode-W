@@ -268,6 +268,7 @@ export function registerHandlers(): void {
     if (!checkParentColumn()) return { success: true, data: [] }
     try {
       const children = dbManager.rawQuery<SessionDTO>('SELECT id, title, time_created, time_updated, msg_count, tokens_input, tokens_output, directory, project_id FROM session WHERE parent_id = ? ORDER BY time_created ASC', [sessionId])
+      console.log('[ipc] SESSIONS_CHILDREN parent:', sessionId, '→ found:', children.length)
       return { success: true, data: children }
     } catch (error) { return { success: false, error: (error as Error).message } }
   })
