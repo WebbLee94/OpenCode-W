@@ -618,48 +618,48 @@ function Messages() {
                 })}
               </div>
             )}
-          </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => loadMessages(page - 1)}
-                  disabled={page <= 1}
-                  className="px-3 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  上一页
-                </button>
-                <span className="text-xs text-gray-500">
-                  {page} / {totalPages}
-                </span>
-                <button
-                  onClick={() => loadMessages(page + 1)}
-                  disabled={page >= totalPages}
-                  className="px-3 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  下一页
-                </button>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-400">每页</span>
-                {PAGE_SIZE_OPTIONS.map((opt) => (
+            {/* Pagination - sticky bottom */}
+            {totalPages > 1 && (
+              <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 flex items-center justify-between px-4 py-2">
+                <div className="flex items-center gap-2">
                   <button
-                    key={opt}
-                    onClick={() => handlePageSizeChange(opt)}
-                    className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                      pageSize === opt
-                        ? 'bg-brand-500 text-white'
-                        : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
-                    }`}
+                    onClick={() => loadMessages(page - 1)}
+                    disabled={page <= 1}
+                    className="px-3 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
-                    {opt}
+                    上一页
                   </button>
-                ))}
+                  <span className="text-xs text-gray-500">
+                    {page} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => loadMessages(page + 1)}
+                    disabled={page >= totalPages}
+                    className="px-3 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    下一页
+                  </button>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-400">每页</span>
+                  {PAGE_SIZE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt}
+                      onClick={() => handlePageSizeChange(opt)}
+                      className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                        pageSize === opt
+                          ? 'bg-brand-500 text-white'
+                          : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Right panel - Message detail */}
