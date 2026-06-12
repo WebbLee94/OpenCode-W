@@ -92,7 +92,7 @@ export function registerHandlers(): void {
       const orderExpr = computedColumns.includes(safeSortBy) ? safeSortBy : `s.${safeSortBy}`
 
       const runQuery = (wc: string) => {
-        const childSelect = checkParentColumn() ? ', (SELECT COUNT(*) FROM session c WHERE c.parent_id = s.id) as childCount' : ', 0 as childCount'
+        const childSelect = ', COALESCE((SELECT COUNT(*) FROM session c WHERE c.parent_id = s.id), 0) as childCount'
         const countRow = dbManager.rawGet<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM session s ${wc}`, params)
         const total = countRow?.cnt ?? 0
         const rows = dbManager.rawQuery<Record<string, unknown>>(

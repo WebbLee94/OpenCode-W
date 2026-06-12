@@ -165,10 +165,10 @@ function Dashboard() {
       invokeSafe<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, tr),
       invokeSafe<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE, tr),
       invokeSafe<TrendComparison>(IPC_CHANNELS.DASHBOARD_TRENDS, tr),
-      invokeSafe<ProjectStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROJECTS, tr),
-      invokeSafe<WorkspaceStatsItem[]>(IPC_CHANNELS.DASHBOARD_WORKSPACES),
-      invokeSafe<ModelRankingItem[]>(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, tr),
-      invokeSafe<ProviderStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, tr),
+      invokeSafe<ProjectStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROJECTS, tr).catch(() => [] as ProjectStatsItem[]),
+      invokeSafe<WorkspaceStatsItem[]>(IPC_CHANNELS.DASHBOARD_WORKSPACES).catch(() => [] as WorkspaceStatsItem[]),
+      invokeSafe<ModelRankingItem[]>(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, tr).catch(() => [] as ModelRankingItem[]),
+      invokeSafe<ProviderStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, tr).catch(() => [] as ProviderStatsItem[]),
     ])
     setToolRanking(tools ?? [])
     setSkillUsage(skills ?? [])
