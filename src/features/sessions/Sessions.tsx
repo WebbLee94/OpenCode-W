@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo, Fragment } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShareDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
@@ -40,14 +40,6 @@ import {
 const DEFAULT_PAGE_SIZE = 20
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 
-const SORT_OPTIONS = [
-  { value: 'time_updated', label: '最近活跃' },
-  { value: 'title', label: '标题' },
-  { value: 'msg_count', label: '消息数' },
-  { value: 'data_size', label: '数据大小' },
-  { value: 'total_tokens', label: 'Token消耗' },
-] as const
-
 const TOKEN_PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
 const TOOL_BAR_COLOR = '#6366f1'
 
@@ -79,9 +71,6 @@ function Sessions() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [projectId, setProjectId] = useState('')
-  const [parentFilter, setParentFilter] = useState<'root' | 'all' | 'children'>('root')
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
-  const [childMap, setChildMap] = useState<Record<string, SessionDTO[]>>({})
   const [sortBy, setSortBy] = useState('time_updated')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(1)
@@ -153,8 +142,6 @@ function Sessions() {
   // Session share state
   const [sessionShare, setSessionShare] = useState<SessionShareDTO | null>(null)
   const [showSecret, setShowSecret] = useState(false)
-  const [parentSession, setParentSession] = useState<SessionDTO | null>(null)
-  const [childSessions, setChildSessions] = useState<SessionDTO[]>([])
 
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -188,7 +175,6 @@ const listRef = useRef<HTMLDivElement>(null)
       pageSize,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
-      parentFilter,
     }
 
     setLoading(true)
@@ -205,7 +191,7 @@ const listRef = useRef<HTMLDivElement>(null)
         setTotal(0)
       })
       .finally(() => setLoading(false))
-  }, [debouncedSearch, projectId, sortBy, sortOrder, page, pageSize, startDate, endDate, parentFilter])
+  }, [debouncedSearch, projectId, sortBy, sortOrder, page, pageSize, startDate, endDate])
 
   // ─── Load projects list ──────────────────────────────────────────────────
 
@@ -268,33 +254,12 @@ const listRef = useRef<HTMLDivElement>(null)
     invokeSafe<SessionShareDTO | null>(IPC_CHANNELS.SESSION_SHARE_GET, sessionId)
       .then((result) => setSessionShare(result))
       .catch(() => setSessionShare(null))
-    // Load hierarchy
-    invokeSafe<SessionDTO | null>(IPC_CHANNELS.SESSIONS_PARENT, sessionId).then(setParentSession).catch(() => setParentSession(null))
-    invokeSafe<SessionDTO[]>(IPC_CHANNELS.SESSIONS_CHILDREN, sessionId).then(setChildSessions).catch(() => setChildSessions([]))
   }, [])
 
   const closeDetail = useCallback(() => {
     setPanelOpen(false)
     setTimeout(() => setSelectedSession(null), 300) // wait for animation
   }, [])
-
-  // ─── Hierarchy expand ─────────────────────────────────────────────────
-
-  const toggleExpand = useCallback(async (sessionId: string) => {
-    if (expandedIds.has(sessionId)) {
-      setExpandedIds(prev => { const n = new Set(prev); n.delete(sessionId); return n })
-      return
-    }
-    setExpandedIds(prev => new Set(prev).add(sessionId))
-    if (!childMap[sessionId]) {
-      try {
-        console.log('[Sessions] Loading children for:', sessionId)
-        const children = await invokeSafe<SessionDTO[]>(IPC_CHANNELS.SESSIONS_CHILDREN, sessionId)
-        console.log('[Sessions] Children count:', children.length)
-        setChildMap(prev => ({ ...prev, [sessionId]: children }))
-      } catch (e) { console.error('[Sessions] Children failed:', e) }
-    }
-  }, [expandedIds, childMap])
 
   // ─── Key handler (keyboard nav) ────────────────────────────────────────────────
 
@@ -719,7 +684,6 @@ const listRef = useRef<HTMLDivElement>(null)
             </thead>
             <tbody>
               {sessions.map((session, idx) => (
-                <Fragment key={session.id}>
                 <tr
                   key={session.id}
                   onClick={() => openDetail(session.id)}
@@ -742,36 +706,6 @@ const listRef = useRef<HTMLDivElement>(null)
                     {session.directory ? session.directory.split('/').pop() || session.directory : (session.project_id || '-')}
                   </td>
                 </tr>
-                {parentFilter === 'root' && (
-                  <tr className="border-b border-gray-100 bg-gray-50/30">
-                    <td colSpan={8} className="px-4 py-1">
-                      <button onClick={(e) => { e.stopPropagation(); toggleExpand(session.id) }}
-                        className="text-xs text-gray-400 hover:text-blue-600">
-                        {expandedIds.has(session.id) ? '🔽 收起子会话' : '👶 查看子会话'}
-                      </button>
-                    </td>
-                  </tr>
-                )}
-                {expandedIds.has(session.id) && childMap[session.id]?.map(child => (
-                  <tr key={child.id}
-                    onClick={() => navigate(`/sessions/${child.id}/messages`)}
-                    className="cursor-pointer border-b border-gray-100 bg-gray-50/30 hover:bg-brand-50"
-                  >
-                    <td className="w-8 p-2"></td>
-                    <td className="px-4 py-2 text-center text-gray-400 text-xs">
-                      <span className="border-l-2 border-brand-300 pl-4">└</span>
-                    </td>
-                    <td className="max-w-xs truncate py-2 pr-4 text-gray-700 text-sm pl-2" title={child.title || '无标题'}>
-                      {child.title || '无标题'}
-                    </td>
-                    <td className="px-4 py-2 text-right text-gray-500 text-xs">{child.msg_count ?? '-'}</td>
-                    <td className="px-4 py-2 text-right text-gray-500 text-xs">—</td>
-                    <td className="px-4 py-2 text-right text-gray-500 text-xs">{child.tokens_input + child.tokens_output > 0 ? formatNumber(child.tokens_input + child.tokens_output) : '-'}</td>
-                    <td className="px-4 py-2 text-right text-gray-500 text-xs">{formatRelativeTime(child.time_updated)}</td>
-                    <td className="max-w-[200px] truncate pl-4 py-2 text-gray-500 text-xs">{child.directory ? child.directory.split('/').pop() || child.directory : '-'}</td>
-                  </tr>
-                ))}
-              </Fragment>
               ))}
             </tbody>
           </table>
