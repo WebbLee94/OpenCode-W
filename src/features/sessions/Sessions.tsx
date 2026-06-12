@@ -146,6 +146,9 @@ function Sessions() {
   // Todos state (Session detail panel)
   const [sessionTodos, setSessionTodos] = useState<TodoDTO[]>([])
   const [todoFilter, setTodoFilter] = useState<'all' | 'pending' | 'in_progress' | 'completed'>('all')
+  const [todoSearch, setTodoSearch] = useState('')
+  const [todoStatusFilter, setTodoStatusFilter] = useState('')
+  const [todoPriorityFilter, setTodoPriorityFilter] = useState('')
 
   // Session share state
   const [sessionShare, setSessionShare] = useState<SessionShareDTO | null>(null)
@@ -495,12 +498,38 @@ const listRef = useRef<HTMLDivElement>(null)
                       )}
                     </div>
                   )}
-                  {activeTab === 'todos' && (
+                  {activeTab === 'todos' && (() => {
+                    const filteredTodos = sessionTodos.filter(t => {
+                      if (todoSearch && !t.content?.toLowerCase().includes(todoSearch.toLowerCase())) return false
+                      if (todoStatusFilter && t.status !== todoStatusFilter) return false
+                      if (todoPriorityFilter && t.priority !== todoPriorityFilter) return false
+                      return true
+                    })
+                    return (
                     <div>
-                      <h5 className="text-sm font-medium text-gray-700 mb-3">待办列表 ({sessionTodos.length})</h5>
-                      {sessionTodos.length > 0 ? (
+                      <h5 className="text-sm font-medium text-gray-700 mb-3">待办列表 ({filteredTodos.length})</h5>
+                      <div className="flex gap-2 mb-3">
+                        <input type="text" placeholder="搜索待办..." value={todoSearch} onChange={e => setTodoSearch(e.target.value)}
+                          className="border rounded px-2 py-1 text-sm w-48" />
+                        <select value={todoStatusFilter} onChange={e => setTodoStatusFilter(e.target.value)}
+                          className="border rounded px-2 py-1 text-sm">
+                          <option value="">全部状态</option>
+                          <option value="pending">待处理</option>
+                          <option value="in_progress">进行中</option>
+                          <option value="completed">已完成</option>
+                          <option value="cancelled">已取消</option>
+                        </select>
+                        <select value={todoPriorityFilter} onChange={e => setTodoPriorityFilter(e.target.value)}
+                          className="border rounded px-2 py-1 text-sm">
+                          <option value="">全部优先级</option>
+                          <option value="high">高</option>
+                          <option value="medium">中</option>
+                          <option value="low">低</option>
+                        </select>
+                      </div>
+                      {filteredTodos.length > 0 ? (
                         <div className="space-y-2">
-                          {sessionTodos.map(todo => (
+                          {filteredTodos.map(todo => (
                             <div key={`${todo.session_id}:${todo.position}`} className="rounded border p-2 bg-gray-50/50">
                               <span className="text-xs text-gray-400 mr-1">[{todo.position}]</span>
                               <span className="text-xs">{todo.content?.slice(0, 120)}</span>
@@ -512,7 +541,8 @@ const listRef = useRef<HTMLDivElement>(null)
                         </div>
                       ) : <p className="text-sm text-gray-400">暂无待办</p>}
                     </div>
-                  )}
+                    )
+                  })()}
                   {activeTab === 'shares' && (
                     <div>
                       {sessionShare ? (
@@ -534,8 +564,23 @@ const listRef = useRef<HTMLDivElement>(null)
                       ) : <p className="text-sm text-gray-400 py-4">暂无分享</p>}
                     </div>
                   )}
-                  {!['basic','todos','shares'].includes(activeTab) && (
-                    <p className="text-sm text-gray-400 py-8 text-center">该模块开发中...</p>
+                  {activeTab === 'subsessions' && (
+                    <div>
+                      <p className="text-sm text-gray-700 mb-3">📋 解析模式 — 查看子会话的消息详情</p>
+                      <div className="text-sm text-gray-400">
+                        点击子会话列表中的任一项以查看消息内容。<br/>
+                        提示：可返回会话列表，点击具体会话行进入消息查看器。
+                      </div>
+                    </div>
+                  )}
+                  {activeTab === 'messages' && (
+                    <div>
+                      <p className="text-sm text-gray-700 mb-3">📖 预览模式 — 子会话对话流</p>
+                      <div className="text-sm text-gray-400">
+                        选择子会话后，此处将展示完整的对话记录。<br/>
+                        功能开发中，敬请期待。
+                      </div>
+                    </div>
                   )}
                 </div>
               </>
