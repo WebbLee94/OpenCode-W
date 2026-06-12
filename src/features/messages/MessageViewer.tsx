@@ -94,7 +94,7 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
             {parts.map((p, i) => expandedPart === i && (
               <tr key={`expanded-${i}`} className="bg-gray-50/50 border-b">
                 <td colSpan={3} className="px-2 py-2">
-                  <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto max-h-40">{JSON.stringify(p, null, 2)}</pre>
+                  <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto max-h-40 whitespace-pre-wrap break-all">{JSON.stringify(p, null, 2)}</pre>
                 </td>
               </tr>
             ))}
