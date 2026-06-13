@@ -10,6 +10,8 @@ import {
   Search,
   ChevronRight,
   X,
+  Trash2,
+  Download,
   FolderOpen,
   Calendar,
   MessageSquare,
@@ -440,8 +442,23 @@ const listRef = useRef<HTMLDivElement>(null)
                     </span>
                   )}
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setShowDelete(true)} className="text-red-500 hover:text-red-700 text-sm" title="删除会话">删除</button>
-                    <button onClick={() => setSearchParams(p => { p.delete('session'); return p })} className="text-gray-400 hover:text-gray-600" title="关闭">✕</button>
+                    <button
+                      onClick={() => setShowDelete(true)}
+                      title="删除会话"
+                      aria-label="删除会话"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
+                    >
+                      <Trash2 size={12} />
+                      删除
+                    </button>
+                    <button
+                      onClick={() => setSearchParams(p => { p.delete('session'); return p })}
+                      title="关闭"
+                      aria-label="关闭"
+                      className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                    >
+                      <X size={16} />
+                    </button>
                   </div>
                 </div>
                 {/* Tab Bar */}
@@ -801,8 +818,18 @@ const listRef = useRef<HTMLDivElement>(null)
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-4 bg-blue-50 px-4 py-2 rounded mb-2 text-sm">
             <span className="text-blue-700 font-medium">已选 {selectedIds.size} 项</span>
-            <button onClick={() => setShowBatchDelete(true)} className="text-red-600 hover:text-red-800">🗑 删除所选</button>
-            <button onClick={batchExport} className="text-blue-600 hover:text-blue-800">⬇ 导出所选</button>
+            <button
+              onClick={() => setShowBatchDelete(true)}
+              className="inline-flex items-center gap-1 text-red-600 hover:text-red-800"
+            >
+              <Trash2 size={14} />删除所选
+            </button>
+            <button
+              onClick={batchExport}
+              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800"
+            >
+              <Download size={14} />导出所选
+            </button>
             <button onClick={() => setSelectedIds(new Set())} className="text-gray-400 hover:text-gray-600 ml-auto">取消选择</button>
           </div>
         )}
