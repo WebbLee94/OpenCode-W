@@ -88,7 +88,6 @@ DBScope-OC/
 │   │   ├── dashboard/     # 首页仪表盘
 │   │   ├── sessions/      # 会话浏览
 │   │   ├── messages/      # 消息查看
-│   │   ├── shares/        # 分享管理
 │   │   ├── cleanup/       # 清理向导
 │   │   └── backup/        # 备份恢复
 │   ├── components/    # 共享 UI 组件

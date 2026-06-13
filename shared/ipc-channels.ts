@@ -60,9 +60,8 @@ export const IPC_CHANNELS = {
   // Todos — 仅保留会话详情页内嵌 Tab 所需的 by-parent
   TODOS_BY_PARENT: 'todos:by-parent',
 
-  // Session Share
+  // Session Share — 仅保留会话详情页所需的单条查询
   SESSION_SHARE_GET: 'session-share:get',
-  SESSION_SHARES_LIST: 'session-shares:list',
 
   // Events
   EVENTS_LIST: 'events:list',

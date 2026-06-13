@@ -5,8 +5,7 @@ import Sessions from './features/sessions/Sessions'
 import Messages from './features/messages/Messages'
 import Cleanup from './features/cleanup/Cleanup'
 import Backup from './features/backup/Backup'
-import Shares from './features/shares/Shares'
-import { LayoutDashboard, MessageSquare, Trash2, HardDrive, ChevronRight, FolderSync, Share2 } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Trash2, HardDrive, ChevronRight, FolderSync } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { invokeSafe, isElectron } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
@@ -31,7 +30,6 @@ const navGroups: { label: string; items: NavItemDef[] }[] = [
     label: '数据',
     items: [
       { to: '/sessions', label: '会话浏览', icon: MessageSquare },
-      { to: '/shares', label: '分享管理', icon: Share2 },
     ],
   },
   {
@@ -206,7 +204,6 @@ function App() {
             <Route path="/sessions/:sessionId/messages" element={<Messages />} />
             <Route path="/cleanup" element={<Cleanup />} />
             <Route path="/backup" element={<Backup />} />
-          <Route path="/shares" element={<Shares />} />
           </Route>
         </Routes>
       </HashRouter>
