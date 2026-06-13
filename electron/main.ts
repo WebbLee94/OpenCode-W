@@ -195,7 +195,7 @@ app.whenReady().then(() => {
   app.setAboutPanelOptions({
     applicationName: 'DBScope-OC',
     applicationVersion: app.getVersion(),
-    credits: 'by WEBB',
+    credits: 'by Webb Lee',
   })
 
   // Register IPC handlers first (before window creation)
