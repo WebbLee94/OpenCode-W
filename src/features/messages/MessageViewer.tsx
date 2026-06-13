@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, type ComponentPropsWithoutRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import hljs from 'highlight.js/lib/core'
@@ -66,12 +66,12 @@ export default function MessageViewer({ sessionId }: MessageViewerProps) {
 
   function sizeColor(size: number) { return size > 100000 ? 'text-red-600' : size > 50000 ? 'text-orange-500' : size > 10000 ? 'text-yellow-600' : 'text-green-600' }
 
-  const markdownComponents: any = useMemo(() => ({
-    code({ node, inline, className, children, ...props }: any) {
+  const markdownComponents = useMemo(() => ({
+    code({ inline, className, children, ...props }: ComponentPropsWithoutRef<'code'> & { inline?: boolean }) {
       if (inline) return <code className="bg-gray-100 px-1 rounded text-sm" {...props}>{children}</code>
       const match = /language-(\w+)/.exec(className || ''); const lang = match?.[1]; const code = String(children).replace(/\n$/, '')
       if (lang && hljs.getLanguage(lang)) {
-        try { const highlighted = hljs.highlight(code, { language: lang }).value; return <pre className="bg-gray-900 text-gray-100 p-3 rounded text-sm whitespace-pre-wrap break-all max-w-full !overflow-hidden"><code dangerouslySetInnerHTML={{ __html: highlighted }} /></pre> } catch {}
+        try { const highlighted = hljs.highlight(code, { language: lang }).value; return <pre className="bg-gray-900 text-gray-100 p-3 rounded text-sm whitespace-pre-wrap break-all max-w-full !overflow-hidden"><code dangerouslySetInnerHTML={{ __html: highlighted }} /></pre> } catch { /* fallback to plain <pre> below */ }
       }
       return <pre className="bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap break-all max-w-full !overflow-hidden"><code>{code}</code></pre>
     }

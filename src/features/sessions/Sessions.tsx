@@ -358,7 +358,7 @@ const listRef = useRef<HTMLDivElement>(null)
     const selected = sessions.filter(s => selectedIds.has(s.id))
     const csv = '标题,项目,消息数,Token,最后活跃\n' +
       selected.map(s => `"${s.title}","${s.directory || ''}",${s.msg_count},${s.tokens_input + s.tokens_output},"${s.time_updated}"`).join('\n')
-    window.electronAPI.saveFile(csv, `DBScope-会话导出-${new Date().toISOString().slice(0, 10)}.csv`).then((res: any) => {
+    window.electronAPI.saveFile(csv, `DBScope-会话导出-${new Date().toISOString().slice(0, 10)}.csv`).then((res) => {
       if (res?.success) addToast('已导出', 'success')
     })
   }
@@ -846,7 +846,7 @@ const listRef = useRef<HTMLDivElement>(null)
                   <td className="max-w-xs truncate py-3 pr-4 font-medium text-gray-900" title={session.title || '无标题'}>
                     {session.title || '无标题'}
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-600">{((session as any).childCount ?? 0).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{((session as unknown as { childCount?: number }).childCount ?? 0).toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-gray-600">{formatBytes(session.data_size)}</td>
                   <td className="px-4 py-3 text-right text-gray-600">
                     {formatNumber(session.tokens_input + session.tokens_output)}

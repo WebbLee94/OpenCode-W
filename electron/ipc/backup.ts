@@ -59,7 +59,7 @@ function getBackupFiles(): BackupDTO[] {
 export function registerHandlers(): void {
   // ─── Config handlers ──────────────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.BACKUP_CONFIG_GET, () => readBackupConfig().backup)
-  ipcMain.handle(IPC_CHANNELS.BACKUP_CONFIG_SET, (_e, bc: Record<string, any>) => {
+  ipcMain.handle(IPC_CHANNELS.BACKUP_CONFIG_SET, (_e, bc: Partial<BackupConfig>) => {
     const cfg = readBackupConfig(); cfg.backup = { ...cfg.backup, ...bc }; writeBackupConfig(cfg); startScheduler()
     return { success: true }
   })
@@ -73,7 +73,7 @@ export function registerHandlers(): void {
         fs.copyFileSync(dbPath, path.join(BACKUP_DIR, `auto-${ts}.db`))
         enforceRetentionPolicy(); return { success: true }
       }
-      catch(e: any) { return { success: false, error: e.message } }
+      catch(e) { return { success: false, error: (e as Error).message } }
     }
     return { success: true }
   })
@@ -283,11 +283,22 @@ export function registerHandlers(): void {
 
 const CONFIG_PATH = path.join(os.homedir(), '.DBScope-OC', 'config.json')
 
-function readBackupConfig(): Record<string, any> {
-  try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8')) }
-  catch { return { backup: { enabled: false, frequency: 'daily', maxCount: 10, maxAgeDays: 30 } } }
+interface BackupConfig {
+  enabled: boolean
+  frequency: 'daily' | 'weekly' | 'onOpen'
+  maxCount: number
+  maxAgeDays: number
 }
-function writeBackupConfig(cfg: Record<string, any>) {
+
+const DEFAULT_BACKUP: BackupConfig = { enabled: false, frequency: 'daily', maxCount: 10, maxAgeDays: 30 }
+
+function readBackupConfig(): { backup: BackupConfig } {
+  try {
+    const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8')) as { backup?: Partial<BackupConfig> }
+    return { backup: { ...DEFAULT_BACKUP, ...(raw.backup ?? {}) } }
+  } catch { return { backup: DEFAULT_BACKUP } }
+}
+function writeBackupConfig(cfg: { backup: BackupConfig }): void {
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true })
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf-8')
 }
@@ -302,7 +313,7 @@ function enforceRetentionPolicy() {
   const now = Date.now()
   files.forEach((f, i) => {
     if (i >= (cfg.maxCount || 10) || (now - f.mtime > maxAge))
-      try { fs.unlinkSync(path.join(BACKUP_DIR, f.name)) } catch {}
+      try { fs.unlinkSync(path.join(BACKUP_DIR, f.name)) } catch { /* file may already be gone */ }
   })
 }
 

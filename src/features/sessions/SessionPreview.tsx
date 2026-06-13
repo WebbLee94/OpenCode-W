@@ -22,8 +22,11 @@ export default function SessionPreview({
   childSessions,
   page,
   pageSize,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   total: _total,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onPageChange: _onPageChange,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onPageSizeChange: _onPageSizeChange,
   onTotalChange,
   selectedChildId,

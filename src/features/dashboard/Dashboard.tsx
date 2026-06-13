@@ -199,15 +199,16 @@ function Dashboard() {
   }, [connected, dbHealth, fastLoading])
 
   // ── Export helpers ────────────────────────────────────────────────
-  function exportCSV(data: Record<string, any>[], filename: string) {
+  function exportCSV(data: object[], filename: string) {
     if (!data.length) return
-    const header = Object.keys(data[0]).join(',')
-    const rows = data.map(r => Object.values(r).join(',')).join('\n')
+    const first = data[0] as Record<string, unknown>
+    const header = Object.keys(first).join(',')
+    const rows = data.map(r => Object.values(r as Record<string, unknown>).join(',')).join('\n')
     window.electronAPI.saveFile(header + '\n' + rows, filename).then((res) => {
       if (res.success && res.data?.success) addToast(`${filename} 已保存`, 'success')
     })
   }
-  function exportJSON(data: any, filename: string) {
+  function exportJSON(data: unknown, filename: string) {
     window.electronAPI.saveFile(JSON.stringify(data, null, 2), filename).then((res) => {
       if (res.success && res.data?.success) addToast(`${filename} 已保存`, 'success')
     })

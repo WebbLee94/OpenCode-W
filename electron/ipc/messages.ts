@@ -7,9 +7,12 @@ import dbManager from '../database'
  * 两层兼容：canonical 字段优先，flat 字段兜底
  * OpenCode DB 同时存在 nested state（newer）和 flat（older）两种格式
  */
-function pick<T = unknown>(data: Record<string, any>, ...paths: string[]): T | undefined {
+function pick<T = unknown>(data: Record<string, unknown>, ...paths: string[]): T | undefined {
   for (const p of paths) {
-    const v = p.split('.').reduce((acc: any, k) => acc?.[k], data)
+    const v = p.split('.').reduce<unknown>((acc, k) => {
+      if (acc && typeof acc === 'object') return (acc as Record<string, unknown>)[k]
+      return undefined
+    }, data)
     if (v !== undefined && v !== null) return v as T
   }
   return undefined
@@ -27,11 +30,11 @@ function asStringOrUndef(v: unknown): string | undefined {
 }
 
 function parsePartData(row: Record<string, unknown>): PartDTO {
-  let data: Record<string, any> = {}
+  let data: Record<string, unknown> = {}
   try {
     const rawData = row.data
     if (typeof rawData === 'string') data = JSON.parse(rawData)
-    else if (typeof rawData === 'object' && rawData !== null) data = rawData as Record<string, any>
+    else if (typeof rawData === 'object' && rawData !== null) data = rawData as Record<string, unknown>
   } catch {
     /* keep data empty */
   }
@@ -48,7 +51,7 @@ function parsePartData(row: Record<string, unknown>): PartDTO {
   }
 
   if (data.metadata && typeof data.metadata === 'object') {
-    part.metadata = data.metadata
+    part.metadata = data.metadata as Record<string, unknown>
   }
 
   switch (type) {
@@ -108,10 +111,10 @@ function parsePartData(row: Record<string, unknown>): PartDTO {
       // 附件
       const attachments = pick<unknown[]>(data, 'state.attachments')
       if (Array.isArray(attachments)) {
-        part.attachments = attachments.map((a: any) => ({
-          mime: a.mime,
-          url: a.url,
-          filename: a.filename,
+        part.attachments = attachments.map((a) => ({
+          mime: String((a as Record<string, unknown>).mime ?? ''),
+          url: String((a as Record<string, unknown>).url ?? ''),
+          filename: (a as Record<string, unknown>).filename as string | undefined,
         }))
       }
 
@@ -166,13 +169,14 @@ function parsePartData(row: Record<string, unknown>): PartDTO {
     // ============ StepStartPart ============
     case 'step-start': {
       // canonical: snapshot?: string; flat: snapshot: {step_id, step_name}
-      const snap = pick<any>(data, 'snapshot')
+      const snap = pick<unknown>(data, 'snapshot')
       if (typeof snap === 'string') {
         part.stepSnapshot = snap
         part.summary = `[step] ${snap.slice(0, 30)}`
       } else if (snap && typeof snap === 'object') {
-        const stepName = snap.step_name || `Step ${snap.step_id ?? ''}`
-        part.summary = stepName
+        const snapObj = snap as { step_name?: unknown; step_id?: unknown }
+        const stepName = snapObj.step_name || `Step ${snapObj.step_id ?? ''}`
+        part.summary = typeof stepName === 'string' ? stepName : `Step ${typeof snapObj.step_id === 'number' ? snapObj.step_id : ''}`
       } else {
         part.summary = 'Step start'
       }
@@ -188,15 +192,16 @@ function parsePartData(row: Record<string, unknown>): PartDTO {
 
       // tokens: canonical nested cache.{read,write} / flat cache_read+cache_write
       // 输出为 flat（与现有渲染端兼容，Commit 3 再迁嵌套）
-      const tokens = pick<any>(data, 'tokens')
+      const tokens = pick<Record<string, unknown>>(data, 'tokens')
       if (tokens && typeof tokens === 'object') {
         const cacheNested = tokens.cache && typeof tokens.cache === 'object'
+        const cacheObj = (tokens.cache ?? {}) as { read?: unknown; write?: unknown }
         part.tokens = {
-          input: tokens.input ?? 0,
-          output: tokens.output ?? 0,
-          reasoning: tokens.reasoning ?? 0,
-          cache_read: cacheNested ? (tokens.cache.read ?? 0) : (tokens.cache_read ?? 0),
-          cache_write: cacheNested ? (tokens.cache.write ?? 0) : (tokens.cache_write ?? 0),
+          input: (tokens.input as number | undefined) ?? 0,
+          output: (tokens.output as number | undefined) ?? 0,
+          reasoning: (tokens.reasoning as number | undefined) ?? 0,
+          cache_read: cacheNested ? (cacheObj.read as number | undefined) ?? 0 : (tokens.cache_read as number | undefined) ?? 0,
+          cache_write: cacheNested ? (cacheObj.write as number | undefined) ?? 0 : (tokens.cache_write as number | undefined) ?? 0,
         }
         const t = part.tokens
         const summaryParts: string[] = []
@@ -223,7 +228,7 @@ function parsePartData(row: Record<string, unknown>): PartDTO {
     // ============ RetryPart ============
     case 'retry': {
       part.retryAttempt = pick<number>(data, 'attempt')
-      const errObj = pick<any>(data, 'error')
+      const errObj = pick<unknown>(data, 'error')
       part.retryError = asStringOrUndef(errObj)
       part.retryTime = pick<number>(data, 'time.created')
       part.summary = `Retry attempt ${part.retryAttempt ?? '?'}: ${part.retryError?.slice(0, 50) || 'unknown error'}`

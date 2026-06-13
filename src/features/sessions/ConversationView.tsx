@@ -34,8 +34,8 @@ interface ConversationViewProps {
 }
 
 function MarkdownBlock({ content }: { content: string }) {
-  const components: any = useMemo(() => ({
-    code({ inline, className, children, ...props }: any) {
+  const components = useMemo(() => ({
+    code({ inline, className, children, ...props }: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) {
       if (inline) return <code className="bg-gray-100 px-1 rounded text-sm" {...props}>{children}</code>
       const match = /language-(\w+)/.exec(className || '')
       const code = String(children).replace(/\n$/, '')

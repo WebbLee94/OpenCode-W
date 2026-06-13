@@ -260,7 +260,7 @@ export function registerHandlers(): void {
     try {
       dbManager.getDb().prepare('UPDATE session SET title = ? WHERE id = ?').run(title, sessionId)
       return { success: true }
-    } catch (e: any) { return { success: false, error: e.message } }
+    } catch (e) { return { success: false, error: (e as Error).message } }
   })
 
   // ─── Route B: Session Parent/Children ────────────────────────────

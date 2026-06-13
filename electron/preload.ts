@@ -1,5 +1,7 @@
 /// <reference types="electron" />
 
+// preload 必须为 CJS 产物（package.json "type": "module" + vite 入口配置 .cjs）
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { contextBridge, ipcRenderer } = require('electron')
 
 // ⚠️ 与 shared/ipc-channels.ts 保持同步 — 新增 channel 需同步更新此处
@@ -66,6 +68,6 @@ function saveFile(content: string, defaultName: string): Promise<unknown> {
 contextBridge.exposeInMainWorld('electronAPI', { invoke, on, saveFile,
   openExternal: (url: string) => invoke('shell:openExternal', url),
   backupConfigGet: () => invoke('backup:config:get'),
-  backupConfigSet: (config: any) => invoke('backup:config:set', config),
+  backupConfigSet: (config: unknown) => invoke('backup:config:set', config),
   backupAutoCheck: () => invoke('backup:auto-backup-check'),
 })

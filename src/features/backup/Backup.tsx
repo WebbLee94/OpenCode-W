@@ -30,7 +30,7 @@ function Backup() {
   // ─── Auto-backup config ────────────────────────────────────────────────
   const [backupCfg, setBackupCfg] = useState({ enabled: false, frequency: 'daily' as string, maxCount: 10, maxAgeDays: 30 })
   useEffect(() => { window.electronAPI?.backupConfigGet?.().then((c) => { if (c) setBackupCfg(c) }) }, [])
-  function updateCfg(key: string, val: any) {
+  function updateCfg(key: string, val: unknown) {
     setBackupCfg(p => { const n = { ...p, [key]: val }; window.electronAPI?.backupConfigSet?.(n); return n })
   }
 
