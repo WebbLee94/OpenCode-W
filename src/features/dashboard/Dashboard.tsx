@@ -271,7 +271,7 @@ function Dashboard() {
       costTrend: costTr ?? [],
       messageTrend: msgTr ?? [],
     }
-  }, [])
+  }, [rootOnly])
 
   // ── Load all data with async groups ──────────────────────────────
   const loadAllData = useCallback(async (forceRefresh = false) => {
@@ -321,7 +321,7 @@ function Dashboard() {
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
     }
-  }, [loadFastData, loadSlowData, timeRange, groupBy])
+  }, [loadFastData, loadSlowData, timeRange, groupBy, timePreset])
 
   // ── Refresh handler (force reload) ───────────────────────────────
   const handleRefresh = useCallback(async () => {
@@ -352,7 +352,7 @@ function Dashboard() {
     } finally {
       setRefreshing(false)
     }
-  }, [loadFastData, loadSlowData, timeRange, groupBy])
+  }, [loadFastData, loadSlowData, timeRange, groupBy, timePreset])
 
   // ── Initial connection check ─────────────────────────────────────
   useEffect(() => {

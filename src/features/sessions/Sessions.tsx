@@ -275,7 +275,7 @@ const listRef = useRef<HTMLDivElement>(null)
     invokeSafe<SessionShareDTO | null>(IPC_CHANNELS.SESSION_SHARE_GET, sessionId)
       .then((result) => setSessionShare(result))
       .catch(() => setSessionShare(null))
-  }, [])
+  }, [setSearchParams])
 
   // 当 activeSessionId 变化时,自动加载子会话和 todo (支持 URL 直接进入详情页)
   useEffect(() => {

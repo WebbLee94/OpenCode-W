@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { ToastContext } from '../hooks/toastContext';
 
 interface ToastItem {
   id: number;
@@ -7,10 +8,6 @@ interface ToastItem {
 }
 
 let nextId = 0;
-
-export const ToastContext = createContext<{
-  addToast: (message: string, type: 'success' | 'error' | 'info') => void;
-} | null>(null);
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);

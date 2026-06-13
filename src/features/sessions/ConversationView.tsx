@@ -15,7 +15,7 @@ import type { MessageDTO, MessageDetailDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatRelativeTime } from '../../lib/format'
-import { renderPart } from './PartBubbles'
+import { renderPart } from './PartBubbles/registry'
 
 hljs.registerLanguage('typescript', ts)
 hljs.registerLanguage('javascript', js)
