@@ -10,6 +10,9 @@ import type {
   TokenGroupDataPoint,
   ModelRankingItem,
   ProviderStatsItem,
+  SessionTrendItem,
+  CostTrendItem,
+  MessageTrendItem,
 } from '@shared/types'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 import { invokeSafe } from '@/lib/ipc'
@@ -64,6 +67,14 @@ const SKILL_COLORS = [
 // ── Time range presets ─────────────────────────────────────────────
 type TimePreset = 'all' | 7 | 30 | 90 | 'custom'
 type GroupBy = 'day' | 'week' | 'month'
+type DashboardTab = 'overview' | 'trends' | 'tools' | 'models'
+
+const DASHBOARD_TABS: { key: DashboardTab; label: string; icon: string }[] = [
+  { key: 'overview', label: '概览', icon: '📋' },
+  { key: 'trends', label: '趋势', icon: '📈' },
+  { key: 'tools', label: '工具&技能', icon: '🔧' },
+  { key: 'models', label: '模型', icon: '🤖' },
+]
 
 function computeTimeRange(days: TimePreset, start?: string, end?: string): TimeRange | undefined {
   if (days === 'all') return undefined
@@ -88,6 +99,9 @@ interface DashboardCache {
   groupBy: GroupBy
   modelRanking: ModelRankingItem[]
   providerStats: ProviderStatsItem[]
+  sessionTrend: SessionTrendItem[]
+  costTrend: CostTrendItem[]
+  messageTrend: MessageTrendItem[]
 }
 
 let dashboardCache: DashboardCache | null = null
@@ -104,6 +118,10 @@ function Dashboard() {
   const [tokenGroupData, setTokenGroupData] = useState<TokenGroupDataPoint[]>(dashboardCache?.tokenGroupData ?? [])
   const [modelRanking, setModelRanking] = useState<ModelRankingItem[]>(dashboardCache?.modelRanking ?? [])
   const [providerStats, setProviderStats] = useState<ProviderStatsItem[]>(dashboardCache?.providerStats ?? [])
+  const [sessionTrend, setSessionTrend] = useState<SessionTrendItem[]>(dashboardCache?.sessionTrend ?? [])
+  const [costTrend, setCostTrend] = useState<CostTrendItem[]>(dashboardCache?.costTrend ?? [])
+  const [messageTrend, setMessageTrend] = useState<MessageTrendItem[]>(dashboardCache?.messageTrend ?? [])
+  const [dashboardTab, setDashboardTab] = useState<DashboardTab>('overview')
 
   // Time range & grouping state
   const [timePreset, setTimePreset] = useState<TimePreset>(dashboardCache?.timePreset ?? 30)
@@ -158,23 +176,38 @@ function Dashboard() {
     return { stats, tokens, groupData }
   }, [])
 
-  // ── Load slow data (tools + skills + trends) ─────────────────────
+  // ── Load slow data (tools + skills + trends + 3 new trends) ─────
   const loadSlowData = useCallback(async (tr: TimeRange | undefined) => {
     setSlowLoading(true)
-    const [tools, skills, trendComp, models, providers] = await Promise.all([
+    const [tools, skills, trendComp, models, providers, sessionTr, costTr, msgTr] = await Promise.all([
       invokeSafe<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, tr),
       invokeSafe<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE, tr),
       invokeSafe<TrendComparison>(IPC_CHANNELS.DASHBOARD_TRENDS, tr),
       invokeSafe<ModelRankingItem[]>(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, tr).catch(() => [] as ModelRankingItem[]),
       invokeSafe<ProviderStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, tr).catch(() => [] as ProviderStatsItem[]),
+      invokeSafe<SessionTrendItem[]>(IPC_CHANNELS.DASHBOARD_SESSION_TREND, tr).catch(() => [] as SessionTrendItem[]),
+      invokeSafe<CostTrendItem[]>(IPC_CHANNELS.DASHBOARD_COST_TREND, tr).catch(() => [] as CostTrendItem[]),
+      invokeSafe<MessageTrendItem[]>(IPC_CHANNELS.DASHBOARD_MESSAGE_TREND, tr).catch(() => [] as MessageTrendItem[]),
     ])
     setToolRanking(tools ?? [])
     setSkillUsage(skills ?? [])
     setTrendComparison(trendComp)
     setModelRanking(models ?? [])
     setProviderStats(providers ?? [])
+    setSessionTrend(sessionTr ?? [])
+    setCostTrend(costTr ?? [])
+    setMessageTrend(msgTr ?? [])
     setSlowLoading(false)
-    return { tools: tools ?? [], skills: skills ?? [], trendComp, models: models ?? [], providers: providers ?? [] }
+    return {
+      tools: tools ?? [],
+      skills: skills ?? [],
+      trendComp,
+      models: models ?? [],
+      providers: providers ?? [],
+      sessionTrend: sessionTr ?? [],
+      costTrend: costTr ?? [],
+      messageTrend: msgTr ?? [],
+    }
   }, [])
 
   // ── Load all data with async groups ──────────────────────────────
@@ -220,6 +253,9 @@ function Dashboard() {
         groupBy,
         modelRanking: slowResult.models,
         providerStats: slowResult.providers,
+        sessionTrend: slowResult.sessionTrend,
+        costTrend: slowResult.costTrend,
+        messageTrend: slowResult.messageTrend,
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
@@ -247,6 +283,9 @@ function Dashboard() {
         groupBy,
         modelRanking: slowResult.models,
         providerStats: slowResult.providers,
+        sessionTrend: slowResult.sessionTrend,
+        costTrend: slowResult.costTrend,
+        messageTrend: slowResult.messageTrend,
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to refresh dashboard data')
@@ -408,6 +447,9 @@ function Dashboard() {
         groupBy,
         modelRanking: slowResult.models,
         providerStats: slowResult.providers,
+        sessionTrend: slowResult.sessionTrend,
+        costTrend: slowResult.costTrend,
+        messageTrend: slowResult.messageTrend,
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
@@ -439,6 +481,9 @@ function Dashboard() {
         groupBy: gb,
         modelRanking: slowResult.models,
         providerStats: slowResult.providers,
+        sessionTrend: slowResult.sessionTrend,
+        costTrend: slowResult.costTrend,
+        messageTrend: slowResult.messageTrend,
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
@@ -574,51 +619,25 @@ function Dashboard() {
         }
       />
 
-      {/* ── ROW 2: 数据库概览 + 4卡片 ────────────────────────────── */}
-      <div>
-        <p className="text-xs text-gray-400 font-medium mb-2">📊 数据库概览
-          {dbStats && <button onClick={() => exportJSON(dbStats, 'db-overview.json')} className="ml-2 text-brand-500 hover:text-brand-700" title="导出 JSON"><Download size={12} /></button>}
-        </p>
-        {fastLoading && !dbStats ? (
-          <div className="grid grid-cols-4 gap-4">
-            {[1,2,3,4].map(i => (
-              <div key={i} className="bg-white rounded-lg border border-gray-200 p-5 h-24 animate-pulse">
-                <div className="h-3 bg-gray-200 rounded w-16 mb-3" />
-                <div className="h-6 bg-gray-200 rounded w-24" />
-              </div>
-            ))}
-          </div>
-        ) : dbStats && (
-          <div className="grid grid-cols-4 gap-4">
-            <StatCard
-              label="总大小"
-              value={formatBytes(dbStats.dbSize)}
-              icon={<Database size={20} />}
-            />
-            <StatCard
-              label="可回收碎片"
-              value={formatBytes(dbStats.freelistSize)}
-              icon={<Trash2 size={20} />}
-            />
-            <StatCard
-              label="WAL日志"
-              value={formatBytes(dbStats.walSize)}
-              icon={<FileText size={20} />}
-            />
-            <StatCard
-              label="健康状态"
-              value={dbHealth ? formatNumber(dbHealth.pageCount) : '-'}
-              icon={<Heart size={20} />}
-            >
-              {dbHealth && (
-                <p className="text-xs text-gray-400 mt-0.5">{dbHealth.freelistPages} 碎片页</p>
-              )}
-            </StatCard>
-          </div>
-        )}
+      {/* ── Sub Tab Bar ──────────────────────────────────────────── */}
+      <div className="flex border-b border-gray-200 bg-white px-2 gap-0 -mt-2 mb-4 rounded-md">
+        {DASHBOARD_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setDashboardTab(tab.key)}
+            className={`px-4 py-2 text-sm border-b-2 -mb-[1px] whitespace-nowrap transition-colors ${
+              dashboardTab === tab.key
+                ? 'border-brand-500 text-brand-700 font-medium'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <span className="mr-1.5">{tab.icon}</span>
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {/* ── ROW 3: 时间范围 ────────────────────────────────────── */}
+      {/* ── 全局时间范围（4 Tab 共享） ─────────────────────────────── */}
       <div>
         <p className="text-xs text-gray-400 font-medium mb-2">⏱ 时间范围</p>
         <div className="flex items-center gap-3">
@@ -664,439 +683,573 @@ function Dashboard() {
         )}
       </div>
 
-      {/* ── ROW 4: 时段统计 + 4卡片 ──────────────────────────────── */}
-      <div>
-        <p className="text-xs text-gray-400 font-medium mb-2">📈 时段统计
-          {tokenStats && <button onClick={() => exportJSON(tokenStats, 'token-stats.json')} className="ml-2 text-brand-500 hover:text-brand-700" title="导出 JSON"><Download size={12} /></button>}
-        </p>
-        {fastLoading && !tokenStats ? (
-          <div className="grid grid-cols-4 gap-4">
-            {[1,2,3,4].map(i => (
-              <div key={i} className="bg-white rounded-lg border border-gray-200 p-5 h-24 animate-pulse">
-                <div className="h-3 bg-gray-200 rounded w-16 mb-3" />
-                <div className="h-6 bg-gray-200 rounded w-24" />
-              </div>
-            ))}
-          </div>
-        ) : dbStats && tokenStats && (
-          <div className="grid grid-cols-4 gap-4">
-            <StatCard
-              label="会话数"
-              value={formatNumber(dbStats.sessionCount)}
-              icon={<MessageSquare size={20} />}
-            />
-            <StatCard
-              label="项目数"
-              value={formatNumber(dbStats.projectCount)}
-              icon={<Folder size={20} />}
-            />
-            <StatCard
-              label="Part行数"
-              value={formatNumber(dbStats.partCount)}
-              icon={<Layers size={20} />}
-            />
-            <StatCard
-              label="估算成本"
-              value={`$${(tokenStats.estimatedCost ?? 0).toFixed(2)}`}
-              icon={<DollarSign size={20} />}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* ── Route B: ROW 4.7 模型 & Provider 统计（柱状图）───────────── */}
-      {modelRanking.length > 0 && (
-        <div>
-          <p className="text-xs text-gray-400 font-medium mb-2">🤖 模型 & Provider 统计</p>
-          <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
-            {(() => {
-              const sorted = modelRanking
-                .slice()
-                .sort((a, b) => b.sessionCount - a.sessionCount)
-                .slice(0, 10)
-              const max = Math.max(...sorted.map(m => m.sessionCount), 1)
-              return sorted.map((m, idx) => {
-                let modelLabel = m.model
-                let providerLabel = ''
-                if (m.model?.startsWith('{')) {
-                  try {
-                    const p = JSON.parse(m.model)
-                    modelLabel = p.id || p.name || m.model
-                    providerLabel = p.provider || ''
-                  } catch { /* keep raw */ }
-                }
-                const pct = (m.sessionCount / max) * 100
-                return (
-                  <div key={`${providerLabel}-${modelLabel}-${idx}`} className="flex items-center gap-2 text-sm min-w-0">
-                    <span className="w-6 text-right text-gray-400 text-xs shrink-0">{idx + 1}</span>
-                    <span className="w-64 truncate text-gray-700 shrink-0" title={`${providerLabel ? providerLabel + ' / ' : ''}${modelLabel}`}>
-                      {providerLabel && <span className="text-gray-500">{providerLabel}</span>}
-                      {providerLabel && ' / '}
-                      <span className="font-mono">{modelLabel}</span>
-                    </span>
-                    <div className="flex-1 h-5 bg-gray-100 rounded relative overflow-hidden min-w-0">
-                      <div className="h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded" style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="w-20 text-right text-gray-600 text-xs font-mono shrink-0">{m.sessionCount.toLocaleString()} 会话</span>
-                    <span className="w-24 text-right text-gray-500 text-xs font-mono shrink-0">${m.totalCost.toFixed(2)}</span>
+      {/* ── Tab 内容 ──────────────────────────────────────────────── */}
+      {dashboardTab === 'overview' && (
+        <div className="space-y-6">
+          {/* 数据库概览 + 4卡片 */}
+          <div>
+            <p className="text-xs text-gray-400 font-medium mb-2">📊 数据库概览
+              {dbStats && <button onClick={() => exportJSON(dbStats, 'db-overview.json')} className="ml-2 text-brand-500 hover:text-brand-700" title="导出 JSON"><Download size={12} /></button>}
+            </p>
+            {fastLoading && !dbStats ? (
+              <div className="grid grid-cols-4 gap-4">
+                {[1,2,3,4].map(i => (
+                  <div key={i} className="bg-white rounded-lg border border-gray-200 p-5 h-24 animate-pulse">
+                    <div className="h-3 bg-gray-200 rounded w-16 mb-3" />
+                    <div className="h-6 bg-gray-200 rounded w-24" />
                   </div>
-                )
-              })
-            })()}
+                ))}
+              </div>
+            ) : dbStats && (
+              <div className="grid grid-cols-4 gap-4">
+                <StatCard
+                  label="总大小"
+                  value={formatBytes(dbStats.dbSize)}
+                  icon={<Database size={20} />}
+                />
+                <StatCard
+                  label="可回收碎片"
+                  value={formatBytes(dbStats.freelistSize)}
+                  icon={<Trash2 size={20} />}
+                />
+                <StatCard
+                  label="WAL日志"
+                  value={formatBytes(dbStats.walSize)}
+                  icon={<FileText size={20} />}
+                />
+                <StatCard
+                  label="健康状态"
+                  value={dbHealth ? formatNumber(dbHealth.pageCount) : '-'}
+                  icon={<Heart size={20} />}
+                >
+                  {dbHealth && (
+                    <p className="text-xs text-gray-400 mt-0.5">{dbHealth.freelistPages} 碎片页</p>
+                  )}
+                </StatCard>
+              </div>
+            )}
           </div>
-          {providerStats.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-3">
-              {providerStats.map(p => (
-                <span key={p.provider} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                  {p.provider}: {p.sessionCount.toLocaleString()} 会话 · ${p.totalCost.toFixed(2)}
-                </span>
-              ))}
-            </div>
-          )}
+
+          {/* 时段统计 + 4卡片 */}
+          <div>
+            <p className="text-xs text-gray-400 font-medium mb-2">📈 时段统计
+              {tokenStats && <button onClick={() => exportJSON(tokenStats, 'token-stats.json')} className="ml-2 text-brand-500 hover:text-brand-700" title="导出 JSON"><Download size={12} /></button>}
+            </p>
+            {fastLoading && !tokenStats ? (
+              <div className="grid grid-cols-4 gap-4">
+                {[1,2,3,4].map(i => (
+                  <div key={i} className="bg-white rounded-lg border border-gray-200 p-5 h-24 animate-pulse">
+                    <div className="h-3 bg-gray-200 rounded w-16 mb-3" />
+                    <div className="h-6 bg-gray-200 rounded w-24" />
+                  </div>
+                ))}
+              </div>
+            ) : dbStats && tokenStats && (
+              <div className="grid grid-cols-4 gap-4">
+                <StatCard
+                  label="会话数"
+                  value={formatNumber(dbStats.sessionCount)}
+                  icon={<MessageSquare size={20} />}
+                />
+                <StatCard
+                  label="项目数"
+                  value={formatNumber(dbStats.projectCount)}
+                  icon={<Folder size={20} />}
+                />
+                <StatCard
+                  label="Part行数"
+                  value={formatNumber(dbStats.partCount)}
+                  icon={<Layers size={20} />}
+                />
+                <StatCard
+                  label="估算成本"
+                  value={`$${(tokenStats.estimatedCost ?? 0).toFixed(2)}`}
+                  icon={<DollarSign size={20} />}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ── ROW 5: Token 分布 + 增长趋势 ────────────────────────── */}
-      <div>
-        <p className="text-xs text-gray-400 font-medium mb-2">📊 Token 分析 & 增长趋势
-          <span className="ml-2 inline-flex gap-1">
-            {tokenPieData.length > 0 && <button onClick={() => exportCSV(tokenPieData, 'token-distribution.csv')} className="text-brand-500 hover:text-brand-700" title="导出 Token 分布 CSV"><Download size={12} /></button>}
-            {tokenGroupData.length > 0 && <button onClick={() => exportCSV(tokenGroupData, 'token-trend.csv')} className="text-emerald-500 hover:text-emerald-700" title="导出 Token 趋势 CSV"><Download size={12} /></button>}
-            {trendData.length > 0 && <button onClick={() => exportCSV(trendData, 'growth-trend.csv')} className="text-violet-500 hover:text-violet-700" title="导出增长趋势 CSV"><Download size={12} /></button>}
-          </span>
-        </p>
-        <div className="grid grid-cols-2 gap-4">
-          {/* Token Panel */}
-          <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
-            {fastLoading && !tokenStats && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
-                <Loader2 size={20} className="text-brand-400 animate-spin" />
-              </div>
-            )}
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-700">Token 分布</h3>
-              <div className="inline-flex rounded-md border border-gray-200 overflow-hidden">
-                {(['day', 'week', 'month'] as GroupBy[]).map((g) => (
-                  <button
-                    key={g}
-                    onClick={() => handleGroupByChange(g)}
-                    className={`px-3 py-1 text-xs font-medium transition-colors ${
-                      groupBy === g
-                        ? 'bg-brand-500 text-white'
-                        : 'bg-white text-gray-500 hover:bg-gray-50'
-                    }`}
-                  >
-                    {g === 'day' ? '天' : g === 'week' ? '周' : '月'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {tokenStats && tokenPieData.length > 0 ? (
-              <div className="flex items-center gap-6">
-                <div className="w-40 h-40 flex-shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={tokenPieData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={35}
-                        outerRadius={65}
-                        paddingAngle={2}
-                        dataKey="value"
-                        stroke="none"
-                        onClick={() => {
-                          if (timeRange) navigate(`/sessions?start=${timeRange.startDate}&end=${timeRange.endDate}`)
-                        }}
-                        style={{ cursor: 'pointer' }}
+      {dashboardTab === 'trends' && (
+        <div className="space-y-6">
+          {/* Token 分布 + 增长趋势 (已有) */}
+          <div>
+            <p className="text-xs text-gray-400 font-medium mb-2">📊 Token 分析 & 增长趋势
+              <span className="ml-2 inline-flex gap-1">
+                {tokenPieData.length > 0 && <button onClick={() => exportCSV(tokenPieData, 'token-distribution.csv')} className="text-brand-500 hover:text-brand-700" title="导出 Token 分布 CSV"><Download size={12} /></button>}
+                {tokenGroupData.length > 0 && <button onClick={() => exportCSV(tokenGroupData, 'token-trend.csv')} className="text-emerald-500 hover:text-emerald-700" title="导出 Token 趋势 CSV"><Download size={12} /></button>}
+                {trendData.length > 0 && <button onClick={() => exportCSV(trendData, 'growth-trend.csv')} className="text-violet-500 hover:text-violet-700" title="导出增长趋势 CSV"><Download size={12} /></button>}
+              </span>
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Token Panel */}
+              <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
+                {fastLoading && !tokenStats && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
+                    <Loader2 size={20} className="text-brand-400 animate-spin" />
+                  </div>
+                )}
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-gray-700">Token 分布</h3>
+                  <div className="inline-flex rounded-md border border-gray-200 overflow-hidden">
+                    {(['day', 'week', 'month'] as GroupBy[]).map((g) => (
+                      <button
+                        key={g}
+                        onClick={() => handleGroupByChange(g)}
+                        className={`px-3 py-1 text-xs font-medium transition-colors ${
+                          groupBy === g
+                            ? 'bg-brand-500 text-white'
+                            : 'bg-white text-gray-500 hover:bg-gray-50'
+                        }`}
                       >
-                        {tokenPieData.map((_entry, index) => (
-                          <Cell key={`cell-${index}`} fill={TOKEN_COLORS[index % TOKEN_COLORS.length]} />
-                        ))}
-                      </Pie>
+                        {g === 'day' ? '天' : g === 'week' ? '周' : '月'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {tokenStats && tokenPieData.length > 0 ? (
+                  <div className="flex items-center gap-6">
+                    <div className="w-40 h-40 flex-shrink-0">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={tokenPieData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={35}
+                            outerRadius={65}
+                            paddingAngle={2}
+                            dataKey="value"
+                            stroke="none"
+                            onClick={() => {
+                              if (timeRange) navigate(`/sessions?start=${timeRange.startDate}&end=${timeRange.endDate}`)
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            {tokenPieData.map((_entry, index) => (
+                              <Cell key={`cell-${index}`} fill={TOKEN_COLORS[index % TOKEN_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(value: number) => formatNumber(value)}
+                            contentStyle={{
+                              fontSize: '12px',
+                              borderRadius: '8px',
+                              border: '1px solid #e5e7eb',
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="flex-1 space-y-3 min-w-0">
+                      <TokenMetricRow
+                        label="输入Token"
+                        value={formatNumber(tokenStats.inputTokens)}
+                        color="bg-brand-500"
+                      />
+                      <TokenMetricRow
+                        label="输出Token"
+                        value={formatNumber(tokenStats.outputTokens)}
+                        color="bg-emerald-500"
+                      />
+                      <TokenMetricRow
+                        label="推理Token"
+                        value={formatNumber(tokenStats.reasoningTokens)}
+                        color="bg-violet-500"
+                      />
+                      <div className="border-t border-gray-100 pt-2 mt-2">
+                        <TokenMetricRow
+                          label="缓存复用率"
+                          value={`${(tokenStats.cacheReuseRate ?? 0).toFixed(1)}%`}
+                          color="bg-amber-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 text-center py-8">暂无Token数据</p>
+                )}
+                {tokenGroupData.length > 0 && (
+                  <div className="mt-4 h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={tokenGroupData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="period" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Tooltip
+                          contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                          formatter={(value: number) => formatNumber(value)}
+                        />
+                        <Line type="monotone" dataKey="inputTokens" name="输入" stroke="#3B82F6" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="outputTokens" name="输出" stroke="#10B981" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="reasoningTokens" name="推理" stroke="#8B5CF6" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+
+              {/* Growth Trend */}
+              <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
+                {slowLoading && !trendData.length && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
+                    <Loader2 size={20} className="text-brand-400 animate-spin" />
+                  </div>
+                )}
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-gray-700">增长趋势{timePreset === 'all' ? '' : timePreset === 'custom' ? ` (${customStart} ~ ${customEnd})` : ` (近${timePreset}天)`}</h3>
+                  <label className="inline-flex items-center gap-2 cursor-pointer">
+                    <span className="text-xs text-gray-500">对比上期</span>
+                    <input
+                      type="checkbox"
+                      checked={showComparison}
+                      onChange={(e) => setShowComparison(e.target.checked)}
+                      className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                    />
+                  </label>
+                </div>
+                {trendData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={320}>
+                    <LineChart
+                      data={mergedTrendData}
+                      margin={{ left: 0, right: 0, top: 5, bottom: 5 }}
+                      onClick={(payload) => {
+                        if (payload?.activePayload?.length) {
+                          const data = payload.activePayload[0].payload
+                          const fullDate = trendComparison?.current.find(
+                            (t) => t.date.slice(5) === data.date
+                          )?.date
+                          if (fullDate) {
+                            navigate(`/sessions?start=${fullDate}&end=${fullDate}`)
+                          }
+                        }
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10 }}
+                        stroke="#9ca3af"
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        yAxisId="left"
+                        tick={{ fontSize: 10 }}
+                        stroke="#9ca3af"
+                        label={{
+                          value: '会话数',
+                          angle: -90,
+                          position: 'insideLeft',
+                          style: { fontSize: 10, fill: '#6b7280' },
+                        }}
+                      />
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        tick={{ fontSize: 10 }}
+                        stroke="#9ca3af"
+                        label={{
+                          value: '数据增长',
+                          angle: 90,
+                          position: 'insideRight',
+                          style: { fontSize: 10, fill: '#6b7280' },
+                        }}
+                        tickFormatter={(v: number) => formatBytes(v)}
+                      />
                       <Tooltip
-                        formatter={(value: number) => formatNumber(value)}
                         contentStyle={{
                           fontSize: '12px',
                           borderRadius: '8px',
                           border: '1px solid #e5e7eb',
                         }}
+                        labelStyle={{ fontWeight: 600 }}
+                        formatter={(value: number, name: string) => {
+                          if (name === 'sizeGrowth' || name === 'prevSizeGrowth') return [formatBytes(value), name === 'sizeGrowth' ? '数据增长' : '上期数据增长']
+                          if (name === 'newSessions' || name === 'prevNewSessions') return [value, name === 'newSessions' ? '新会话' : '上期新会话']
+                          return [value, name]
+                        }}
                       />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex-1 space-y-3 min-w-0">
-                  <TokenMetricRow
-                    label="输入Token"
-                    value={formatNumber(tokenStats.inputTokens)}
-                    color="bg-brand-500"
-                  />
-                  <TokenMetricRow
-                    label="输出Token"
-                    value={formatNumber(tokenStats.outputTokens)}
-                    color="bg-emerald-500"
-                  />
-                  <TokenMetricRow
-                    label="推理Token"
-                    value={formatNumber(tokenStats.reasoningTokens)}
-                    color="bg-violet-500"
-                  />
-                  <div className="border-t border-gray-100 pt-2 mt-2">
-                    <TokenMetricRow
-                      label="缓存复用率"
-                      value={`${(tokenStats.cacheReuseRate ?? 0).toFixed(1)}%`}
-                      color="bg-amber-500"
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-400 text-center py-8">暂无Token数据</p>
-            )}
-            {tokenGroupData.length > 0 && (
-              <div className="mt-4 h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={tokenGroupData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="period" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip
-                      contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}
-                      formatter={(value: number) => formatNumber(value)}
-                    />
-                    <Line type="monotone" dataKey="inputTokens" name="输入" stroke="#3B82F6" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="outputTokens" name="输出" stroke="#10B981" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="reasoningTokens" name="推理" stroke="#8B5CF6" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
-
-          {/* Growth Trend */}
-          <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
-            {slowLoading && !trendData.length && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
-                <Loader2 size={20} className="text-brand-400 animate-spin" />
-              </div>
-            )}
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-700">增长趋势{timePreset === 'all' ? '' : timePreset === 'custom' ? ` (${customStart} ~ ${customEnd})` : ` (近${timePreset}天)`}</h3>
-              <label className="inline-flex items-center gap-2 cursor-pointer">
-                <span className="text-xs text-gray-500">对比上期</span>
-                <input
-                  type="checkbox"
-                  checked={showComparison}
-                  onChange={(e) => setShowComparison(e.target.checked)}
-                  className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                />
-              </label>
-            </div>
-            {trendData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={320}>
-                <LineChart
-                  data={mergedTrendData}
-                  margin={{ left: 0, right: 0, top: 5, bottom: 5 }}
-                  onClick={(payload) => {
-                    if (payload?.activePayload?.length) {
-                      const data = payload.activePayload[0].payload
-                      const fullDate = trendComparison?.current.find(
-                        (t) => t.date.slice(5) === data.date
-                      )?.date
-                      if (fullDate) {
-                        navigate(`/sessions?start=${fullDate}&end=${fullDate}`)
-                      }
-                    }
-                  }}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fontSize: 10 }}
-                    stroke="#9ca3af"
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis
-                    yAxisId="left"
-                    tick={{ fontSize: 10 }}
-                    stroke="#9ca3af"
-                    label={{
-                      value: '会话数',
-                      angle: -90,
-                      position: 'insideLeft',
-                      style: { fontSize: 10, fill: '#6b7280' },
-                    }}
-                  />
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    tick={{ fontSize: 10 }}
-                    stroke="#9ca3af"
-                    label={{
-                      value: '数据增长',
-                      angle: 90,
-                      position: 'insideRight',
-                      style: { fontSize: 10, fill: '#6b7280' },
-                    }}
-                    tickFormatter={(v: number) => formatBytes(v)}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      fontSize: '12px',
-                      borderRadius: '8px',
-                      border: '1px solid #e5e7eb',
-                    }}
-                    labelStyle={{ fontWeight: 600 }}
-                    formatter={(value: number, name: string) => {
-                      if (name === 'sizeGrowth' || name === 'prevSizeGrowth') return [formatBytes(value), name === 'sizeGrowth' ? '数据增长' : '上期数据增长']
-                      if (name === 'newSessions' || name === 'prevNewSessions') return [value, name === 'newSessions' ? '新会话' : '上期新会话']
-                      return [value, name]
-                    }}
-                  />
-                  <Legend
-                    formatter={(value: string) => {
-                      if (value === 'newSessions') return '新会话'
-                      if (value === 'sizeGrowth') return '数据增长'
-                      if (value === 'prevNewSessions') return '上期新会话'
-                      if (value === 'prevSizeGrowth') return '上期数据增长'
-                      return value
-                    }}
-                    wrapperStyle={{ fontSize: 11 }}
-                  />
-                  <Line
-                    yAxisId="left"
-                    type="monotone"
-                    dataKey="newSessions"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 3 }}
-                  />
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="sizeGrowth"
-                    stroke="#10b981"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 3 }}
-                  />
-                  {showComparison && (
-                    <>
+                      <Legend
+                        formatter={(value: string) => {
+                          if (value === 'newSessions') return '新会话'
+                          if (value === 'sizeGrowth') return '数据增长'
+                          if (value === 'prevNewSessions') return '上期新会话'
+                          if (value === 'prevSizeGrowth') return '上期数据增长'
+                          return value
+                        }}
+                        wrapperStyle={{ fontSize: 11 }}
+                      />
                       <Line
                         yAxisId="left"
                         type="monotone"
-                        dataKey="prevNewSessions"
-                        stroke="#9ca3af"
-                        strokeWidth={1.5}
-                        strokeDasharray="5 5"
+                        dataKey="newSessions"
+                        stroke="#3b82f6"
+                        strokeWidth={2}
                         dot={false}
-                        activeDot={{ r: 2 }}
+                        activeDot={{ r: 3 }}
                       />
                       <Line
                         yAxisId="right"
                         type="monotone"
-                        dataKey="prevSizeGrowth"
-                        stroke="#d1d5db"
-                        strokeWidth={1.5}
-                        strokeDasharray="5 5"
+                        dataKey="sizeGrowth"
+                        stroke="#10b981"
+                        strokeWidth={2}
                         dot={false}
-                        activeDot={{ r: 2 }}
+                        activeDot={{ r: 3 }}
                       />
-                    </>
-                  )}
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-gray-400 text-center py-8">暂无趋势数据</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ── ROW 6: 技能分布 + 工具排行 ─────────────────────────────── */}
-      <div>
-        <p className="text-xs text-gray-400 font-medium mb-2">🔧 工具 & 技能排行
-          <span className="ml-2 inline-flex gap-1">
-            {skillData.length > 0 && <button onClick={() => exportCSV(skillData, 'skill-usage.csv')} className="text-violet-500 hover:text-violet-700" title="导出技能使用 CSV"><Download size={12} /></button>}
-            {toolData.length > 0 && <button onClick={() => exportCSV(toolData, 'tool-ranking.csv')} className="text-brand-500 hover:text-brand-700" title="导出工具排行 CSV"><Download size={12} /></button>}
-          </span>
-        </p>
-        <div className="grid grid-cols-2 gap-4">
-          {/* Skill Usage */}
-          <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
-            {slowLoading && !skillData.length && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
-                <Loader2 size={20} className="text-brand-400 animate-spin" />
+                      {showComparison && (
+                        <>
+                          <Line
+                            yAxisId="left"
+                            type="monotone"
+                            dataKey="prevNewSessions"
+                            stroke="#9ca3af"
+                            strokeWidth={1.5}
+                            strokeDasharray="5 5"
+                            dot={false}
+                            activeDot={{ r: 2 }}
+                          />
+                          <Line
+                            yAxisId="right"
+                            type="monotone"
+                            dataKey="prevSizeGrowth"
+                            stroke="#d1d5db"
+                            strokeWidth={1.5}
+                            strokeDasharray="5 5"
+                            dot={false}
+                            activeDot={{ r: 2 }}
+                          />
+                        </>
+                      )}
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-sm text-gray-400 text-center py-8">暂无趋势数据</p>
+                )}
               </div>
-            )}
-            <h3 className="text-sm font-medium text-gray-700 mb-4">技能使用分布</h3>
-            {skillData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={skillData} layout="vertical" margin={{ left: 0, right: 20, top: 0, bottom: 0 }}>
-                  <XAxis type="number" tick={{ fontSize: 11 }} stroke="#9ca3af" />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={100}
-                    tick={{ fontSize: 11 }}
-                    stroke="#9ca3af"
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      fontSize: '12px',
-                      borderRadius: '8px',
-                      border: '1px solid #e5e7eb',
-                    }}
-                  />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={16}>
-                    {skillData.map((_entry, index) => (
-                      <Cell key={`skill-${index}`} fill={SKILL_COLORS[index % SKILL_COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-gray-400 text-center py-8">暂无技能使用数据</p>
-            )}
+            </div>
           </div>
 
-          {/* Tool Ranking */}
-          <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
-            {slowLoading && !toolData.length && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
-                <Loader2 size={20} className="text-brand-400 animate-spin" />
-              </div>
-            )}
-            <h3 className="text-sm font-medium text-gray-700 mb-4">工具使用排行 TOP 10</h3>
-            {toolData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={toolData} layout="vertical" margin={{ left: 0, right: 20, top: 0, bottom: 0 }}>
-                  <XAxis type="number" tick={{ fontSize: 11 }} stroke="#9ca3af" />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={120}
-                    tick={{ fontSize: 11 }}
-                    stroke="#9ca3af"
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      fontSize: '12px',
-                      borderRadius: '8px',
-                      border: '1px solid #e5e7eb',
-                    }}
-                  />
-                  <Bar dataKey="count" fill={TOOL_BAR_COLOR} radius={[0, 4, 4, 0]} barSize={16} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-gray-400 text-center py-8">暂无工具使用数据</p>
-            )}
+          {/* 会话创建趋势 (新) */}
+          <div>
+            <p className="text-xs text-gray-400 font-medium mb-2">📅 会话创建趋势
+              {sessionTrend.length > 0 && <button onClick={() => exportCSV(sessionTrend, 'session-trend.csv')} className="ml-2 text-brand-500 hover:text-brand-700" title="导出 CSV"><Download size={12} /></button>}
+            </p>
+            <div className="bg-white rounded-lg border border-gray-200 p-5">
+              {sessionTrend.length > 0 ? (
+                <div className="h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={sessionTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                      <YAxis tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                      <Tooltip contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+                      <Line type="monotone" dataKey="count" name="会话数" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-8">暂无数据</p>
+              )}
+            </div>
+          </div>
+
+          {/* 成本趋势 (新) */}
+          <div>
+            <p className="text-xs text-gray-400 font-medium mb-2">💵 成本趋势
+              {costTrend.length > 0 && <button onClick={() => exportCSV(costTrend, 'cost-trend.csv')} className="ml-2 text-emerald-500 hover:text-emerald-700" title="导出 CSV"><Download size={12} /></button>}
+            </p>
+            <div className="bg-white rounded-lg border border-gray-200 p-5">
+              {costTrend.length > 0 ? (
+                <div className="h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={costTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                      <YAxis tick={{ fontSize: 11 }} stroke="#9ca3af" tickFormatter={(v: number) => `$${v.toFixed(2)}`} />
+                      <Tooltip
+                        contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                        formatter={(v: number) => [`$${v.toFixed(2)}`, '成本']}
+                      />
+                      <Line type="monotone" dataKey="totalCost" name="成本" stroke="#10b981" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-8">暂无数据</p>
+              )}
+            </div>
+          </div>
+
+          {/* 消息活跃度趋势 (新) */}
+          <div>
+            <p className="text-xs text-gray-400 font-medium mb-2">💬 消息活跃度趋势
+              {messageTrend.length > 0 && <button onClick={() => exportCSV(messageTrend, 'message-trend.csv')} className="ml-2 text-violet-500 hover:text-violet-700" title="导出 CSV"><Download size={12} /></button>}
+            </p>
+            <div className="bg-white rounded-lg border border-gray-200 p-5">
+              {messageTrend.length > 0 ? (
+                <div className="h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={messageTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                      <YAxis tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                      <Tooltip contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+                      <Line type="monotone" dataKey="count" name="消息数" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-8">暂无数据</p>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {dashboardTab === 'tools' && (
+        <div className="space-y-6">
+          <p className="text-xs text-gray-400 font-medium mb-2">🔧 工具 & 技能排行
+            <span className="ml-2 inline-flex gap-1">
+              {skillData.length > 0 && <button onClick={() => exportCSV(skillData, 'skill-usage.csv')} className="text-violet-500 hover:text-violet-700" title="导出技能使用 CSV"><Download size={12} /></button>}
+              {toolData.length > 0 && <button onClick={() => exportCSV(toolData, 'tool-ranking.csv')} className="text-brand-500 hover:text-brand-700" title="导出工具排行 CSV"><Download size={12} /></button>}
+            </span>
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            {/* Skill Usage */}
+            <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
+              {slowLoading && !skillData.length && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
+                  <Loader2 size={20} className="text-brand-400 animate-spin" />
+                </div>
+              )}
+              <h3 className="text-sm font-medium text-gray-700 mb-4">技能使用分布</h3>
+              {skillData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={skillData} layout="vertical" margin={{ left: 0, right: 20, top: 0, bottom: 0 }}>
+                    <XAxis type="number" tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={100}
+                      tick={{ fontSize: 11 }}
+                      stroke="#9ca3af"
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        fontSize: '12px',
+                        borderRadius: '8px',
+                        border: '1px solid #e5e7eb',
+                      }}
+                    />
+                    <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={16}>
+                      {skillData.map((_entry, index) => (
+                        <Cell key={`skill-${index}`} fill={SKILL_COLORS[index % SKILL_COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-8">暂无技能使用数据</p>
+              )}
+            </div>
+
+            {/* Tool Ranking */}
+            <div className="bg-white rounded-lg border border-gray-200 p-5 relative">
+              {slowLoading && !toolData.length && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg z-10">
+                  <Loader2 size={20} className="text-brand-400 animate-spin" />
+                </div>
+              )}
+              <h3 className="text-sm font-medium text-gray-700 mb-4">工具使用排行 TOP 10</h3>
+              {toolData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={toolData} layout="vertical" margin={{ left: 0, right: 20, top: 0, bottom: 0 }}>
+                    <XAxis type="number" tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={120}
+                      tick={{ fontSize: 11 }}
+                      stroke="#9ca3af"
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        fontSize: '12px',
+                        borderRadius: '8px',
+                        border: '1px solid #e5e7eb',
+                      }}
+                    />
+                    <Bar dataKey="count" fill={TOOL_BAR_COLOR} radius={[0, 4, 4, 0]} barSize={16} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-8">暂无工具使用数据</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dashboardTab === 'models' && (
+        <div className="space-y-6">
+          {modelRanking.length > 0 ? (
+            <div>
+              <p className="text-xs text-gray-400 font-medium mb-2">🤖 模型 & Provider 统计</p>
+              <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
+                {(() => {
+                  const sorted = modelRanking
+                    .slice()
+                    .sort((a, b) => b.sessionCount - a.sessionCount)
+                    .slice(0, 10)
+                  const max = Math.max(...sorted.map(m => m.sessionCount), 1)
+                  return sorted.map((m, idx) => {
+                    let modelLabel = m.model
+                    let providerLabel = ''
+                    if (m.model?.startsWith('{')) {
+                      try {
+                        const p = JSON.parse(m.model)
+                        modelLabel = p.id || p.name || m.model
+                        providerLabel = p.provider || ''
+                      } catch { /* keep raw */ }
+                    }
+                    const pct = (m.sessionCount / max) * 100
+                    return (
+                      <div key={`${providerLabel}-${modelLabel}-${idx}`} className="flex items-center gap-2 text-sm min-w-0">
+                        <span className="w-6 text-right text-gray-400 text-xs shrink-0">{idx + 1}</span>
+                        <span className="w-64 truncate text-gray-700 shrink-0" title={`${providerLabel ? providerLabel + ' / ' : ''}${modelLabel}`}>
+                          {providerLabel && <span className="text-gray-500">{providerLabel}</span>}
+                          {providerLabel && ' / '}
+                          <span className="font-mono">{modelLabel}</span>
+                        </span>
+                        <div className="flex-1 h-5 bg-gray-100 rounded relative overflow-hidden min-w-0">
+                          <div className="h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="w-20 text-right text-gray-600 text-xs font-mono shrink-0">{m.sessionCount.toLocaleString()} 会话</span>
+                        <span className="w-24 text-right text-gray-500 text-xs font-mono shrink-0">${m.totalCost.toFixed(2)}</span>
+                      </div>
+                    )
+                  })
+                })()}
+              </div>
+              {providerStats.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {providerStats.map(p => (
+                    <span key={p.provider} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                      {p.provider}: {p.sessionCount.toLocaleString()} 会话 · ${p.totalCost.toFixed(2)}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-8">暂无模型数据</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }

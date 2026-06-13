@@ -19,6 +19,7 @@ const ALLOWED_CHANNELS = [
   'events:list', 'events:detail',
   'sessions:parent', 'sessions:children', 'sessions:rename',
   'dashboard:projects', 'dashboard:workspaces', 'dashboard:modelRanking', 'dashboard:providerStats',
+  'dashboard:sessionTrend', 'dashboard:costTrend', 'dashboard:messageTrend',
 ]
 
 /**

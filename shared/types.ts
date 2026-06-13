@@ -69,6 +69,28 @@ export interface TokenGroupDataPoint {
   estimatedCost: number;
 }
 
+// 趋势图通用数据点（时间 + 值 + 可选标签）
+export interface TrendDataPoint2 {
+  date: string;         // YYYY-MM-DD
+  value: number;
+  label?: string;
+}
+
+// 会话创建趋势 — 按天的会话计数
+export interface SessionTrendItem extends TrendDataPoint2 {
+  count: number;
+}
+
+// 成本趋势 — 按天的成本总和
+export interface CostTrendItem extends TrendDataPoint2 {
+  totalCost: number;
+}
+
+// 消息活跃度趋势 — 按天的消息计数
+export interface MessageTrendItem extends TrendDataPoint2 {
+  count: number;
+}
+
 // Time range filter
 export interface TimeRange {
   startDate: string;  // ISO "2026-05-01"

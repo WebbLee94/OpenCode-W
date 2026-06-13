@@ -16,6 +16,9 @@ export const IPC_CHANNELS = {
   DASHBOARD_WORKSPACES: 'dashboard:workspaces',
   DASHBOARD_MODEL_RANKING: 'dashboard:modelRanking',
   DASHBOARD_PROVIDER_STATS: 'dashboard:providerStats',
+  DASHBOARD_SESSION_TREND: 'dashboard:sessionTrend',
+  DASHBOARD_COST_TREND: 'dashboard:costTrend',
+  DASHBOARD_MESSAGE_TREND: 'dashboard:messageTrend',
 
   // Sessions
   SESSIONS_LIST: 'sessions:list',

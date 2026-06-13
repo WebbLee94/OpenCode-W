@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import type { DatabaseStats, TokenStats, ToolRanking, SkillUsage, TrendDataPoint, TrendComparison, TokenGroupDataPoint, TimeRange, IpcResult, ProjectStatsItem, WorkspaceStatsItem, ModelRankingItem, ProviderStatsItem } from '../../shared/types'
+import type { DatabaseStats, TokenStats, ToolRanking, SkillUsage, TrendDataPoint, TrendComparison, TokenGroupDataPoint, TimeRange, IpcResult, ProjectStatsItem, WorkspaceStatsItem, ModelRankingItem, ProviderStatsItem, SessionTrendItem, CostTrendItem, MessageTrendItem } from '../../shared/types'
 import dbManager from '../database'
 
 /** Build a SQL date filter clause for time_created (ms timestamp) */
@@ -413,4 +413,79 @@ export function registerHandlers(): void {
       return { success: true, data: rows.map(r => ({ provider: providerMap[r.url as string] || '其他', sessionCount: r.sessionCount as number, tokenCount: r.tokenCount as number, totalCost: r.totalCost as number })) }
     } catch (error) { return { success: false, error: (error as Error).message } }
   })
+
+  // ── Session 增长趋势 ────────────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.DASHBOARD_SESSION_TREND,
+    (_event, timeRange?: TimeRange): IpcResult<SessionTrendItem[]> => {
+      try {
+        const dateFilter = buildDateFilter('', timeRange)
+        const rows = dbManager.rawQuery<{ d: string; cnt: number }>(
+          `SELECT date(time_created / 1000, 'unixepoch') as d,
+                  COUNT(*) as cnt
+           FROM session
+           WHERE 1=1 ${dateFilter.sql}
+           GROUP BY d
+           ORDER BY d ASC`,
+          dateFilter.params
+        )
+        return {
+          success: true,
+          data: rows.map(r => ({ date: r.d, value: r.cnt, count: r.cnt } as SessionTrendItem)),
+        }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
+    }
+  )
+
+  // ── 成本趋势 ────────────────────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.DASHBOARD_COST_TREND,
+    (_event, timeRange?: TimeRange): IpcResult<CostTrendItem[]> => {
+      try {
+        const dateFilter = buildDateFilter('', timeRange)
+        const rows = dbManager.rawQuery<{ d: string; c: number }>(
+          `SELECT date(time_created / 1000, 'unixepoch') as d,
+                  COALESCE(SUM(cost), 0) as c
+           FROM session
+           WHERE 1=1 ${dateFilter.sql}
+           GROUP BY d
+           ORDER BY d ASC`,
+          dateFilter.params
+        )
+        return {
+          success: true,
+          data: rows.map(r => ({ date: r.d, value: r.c, totalCost: r.c } as CostTrendItem)),
+        }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
+    }
+  )
+
+  // ── 消息活跃度趋势 ──────────────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.DASHBOARD_MESSAGE_TREND,
+    (_event, timeRange?: TimeRange): IpcResult<MessageTrendItem[]> => {
+      try {
+        const dateFilter = buildDateFilter('', timeRange)
+        const rows = dbManager.rawQuery<{ d: string; cnt: number }>(
+          `SELECT date(m.time_created / 1000, 'unixepoch') as d,
+                  COUNT(*) as cnt
+           FROM message m
+           WHERE 1=1 ${dateFilter.sql}
+           GROUP BY d
+           ORDER BY d ASC`,
+          dateFilter.params
+        )
+        return {
+          success: true,
+          data: rows.map(r => ({ date: r.d, value: r.cnt, count: r.cnt } as MessageTrendItem)),
+        }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
+    }
+  )
 }
