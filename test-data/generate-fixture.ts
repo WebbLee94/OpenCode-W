@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, existsSync, unlinkSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -17,7 +17,7 @@ for (const ext of ['-wal', '-shm']) {
 
 mkdirSync(__dirname, { recursive: true })
 
-const db = new Database(DB_PATH)
+const db = new DatabaseSync(DB_PATH)
 
 // Create tables matching actual OpenCode schema
 // - message table has NO role column (role is in data JSON)
@@ -343,13 +343,17 @@ const insertTodo = db.prepare(`
   VALUES (?, ?, ?, ?, ?, ?, ?)
 `)
 
-const todoInsertStmt = db.transaction((items: typeof todoSamples) => {
-  for (const t of items) {
+db.exec('BEGIN')
+try {
+  for (const t of todoSamples) {
     const now = Date.now()
     insertTodo.run(t.sessionId, t.content, t.status, t.priority, todoPos++, now, now)
   }
-})
-todoInsertStmt(todoSamples)
+  db.exec('COMMIT')
+} catch (e) {
+  db.exec('ROLLBACK')
+  throw e
+}
 
 // Verify data
 const sessionCount = (db.prepare('SELECT COUNT(*) as count FROM session').get() as { count: number }).count

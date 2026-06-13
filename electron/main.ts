@@ -28,6 +28,35 @@ let mainWindow: BrowserWindow | null = null
 
 app.setName('DBScope-OC')
 
+/**
+ * 校验用户传入的 OpenCode 数据库路径
+ * 防止路径穿越攻击(例如 ~/.local/share/opencode/../../etc/passwd)
+ * 策略:仅允许解析在用户家目录下的 .local/share/opencode/*.db,
+ *         或临时显式测试目录(开发模式下的 test-data/)。
+ *         其余一律拒绝。
+ */
+function validateDbPath(dbPath: string): { ok: true; absPath: string } | { ok: false; reason: string } {
+  if (typeof dbPath !== 'string' || !dbPath) {
+    return { ok: false, reason: '数据库路径为空' }
+  }
+  const home = os.homedir()
+  const allowedRoots = [
+    path.join(home, '.local', 'share', 'opencode'),
+    path.join(process.env.APP_ROOT ?? home, 'test-data'),
+  ]
+  let absPath: string
+  try {
+    absPath = path.resolve(dbPath)
+  } catch {
+    return { ok: false, reason: '数据库路径无法解析' }
+  }
+  const inside = allowedRoots.some(root => absPath === root || absPath.startsWith(root + path.sep))
+  if (!inside) {
+    return { ok: false, reason: '不允许打开该目录下的数据库文件' }
+  }
+  return { ok: true, absPath }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -79,8 +108,12 @@ function registerIpcHandlers() {
   // Database operations
   ipcMain.handle(IPC_CHANNELS.DATABASE_OPEN, async (_event, dbPath: string): Promise<IpcResult<{ path: string }>> => {
     try {
-      DatabaseManager.open(dbPath)
-      return { success: true, data: { path: dbPath } }
+      const guard = validateDbPath(dbPath)
+      if (!guard.ok) {
+        return { success: false, error: guard.reason }
+      }
+      DatabaseManager.open(guard.absPath)
+      return { success: true, data: { path: guard.absPath } }
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
@@ -180,7 +213,7 @@ function registerIpcHandlers() {
 
 app.whenReady().then(() => {
   // macOS: set Dock icon in dev mode (only PNG, and only if file exists)
-  if (process.platform === 'darwin' && VITE_DEV_SERVER_URL) {
+  if (process.platform === 'darwin' && VITE_DEV_SERVER_URL && app.dock) {
     try {
       const iconPath = path.join(process.env.APP_ROOT, 'build', 'icon.png')
       if (fs.existsSync(iconPath)) {

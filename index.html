@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Content-Security-Policy: 锁死渲染进程可加载的脚本/样式/连接来源
+      缓解 Chromium V8 0-day 在升级窗口期内被 inline-injected 脚本利用的风险
+      - default-src 'self': 拒绝所有未明确允许的远程/内联资源
+      - script-src 'self': 仅允许同源脚本（Vite 编译产物）
+      - style-src 'self' 'unsafe-inline': Tailwind v4 在运行时注入 style
+      - img-src 'self' data: 允许 data: URL 与同源图片
+      - connect-src 'self' ws://localhost:* http://localhost:*: 开发期 Vite HMR 走 ws / http
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:*"
+    />
     <title></title>
   </head>
   <body>

@@ -27,7 +27,8 @@
       "@shared/*": ["./shared/*"],
       "@electron/*": ["./electron/*"],
       "@/*": ["./src/*"]
-    }
+    },
+    "types": ["node"]
   },
   "include": ["src", "electron", "shared"],
   "references": [{ "path": "./tsconfig.node.json" }]

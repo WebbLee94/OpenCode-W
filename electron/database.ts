@@ -1,11 +1,21 @@
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { DatabaseStats, TableStats } from '../shared/types'
 
+/**
+ * 基于 Node 24+ 内置 node:sqlite (DatabaseSync) 的 SQLite 管理器
+ *
+ * 选择理由：
+ * - Electron 42 嵌入 Node v24.15,原生提供 node:sqlite,无需外部原生模块
+ * - 同步 API 与原 better-sqlite3 调用形态一致,IPC handler 无需改写
+ * - 零 ABI 风险,无 node-gyp 编译步骤
+ * - 官方支持,Node.js 核心团队维护
+ */
+
 export class DatabaseManager {
   private static instance: DatabaseManager | null = null
-  private connections: Map<string, Database.Database> = new Map()
+  private connections: Map<string, DatabaseSync> = new Map()
   private currentPath: string | null = null
 
   static getInstance(): DatabaseManager {
@@ -15,7 +25,7 @@ export class DatabaseManager {
     return DatabaseManager.instance
   }
 
-  open(dbPath: string): Database.Database {
+  open(dbPath: string): DatabaseSync {
     if (!fs.existsSync(dbPath)) {
       throw new Error(`Database file not found: ${dbPath}`)
     }
@@ -27,9 +37,9 @@ export class DatabaseManager {
       this.close(absPath)
     }
 
-    const db = new Database(absPath, { readonly: false })
-    db.pragma('journal_mode = WAL')
-    db.pragma('foreign_keys = ON')
+    const db = new DatabaseSync(absPath, { readOnly: false })
+    db.exec('PRAGMA journal_mode = WAL')
+    db.exec('PRAGMA foreign_keys = ON')
 
     this.connections.set(absPath, db)
     this.currentPath = absPath
@@ -47,7 +57,7 @@ export class DatabaseManager {
     }
   }
 
-  getDb(): Database.Database {
+  getDb(): DatabaseSync {
     if (!this.currentPath || !this.connections.has(this.currentPath)) {
       throw new Error('No database currently open')
     }
@@ -59,8 +69,8 @@ export class DatabaseManager {
   }
 
   healthCheck(): { ok: boolean; pageCount: number; freelistPages: number; walSize: number; error?: string } {
-    const db = this.getDb()
     try {
+      const db = this.getDb()
       const integrity = db.prepare('PRAGMA integrity_check').get() as { integrity_check: string }
       const pageCount = (db.prepare('PRAGMA page_count').get() as { page_count: number }).page_count
       const freelistCount = (db.prepare('PRAGMA freelist_count').get() as { freelist_count: number }).freelist_count
@@ -164,7 +174,7 @@ export class DatabaseManager {
     if (this.currentPath) {
       beforeSize = fs.statSync(this.currentPath).size
     }
-    db.pragma('vacuum')
+    db.exec('VACUUM')
     let afterSize = 0
     if (this.currentPath) {
       afterSize = fs.statSync(this.currentPath).size
@@ -174,23 +184,26 @@ export class DatabaseManager {
 
   checkpoint(): void {
     const db = this.getDb()
-    db.pragma('wal_checkpoint(TRUNCATE)')
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
   }
 
   rawQuery<T>(sql: string, params: unknown[] = []): T[] {
     const db = this.getDb()
-    return db.prepare(sql).all(...params) as T[]
+    return db.prepare(sql).all(...(params as never[])) as T[]
   }
 
   rawGet<T>(sql: string, params: unknown[] = []): T | undefined {
     const db = this.getDb()
-    return db.prepare(sql).get(...params) as T | undefined
+    return db.prepare(sql).get(...(params as never[])) as T | undefined
   }
 
   run(sql: string, params: unknown[] = []): { changes: number; lastInsertRowid: number } {
     const db = this.getDb()
-    const result = db.prepare(sql).run(...params)
-    return { changes: result.changes, lastInsertRowid: result.lastInsertRowid as number }
+    const result = db.prepare(sql).run(...(params as never[]))
+    return {
+      changes: Number(result.changes ?? 0),
+      lastInsertRowid: Number(result.lastInsertRowid ?? 0),
+    }
   }
 
   rawRun(sql: string): void {

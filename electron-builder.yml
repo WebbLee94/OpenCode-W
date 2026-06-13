@@ -1,11 +1,7 @@
 appId: com.dbscope.oc
 productName: DBScope-OC
-npmRebuild: true
-icon: build/icon.png
 asar: true
-asarUnpack:
-  - "**/*.node"
-  - "node_modules/better-sqlite3/**"
+asarUnpack: []
 directories:
   output: dist
 files:

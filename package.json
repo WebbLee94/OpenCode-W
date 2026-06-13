@@ -5,7 +5,7 @@
   "license": "MIT",
   "author": "Webb Lee",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.11.1"
   },
   "repository": {
     "type": "git",
@@ -17,12 +17,10 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 100",
     "preview": "vite preview",
     "test": "vitest",
-    "generate-fixture": "npx tsx test-data/generate-fixture.ts",
-    "rebuild-native": "npx node-gyp rebuild --directory=node_modules/better-sqlite3 --target=$(npx electron --version) --arch=$(node -p 'process.arch') --dist-url=https://electronjs.org/headers"
+    "generate-fixture": "node --experimental-sqlite --import tsx test-data/generate-fixture.ts"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.20.0",
-    "better-sqlite3": "^12.10.0",
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.460.0",
     "react": "^18.2.0",
@@ -37,15 +35,14 @@
   "devDependencies": {
     "@playwright/test": "^1.49.0",
     "@tailwindcss/vite": "^4.0.0",
-    "@types/better-sqlite3": "^7.6.12",
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
     "@typescript-eslint/eslint-plugin": "^7.1.1",
     "@typescript-eslint/parser": "^7.1.1",
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^9.1.0",
-    "electron": "^30.0.1",
-    "electron-builder": "^24.13.3",
+    "electron": "^42.4.0",
+    "electron-builder": "^25.1.8",
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
@@ -53,8 +50,8 @@
     "tsx": "^4.19.0",
     "typescript": "^5.2.2",
     "vite": "^5.1.6",
-    "vite-plugin-electron": "^0.28.6",
-    "vite-plugin-electron-renderer": "^0.14.5",
+    "vite-plugin-electron": "^0.29.1",
+    "vite-plugin-electron-renderer": "^0.14.7",
     "vitest": "^2.1.0"
   },
   "main": "dist-electron/main.js"

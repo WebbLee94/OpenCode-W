@@ -3,7 +3,7 @@
 > OpenCode 数据库可视化管理工具 - 轻松管理你的 OpenCode 会话数据
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Electron](https://img.shields.io/badge/Electron-30.0.1-blue.svg)](https://www.electronjs.org/)
+[![Electron](https://img.shields.io/badge/Electron-42.4.0-blue.svg)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-18.2.0-61dafb.svg)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.2.2-blue.svg)](https://www.typescriptlang.org/)
 [![OpenCode](https://img.shields.io/badge/OpenCode-%E2%86%92-blueviolet.svg)](https://github.com/anomalyco/opencode)
@@ -108,9 +108,9 @@ DBScope-OC/
 
 ## 💡 常见问题
 
-### Q: 遇到 "NODE_MODULE_VERSION mismatch" 错误怎么办？
+### Q: 升级 Electron 后遇到 "NODE_MODULE_VERSION mismatch" 错误怎么办？
 
-A: 运行 `npm run rebuild-native` 重新编译原生模块。
+A: 自 v1.2.0 起已切换到 Node 内置 `node:sqlite`，**不再有原生模块**，此问题不再出现。
 
 ### Q: 清理后空间未释放怎么办？
 
@@ -120,13 +120,13 @@ A: 运行 VACUUM 或重启应用。
 
 A: 默认存储在 `~/opencode-backups/` 目录。
 
-## 🔧 原生模块说明
+## 🔧 数据库驱动
 
-better-sqlite3 是 C++ 原生模块，必须针对 Electron 版本重新编译才能正常工作。每次升级 Electron 版本后都需要重新运行：
+主进程使用 Node 24 内置 `node:sqlite`（`DatabaseSync`），不再使用 `better-sqlite3` 等 C++ 原生模块。
 
-```bash
-npm run rebuild-native
-```
+- 零外部依赖、零 ABI 风险、同步 API
+- API 形态与 better-sqlite3 几乎一致，IPC handler 无需改为 async
+- 升级 Electron 不再需要重新编译原生模块
 
 ## 🤝 贡献
 

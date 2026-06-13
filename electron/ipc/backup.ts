@@ -2,7 +2,7 @@ import { ipcMain, dialog } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import type { BackupDTO, BackupPreviewDTO, IpcResult } from '../../shared/types'
 import dbManager from '../database'
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -231,7 +231,7 @@ export function registerHandlers(): void {
       let partCount = 0
 
       try {
-        const tempDb = new Database(resolvedPath, { readonly: true })
+        const tempDb = new DatabaseSync(resolvedPath, { readOnly: true })
         try {
           sessionCount = (tempDb.prepare('SELECT COUNT(*) as cnt FROM session').get() as { cnt: number }).cnt
           messageCount = (tempDb.prepare('SELECT COUNT(*) as cnt FROM message').get() as { cnt: number }).cnt
