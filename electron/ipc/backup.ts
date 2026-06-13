@@ -57,27 +57,6 @@ function getBackupFiles(): BackupDTO[] {
 }
 
 export function registerHandlers(): void {
-  // ─── Config handlers ──────────────────────────────────────────────
-  ipcMain.handle(IPC_CHANNELS.BACKUP_CONFIG_GET, () => readBackupConfig().backup)
-  ipcMain.handle(IPC_CHANNELS.BACKUP_CONFIG_SET, (_e, bc: Partial<BackupConfig>) => {
-    const cfg = readBackupConfig(); cfg.backup = { ...cfg.backup, ...bc }; writeBackupConfig(cfg); startScheduler()
-    return { success: true }
-  })
-  ipcMain.handle(IPC_CHANNELS.BACKUP_AUTO_CHECK, async () => {
-    const cfg = readBackupConfig().backup
-    if (cfg.enabled && cfg.frequency === 'onOpen') {
-      try {
-        const dbPath = dbManager.getCurrentPath()
-        if (!dbPath) return { success: false, error: 'No database open' }
-        ensureBackupDir(); const ts = Date.now()
-        fs.copyFileSync(dbPath, path.join(BACKUP_DIR, `auto-${ts}.db`))
-        enforceRetentionPolicy(); return { success: true }
-      }
-      catch(e) { return { success: false, error: (e as Error).message } }
-    }
-    return { success: true }
-  })
-
   // ─── Existing handlers ─────────────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.BACKUP_CREATE, async (): Promise<IpcResult<BackupDTO>> => {
     try {
@@ -278,60 +257,3 @@ export function registerHandlers(): void {
     }
   )
 }
-
-// ─── Backup Config & Auto-Scheduler ─────────────────────────────────────
-
-const CONFIG_PATH = path.join(os.homedir(), '.DBScope-OC', 'config.json')
-
-interface BackupConfig {
-  enabled: boolean
-  frequency: 'daily' | 'weekly' | 'onOpen'
-  maxCount: number
-  maxAgeDays: number
-}
-
-const DEFAULT_BACKUP: BackupConfig = { enabled: false, frequency: 'daily', maxCount: 10, maxAgeDays: 30 }
-
-function readBackupConfig(): { backup: BackupConfig } {
-  try {
-    const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8')) as { backup?: Partial<BackupConfig> }
-    return { backup: { ...DEFAULT_BACKUP, ...(raw.backup ?? {}) } }
-  } catch { return { backup: DEFAULT_BACKUP } }
-}
-function writeBackupConfig(cfg: { backup: BackupConfig }): void {
-  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true })
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf-8')
-}
-function enforceRetentionPolicy() {
-  const cfg = readBackupConfig().backup
-  if (!fs.existsSync(BACKUP_DIR)) return
-  const files = fs.readdirSync(BACKUP_DIR)
-    .filter(f => f.endsWith('.backup.db') || (f.startsWith('opencode-backup-') && f.endsWith('.db')))
-    .map(f => ({ name: f, mtime: fs.statSync(path.join(BACKUP_DIR, f)).mtime.getTime() }))
-    .sort((a, b) => b.mtime - a.mtime)
-  const maxAge = (cfg.maxAgeDays || 30) * 86400000
-  const now = Date.now()
-  files.forEach((f, i) => {
-    if (i >= (cfg.maxCount || 10) || (now - f.mtime > maxAge))
-      try { fs.unlinkSync(path.join(BACKUP_DIR, f.name)) } catch { /* file may already be gone */ }
-  })
-}
-
-let backupTimer: NodeJS.Timeout | null = null
-function startScheduler() {
-  const cfg = readBackupConfig().backup
-  if (!cfg.enabled) return
-  if (backupTimer) clearInterval(backupTimer)
-  if (cfg.frequency === 'onOpen') return
-  const interval = cfg.frequency === 'weekly' ? 604800000 : 86400000
-  backupTimer = setInterval(() => {
-    try {
-      const dbPath = dbManager.getCurrentPath()
-      if (!dbPath) return
-      ensureBackupDir()
-      fs.copyFileSync(dbPath, path.join(BACKUP_DIR, `auto-${Date.now()}.db`))
-      enforceRetentionPolicy()
-    } catch (e) { console.error('Auto backup failed:', e) }
-  }, interval)
-}
-export { startScheduler }

@@ -201,7 +201,6 @@ app.whenReady().then(() => {
 
   // Create window (must succeed even if DB fails)
   createWindow()
-  backupIpc.startScheduler()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

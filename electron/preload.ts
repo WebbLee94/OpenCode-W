@@ -14,7 +14,7 @@ const ALLOWED_CHANNELS = [
   'cleanup:preview', 'cleanup:execute',
   'database:vacuum', 'database:checkpoint', 'database:open', 'database:health',
   'dialog:openFile', 'dialog:saveFile',
-  'backup:create', 'backup:list', 'backup:restore', 'backup:delete', 'backup:preview', 'backup:config:get', 'backup:config:set', 'backup:auto-backup-check',
+  'backup:create', 'backup:list', 'backup:restore', 'backup:delete', 'backup:preview',
   'todos:by-parent',
   'session-share:get',
   'sessions:parent', 'sessions:children', 'sessions:rename',
@@ -66,7 +66,4 @@ function saveFile(content: string, defaultName: string): Promise<unknown> {
 
 contextBridge.exposeInMainWorld('electronAPI', { invoke, on, saveFile,
   openExternal: (url: string) => invoke('shell:openExternal', url),
-  backupConfigGet: () => invoke('backup:config:get'),
-  backupConfigSet: (config: unknown) => invoke('backup:config:set', config),
-  backupAutoCheck: () => invoke('backup:auto-backup-check'),
 })

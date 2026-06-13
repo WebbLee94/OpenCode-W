@@ -53,9 +53,6 @@ export const IPC_CHANNELS = {
   BACKUP_RESTORE: 'backup:restore',
   BACKUP_DELETE: 'backup:delete',
   BACKUP_PREVIEW: 'backup:preview',
-  BACKUP_CONFIG_GET: 'backup:config:get',
-  BACKUP_CONFIG_SET: 'backup:config:set',
-  BACKUP_AUTO_CHECK: 'backup:auto-backup-check',
 
   // Todos — 仅保留会话详情页内嵌 Tab 所需的 by-parent
   TODOS_BY_PARENT: 'todos:by-parent',
