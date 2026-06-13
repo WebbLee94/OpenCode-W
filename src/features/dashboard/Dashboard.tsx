@@ -659,7 +659,7 @@ function Dashboard() {
   }))
 
   return (
-    <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
+    <div className="p-4 space-y-4 max-w-[1400px] mx-auto">
       {/* ── Toast notification ──────────────────────────────────── */}
       {toast && (
         <div
@@ -983,7 +983,7 @@ function Dashboard() {
                 </div>
               </div>
               {tokenGroupData.length > 0 ? (
-                <div className="h-48">
+                <div className="h-40">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={tokenGroupData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -1026,7 +1026,7 @@ function Dashboard() {
             </div>
             <div className="bg-white rounded-lg border border-gray-200 p-5 flex-1 flex flex-col">
               {costTrend.length > 0 ? (
-                <div className="h-48">
+                <div className="h-40">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={mergedCostTrend}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -1100,7 +1100,7 @@ function Dashboard() {
             </div>
             <div className="bg-white rounded-lg border border-gray-200 p-5 flex-1 flex flex-col">
               {sessionTrend.length > 0 ? (
-                <div className="h-48">
+                <div className="h-40">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
                       data={mergedSessionTrend}
@@ -1153,7 +1153,7 @@ function Dashboard() {
             </div>
             <div className="bg-white rounded-lg border border-gray-200 p-5 flex-1 flex flex-col">
               {messageTrend.length > 0 ? (
-                <div className="h-48">
+                <div className="h-40">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={mergedMessageTrend}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -1208,7 +1208,7 @@ function Dashboard() {
                 )}
                 <h3 className="text-sm font-medium text-gray-700 mb-4">技能使用分布</h3>
                 {skillData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={260}>
+                  <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={skillData} layout="vertical" margin={{ left: 0, right: 20, top: 0, bottom: 0 }}>
                       <XAxis type="number" tick={{ fontSize: 11 }} stroke="#9ca3af" />
                       <YAxis
@@ -1246,7 +1246,7 @@ function Dashboard() {
                 )}
                 <h3 className="text-sm font-medium text-gray-700 mb-4">工具使用排行 TOP 10</h3>
                 {toolData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={260}>
+                  <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={toolData} layout="vertical" margin={{ left: 0, right: 20, top: 0, bottom: 0 }}>
                       <XAxis type="number" tick={{ fontSize: 11 }} stroke="#9ca3af" />
                       <YAxis
