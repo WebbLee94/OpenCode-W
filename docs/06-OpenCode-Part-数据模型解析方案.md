@@ -754,7 +754,10 @@ export type PartType =
   | 'snapshot' | 'agent' | 'subtask' | 'retry'
 ```
 
-### 4.3 parsePartData 重构
+### 4.3 parsePartData 重构（规划中，尚未实施）
+
+> 当前实现：`parsePartData` 仍为单文件内联 switch-case，集中在 `electron/ipc/messages.ts` 中。
+> 下方为规划中的分文件解析器方案，可在后续迭代中按此拆分：
 
 将现有 80 行 switch 重构为分文件解析器 + 统一调度：
 
@@ -807,6 +810,8 @@ export function parsePartData(row: Record<string, unknown>): PartDTO {
 ### 5.1 组件设计（PartBubbles 注册表）
 
 将渲染从 `ConversationView.tsx:94-173` 的内联组件抽离为可复用注册表：
+
+> 当前实现：UI Bubble 与注册表实际位于 `src/features/sessions/PartBubbles/`，下方为历史方案中规划的目录树。
 
 ```
 src/components/part-bubbles/
@@ -883,17 +888,15 @@ import { PartBubble } from '../../components/part-bubbles'
 
 ### 2. 编写解析器
 
-在 `electron/ipc/part-parsers/<new-type>.ts` 中实现 `parseXxxPart(data, part)`，遵循 canonical 优先 + flat 兜底。
-
-在 `index.ts` 的 switch 中注册新分支。
+在 `electron/ipc/messages.ts` 的 `parsePartData` 函数中追加新 case，遵循 canonical 优先 + flat 兜底。
 
 ### 3. 实现 Bubble 组件
 
-在 `src/components/part-bubbles/<NewType>Bubble.tsx` 中实现 UI，签名固定为 `{ part: PartDTO }: JSX.Element`。
+在 `src/features/sessions/PartBubbles/<NewType>Bubble.tsx` 中实现 UI，签名固定为 `{ part: PartDTO }: JSX.Element`。
 
 ### 4. 注册到 PART_BUBBLES
 
-`registry.ts` 中追加映射键值对。TypeScript 类型系统会自动校验完整性（漏注册会编译报错）。
+`src/features/sessions/PartBubbles/registry.tsx` 中追加映射键值对。TypeScript 类型系统会自动校验完整性（漏注册会编译报错）。
 
 ### 5. 更新类型对照表
 
