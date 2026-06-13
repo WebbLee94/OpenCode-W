@@ -564,7 +564,20 @@ const listRef = useRef<HTMLDivElement>(null)
                                 addToast('复制失败', 'error')
                               }
                             }} className="text-gray-400 hover:text-blue-600 text-sm">📋 复制</button>
-                            <button onClick={() => { openExternal(sessionShare.url) }} className="text-gray-400 hover:text-blue-600 text-sm">🌐 打开</button>
+                            <button onClick={async () => {
+                              try {
+                                // 成功（含系统浏览器 / 内置降级）→ 静默
+                                await openExternal(sessionShare.url)
+                              } catch {
+                                // 两种方式都失败 → 静默复制链接 + 友好提示
+                                try {
+                                  await navigator.clipboard.writeText(sessionShare.url)
+                                  addToast('已复制链接', 'success')
+                                } catch {
+                                  // 复制也失败,完全静默
+                                }
+                              }
+                            }} className="text-gray-400 hover:text-blue-600 text-sm">🌐 打开</button>
                           </div>
                         </div>
                       )}

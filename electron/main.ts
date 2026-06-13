@@ -10,7 +10,6 @@ import * as cleanupIpc from './ipc/cleanup'
 import * as analyticsIpc from './ipc/analytics'
 import * as backupIpc from './ipc/backup'
 import * as todosIpc from './ipc/todos'
-import * as accountsIpc from './ipc/accounts'
 import * as eventsIpc from './ipc/events'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type { IpcResult } from '../shared/types'
@@ -52,6 +51,17 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+
+  // 显式注册 window.open 处理器
+  // 背景：Electron 30 中若不注册 setWindowOpenHandler,window.open 会"静默打开新 BrowserWindow
+  //      但返回 null",导致渲染层 if (!win) 误判失败、错误地触发复制链接降级 toast
+  // 策略：http(s) 链接允许在新 BrowserWindow 中打开(作为 shell.openExternal 失败后的内置降级)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return { action: 'allow' }
+    }
+    return { action: 'deny' }
+  })
 
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -109,7 +119,6 @@ function registerIpcHandlers() {
   analyticsIpc.registerHandlers()
   backupIpc.registerHandlers()
   todosIpc.registerHandlers()
-  accountsIpc.registerHandlers()
   eventsIpc.registerHandlers()
 
   // Save file dialog
@@ -148,10 +157,20 @@ function registerIpcHandlers() {
 
   // Open URL in system default browser (via OS shell)
   // 防止 window.open 在 Electron 中打开内置 webview
+  // 协议白名单:仅允许 http(s) 协议,避免 javascript:/file:/cmd: 等协议注入
   ipcMain.handle('shell:openExternal', async (_event, url: string): Promise<IpcResult<true>> => {
     try {
-      if (typeof url !== 'string' || !url.startsWith('http')) {
-        return { success: false, error: 'URL 必须以 http 或 https 开头' }
+      if (typeof url !== 'string' || !url) {
+        return { success: false, error: '链接为空' }
+      }
+      let parsed: URL
+      try {
+        parsed = new URL(url)
+      } catch {
+        return { success: false, error: '链接格式无效' }
+      }
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return { success: false, error: `不支持的协议: ${parsed.protocol}` }
       }
       await shell.openExternal(url)
       return { success: true, data: true }

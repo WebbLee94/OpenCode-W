@@ -24,7 +24,7 @@ export default function PreviewTabPagination({
   const endIdx = Math.min(page * pageSize, total)
 
   return (
-    <div className="shrink-0 flex items-center justify-between border-t border-gray-200 bg-white px-6 py-3">
+    <div className="shrink-0 flex items-center justify-between border-t border-gray-200 bg-white px-6 min-h-14">
       <div className="flex items-center gap-3">
         <span className="text-sm text-gray-500">
           显示 {startIdx}-{endIdx} / 共 {formatNumber(total)} 条

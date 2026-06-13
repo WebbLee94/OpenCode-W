@@ -10,7 +10,7 @@
 
 ## 📖 简介
 
-DBScope-OC 是一款跨平台桌面应用，用于可视化管理 OpenCode 的 SQLite 数据库。支持数据库概览仪表盘、会话与消息浏览、待办与账户管理、安全清理、备份恢复，覆盖 OpenCode 全部核心数据表。
+DBScope-OC 是一款跨平台桌面应用，用于可视化管理 OpenCode 的 SQLite 数据库。支持数据库概览仪表盘、会话与消息浏览、安全清理、备份恢复，覆盖 OpenCode 全部核心数据表。
 
 > 基于 [OpenCode](https://github.com/anomalyco/opencode) 构建
 > 
@@ -23,8 +23,7 @@ DBScope-OC 是一款跨平台桌面应用，用于可视化管理 OpenCode 的 S
 - 📊 **首页仪表盘** - 时间范围选择 (7/30/90/全部)、6 行分区布局、时段对比、Token/工具/技能分析、增长趋势、并行加载
 - 💬 **会话浏览** - 搜索、日期筛选、项目筛选、排序、分页、详情面板 (Token/Tool/Skill/Todos/Share)
 - 📝 **消息查看器** - Markdown 渲染、代码语法高亮、全文搜索、跨 Session 搜索、Part 明细、Tool 展开
-- 📋 **待办管理** - 全局待办汇总、状态/优先级/项目筛选、position 前缀、分页、Session 内嵌 Tab
-- 👤 **账户管理** - 活跃账户卡片、全量账户表、Token 过期提醒、敏感字段脱敏 (access_token 不落前端)
+- 🔗 **分享管理** - 会话分享记录浏览、复制链接、在浏览器打开
 - 🧹 **清理向导** - 4 种策略、预览确认、3 秒倒计时安全机制
 - 💾 **备份恢复** - 一键备份、版本管理、灾难恢复
 
@@ -80,8 +79,7 @@ DBScope-OC/
 │       ├── analytics.ts   # Dashboard 数据聚合
 │       ├── sessions.ts    # 会话 CRUD
 │       ├── messages.ts    # 消息查询 + 全文搜索
-│       ├── todos.ts       # 待办查询
-│       ├── accounts.ts    # 账户查询
+│       ├── todos.ts       # 会话详情内嵌待办 Tab
 │       ├── events.ts      # 事件序列查询
 │       ├── cleanup.ts     # 清理操作
 │       └── backup.ts      # 备份恢复
@@ -90,8 +88,7 @@ DBScope-OC/
 │   │   ├── dashboard/     # 首页仪表盘
 │   │   ├── sessions/      # 会话浏览
 │   │   ├── messages/      # 消息查看
-│   │   ├── todos/         # 待办管理
-│   │   ├── accounts/      # 账户管理
+│   │   ├── shares/        # 分享管理
 │   │   ├── cleanup/       # 清理向导
 │   │   └── backup/        # 备份恢复
 │   ├── components/    # 共享 UI 组件

@@ -57,19 +57,12 @@ export const IPC_CHANNELS = {
   BACKUP_CONFIG_SET: 'backup:config:set',
   BACKUP_AUTO_CHECK: 'backup:auto-backup-check',
 
-  // Todos
-  TODOS_LIST: 'todos:list',
-  TODOS_BY_SESSION: 'todos:bySession',
+  // Todos — 仅保留会话详情页内嵌 Tab 所需的 by-parent
   TODOS_BY_PARENT: 'todos:by-parent',
 
   // Session Share
   SESSION_SHARE_GET: 'session-share:get',
   SESSION_SHARES_LIST: 'session-shares:list',
-
-  // Accounts
-  ACCOUNTS_LIST: 'accounts:list',
-  ACCOUNTS_ACTIVE: 'accounts:active',
-  ACCOUNTS_USAGE: 'accounts:usage',
 
   // Events
   EVENTS_LIST: 'events:list',

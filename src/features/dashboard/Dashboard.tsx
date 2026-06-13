@@ -1007,7 +1007,7 @@ function Dashboard() {
           {/* 成本趋势 (右上) */}
           <div className="h-full flex flex-col">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-gray-400 font-medium">� 成本趋势
+              <p className="text-xs text-gray-400 font-medium">💰 成本趋势
                 {costTrend.length > 0 && <button onClick={() => exportCSV(costTrend, 'cost-trend.csv')} className="ml-2 text-emerald-500 hover:text-emerald-700" title="导出 CSV"><Download size={12} /></button>}
                 {showCostCompare && prevCostTrend.length > 0 && prevRangeLabel && (
                   <span className="ml-2 text-xs text-gray-400 italic">（虚线：上期 {prevRangeLabel}）</span>
@@ -1271,8 +1271,6 @@ function Dashboard() {
               </div>
             </div>
           </div>
-
-          <hr className="border-gray-200" />
 
           {/* 下层：模型&Provider统计 */}
           <div>

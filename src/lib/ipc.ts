@@ -49,15 +49,40 @@ export function on(channel: ChannelName, callback: (...args: unknown[]) => void)
 }
 
 /**
- * 在系统默认浏览器中打开外部 URL
- * Electron 中 window.open 会打开内置 webview,必须经主进程走 shell.openExternal
- * 浏览器降级:走 window.open
+ * 打开外部链接的方式
+ *  - 'system'  : 系统默认浏览器（经主进程 shell.openExternal）
+ *  - 'builtin' : 应用内置 webview（降级：window.open）
  */
-export async function openExternal(url: string): Promise<void> {
-  if (!url) return
+export type OpenExternalMethod = 'system' | 'builtin'
+
+/**
+ * 在外部打开 URL
+ * 策略：优先调用系统默认浏览器（shell.openExternal）；失败则降级到应用内置 webview（window.open）
+ * 浏览器环境（无 Electron API）:直接走 window.open
+ *
+ * 返回实际打开方式,供 UI 给出相应提示
+ * 抛出:链接为空 / 两种方式都失败
+ */
+export async function openExternal(url: string): Promise<OpenExternalMethod> {
+  if (!url) throw new Error('链接为空')
+
+  // 浏览器环境:直接走内置 webview
   if (!window?.electronAPI?.openExternal) {
-    window.open(url, '_blank', 'noopener,noreferrer')
-    return
+    const win = window.open(url, '_blank', 'noopener,noreferrer')
+    if (!win) throw new Error('打开内置浏览器失败（可能被拦截）')
+    return 'builtin'
   }
-  await window.electronAPI.openExternal(url)
+
+  // 优先:主进程 shell.openExternal
+  try {
+    const result = await window.electronAPI.openExternal(url)
+    if (result?.success) return 'system'
+    // 失败 → 降级
+  } catch {
+    // 主进程异常 → 降级
+  }
+  // 降级到内置 webview；window.open 被拦截时返回 null,需告知调用方
+  const win = window.open(url, '_blank', 'noopener,noreferrer')
+  if (!win) throw new Error('内置浏览器也被拦截')
+  return 'builtin'
 }

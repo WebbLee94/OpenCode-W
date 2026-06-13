@@ -5,10 +5,8 @@ import Sessions from './features/sessions/Sessions'
 import Messages from './features/messages/Messages'
 import Cleanup from './features/cleanup/Cleanup'
 import Backup from './features/backup/Backup'
-import Todos from './features/todos/Todos'
-import Accounts from './features/accounts/Accounts'
 import Shares from './features/shares/Shares'
-import { LayoutDashboard, MessageSquare, Trash2, HardDrive, ChevronRight, FolderSync, ClipboardList, UserCircle, Share2 } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, Trash2, HardDrive, ChevronRight, FolderSync, Share2 } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { invokeSafe, isElectron } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
@@ -33,9 +31,7 @@ const navGroups: { label: string; items: NavItemDef[] }[] = [
     label: '数据',
     items: [
       { to: '/sessions', label: '会话浏览', icon: MessageSquare },
-      { to: '/todos', label: '待办管理', icon: ClipboardList },
       { to: '/shares', label: '分享管理', icon: Share2 },
-      { to: '/accounts', label: '账户管理', icon: UserCircle },
     ],
   },
   {
@@ -68,10 +64,6 @@ function Breadcrumb() {
         crumbs.push({ label: '会话浏览' })
       }
     }
-  } else if (path.startsWith('/todos')) {
-    crumbs.push({ label: '待办管理' })
-  } else if (path.startsWith('/accounts')) {
-    crumbs.push({ label: '账户管理' })
   } else if (path.startsWith('/cleanup')) {
     crumbs.push({ label: '清理向导' })
   } else if (path.startsWith('/backup')) {
@@ -167,9 +159,9 @@ function Layout() {
             </SidebarGroup>
           ))}
         </div>
-        {/* Database connection status */}
-        <div className="p-3 border-t border-gray-200">
-          <div className="flex items-center gap-2">
+        {/* Database connection status — 高度与底部分页器对齐（min-h-14 = 56px） */}
+        <div className="min-h-14 p-3 border-t border-gray-200 flex items-center">
+          <div className="flex items-center gap-2 w-full">
             <div className="flex-1 flex items-center gap-2 px-3 py-2 text-xs text-gray-700 min-w-0">
               <span className={`w-2 h-2 rounded-full shrink-0 ${dbConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
               <span className="truncate">{dbConnected ? '已连接' : '未连接'}</span>
@@ -212,8 +204,6 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/sessions/:sessionId/messages" element={<Messages />} />
-            <Route path="/todos" element={<Todos />} />
-            <Route path="/accounts" element={<Accounts />} />
             <Route path="/cleanup" element={<Cleanup />} />
             <Route path="/backup" element={<Backup />} />
           <Route path="/shares" element={<Shares />} />

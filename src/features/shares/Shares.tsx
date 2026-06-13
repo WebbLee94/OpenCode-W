@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import type { SessionShareDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe, openExternal } from '../../lib/ipc'
@@ -7,21 +7,45 @@ import { useNavigate } from 'react-router'
 import { Share2 } from 'lucide-react'
 import PageHeader from '../../components/PageHeader'
 import PaginationBar from '../../components/PaginationBar'
+import { useToast } from '../../hooks/useToast'
 
 function Shares() {
   const [shares, setShares] = useState<SessionShareDTO[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
-  const pageSize = 50
+  const [pageSize, setPageSize] = useState(10)
   const navigate = useNavigate()
+  const { addToast } = useToast()
 
   useEffect(() => {
     setLoading(true)
     invokeSafe<{ data: SessionShareDTO[]; total: number }>(IPC_CHANNELS.SESSION_SHARES_LIST, { page, pageSize })
       .then(r => { setShares(r.data); setTotal(r.total) })
+      .catch(() => { setShares([]); setTotal(0) })
       .finally(() => setLoading(false))
-  }, [page])
+  }, [page, pageSize])
+
+  const handlePageSizeChange = useCallback((newSize: number) => {
+    setPageSize(newSize)
+    setPage(1)
+  }, [])
+
+  const handleOpenInBrowser = useCallback(async (url: string | undefined) => {
+    if (!url) return
+    try {
+      // 成功（含系统浏览器 / 内置降级）→ 静默,不弹任何东西,减少打扰
+      await openExternal(url)
+    } catch {
+      // 两种方式都失败 → 静默复制链接 + 友好提示
+      try {
+        await navigator.clipboard.writeText(url)
+        addToast('已复制链接', 'success')
+      } catch {
+        // 复制也失败,完全静默
+      }
+    }
+  }, [addToast])
 
   return (
     <div className="flex h-full flex-col">
@@ -58,7 +82,7 @@ function Shares() {
                   <td className="px-4 py-3 text-center">
                     <button onClick={() => navigate(`/sessions?session=${s.session_id}&tab=shares`)}
                       className="text-gray-400 hover:text-blue-600 mr-2" title="跳转到会话">🔗</button>
-                    <button onClick={() => { const url = (s as any).url; if (url) openExternal(url) }}
+                    <button onClick={() => handleOpenInBrowser(s.url)}
                       className="text-gray-400 hover:text-blue-600" title="在浏览器打开">🌐</button>
                   </td>
                 </tr>
@@ -73,7 +97,7 @@ function Shares() {
         pageSize={pageSize}
         pageSizeOptions={[10, 20, 50]}
         onPageChange={setPage}
-        onPageSizeChange={() => { /* pageSize is fixed in Shares */ }}
+        onPageSizeChange={handlePageSizeChange}
         sticky={false}
       />
     </div>

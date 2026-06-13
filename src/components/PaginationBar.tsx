@@ -24,9 +24,10 @@ export default function PaginationBar({
 }: PaginationBarProps) {
   if (total === 0) return null
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  // 高度对齐:与左侧"已连接"状态模块保持一致(外层 p-3 + 内层 py-2 = 12+8+16+8+12 = 56px)
   const containerClass = position === 'bottom' && sticky
-    ? 'sticky bottom-0 z-10 border-t border-gray-200 bg-white px-4 py-2.5 flex items-center justify-between text-xs text-gray-500'
-    : 'border-t border-gray-200 bg-white px-4 py-2.5 flex items-center justify-between text-xs text-gray-500'
+    ? 'sticky bottom-0 z-10 border-t border-gray-200 bg-white px-4 min-h-14 flex items-center justify-between text-xs text-gray-500'
+    : 'border-t border-gray-200 bg-white px-4 min-h-14 flex items-center justify-between text-xs text-gray-500'
 
   return (
     <div className={containerClass}>
