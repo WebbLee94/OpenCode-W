@@ -256,24 +256,14 @@ export function registerHandlers(): void {
 
   // ─── Session Rename ────────────────────────────────────────────
 
-  ipcMain.handle('sessions:rename', async (_event, { sessionId, title }: { sessionId: string; title: string }) => {
+  ipcMain.handle(IPC_CHANNELS.SESSIONS_RENAME, async (_event, { sessionId, title }: { sessionId: string; title: string }) => {
     try {
       dbManager.getDb().prepare('UPDATE session SET title = ? WHERE id = ?').run(title, sessionId)
       return { success: true }
     } catch (e) { return { success: false, error: (e as Error).message } }
   })
 
-  // ─── Route B: Session Parent/Children ────────────────────────────
-
-  ipcMain.handle(IPC_CHANNELS.SESSIONS_PARENT, (_event, sessionId: string): IpcResult<SessionDTO | null> => {
-    if (!checkParentColumn()) return { success: true, data: null }
-    try {
-      const s = dbManager.rawGet<{ parent_id: string | null }>('SELECT parent_id FROM session WHERE id = ?', [sessionId])
-      if (!s?.parent_id) return { success: true, data: null }
-      const parent = dbManager.rawGet<SessionDTO>('SELECT id, title, time_created FROM session WHERE id = ?', [s.parent_id])
-      return { success: true, data: parent ?? null }
-    } catch (error) { return { success: false, error: (error as Error).message } }
-  })
+  // ─── Route B: Session Children ────────────────────────────────
 
   ipcMain.handle(IPC_CHANNELS.SESSIONS_CHILDREN, (_event, sessionId: string): IpcResult<SessionDTO[]> => {
     if (!checkParentColumn()) return { success: true, data: [] }

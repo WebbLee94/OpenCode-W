@@ -40,14 +40,6 @@ export async function invokeSafe<T = unknown>(channel: ChannelName, ...args: unk
   throw new Error(result.error)
 }
 
-export function on(channel: ChannelName, callback: (...args: unknown[]) => void): () => void {
-  if (!window?.electronAPI) {
-    console.warn(`Electron API 不可用，无法监听 ${channel}`)
-    return () => {}
-  }
-  return window.electronAPI.on(channel, callback)
-}
-
 /**
  * 打开外部链接的方式
  *  - 'system'  : 系统默认浏览器（经主进程 shell.openExternal）

@@ -1,5 +1,6 @@
-const Database = require('better-sqlite3');
-const db = new Database(require('os').homedir() + '/.local/share/opencode/opencode.db', {readonly: true});
+// Run with: node --experimental-sqlite test-data/inspect-db.cjs
+const { DatabaseSync } = require('node:sqlite')
+const db = new DatabaseSync(require('os').homedir() + '/.local/share/opencode/opencode.db', { readOnly: true })
 
 // Check message data structure
 const msg = db.prepare('SELECT id, session_id, data FROM message LIMIT 1').get();

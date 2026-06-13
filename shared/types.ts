@@ -17,12 +17,6 @@ export interface DatabaseStats {
   walSize: number;             // bytes
 }
 
-export interface TableStats {
-  name: string;
-  rowCount: number;
-  dataSize: number;        // bytes
-}
-
 // Token statistics
 export interface TokenStats {
   inputTokens: number;
@@ -44,20 +38,6 @@ export interface ToolRanking {
 export interface SkillUsage {
   skillName: string;
   count: number;
-}
-
-// Trend data
-export interface TrendDataPoint {
-  date: string;
-  newSessions: number;
-  sizeGrowth: number;
-  messageCount: number;
-}
-
-// Trend comparison (current vs previous period)
-export interface TrendComparison {
-  current: TrendDataPoint[];
-  previous: TrendDataPoint[];
 }
 
 // Token group data point (for grouped token stats)
@@ -181,20 +161,9 @@ export type PartType =
   | 'step-start' | 'step-finish'
   | 'subtask' | 'retry' | 'compaction';
 
-// Canonical token 嵌套结构（与 OpenCode 一致，供未来使用）
+// Canonical token 嵌套结构（与 OpenCode 一致）
 // 当前 PartDTO.tokens 仍为 flat（cache_read/cache_write）以兼容 ConversationView / Messages 渲染端
-// Commit 3 渲染端重构时再统一迁移为 PartTokensDTO
-export interface PartTokensDTO {
-  total?: number;
-  input: number;
-  output: number;
-  reasoning: number;
-  cache: {
-    read: number;
-    write: number;
-  };
-}
-
+// 未来渲染端重构时可按 canonical 形式扩展
 export interface PartTimeRange {
   start?: number;
   end?: number;
@@ -348,15 +317,6 @@ export interface TodoDTO {
   session_title: string;  // JOIN session.title
 }
 
-export interface TodoFilter {
-  search?: string;
-  status?: string;
-  priority?: string;
-  projectId?: string;
-  page?: number;
-  pageSize?: number;
-}
-
 // 父子会话合并查询过滤条件
 // 当 childSessionIds 为空数组或省略时,只查询父会话的 todos
 export interface TodoFilterByParent {
@@ -373,36 +333,6 @@ export interface SessionShareDTO {
   time_created: number;
 }
 
-// Account DTOs
-export interface AccountDTO {
-  id: string;
-  email: string;
-  url: string;
-  token_expiry: number | null;
-}
-
-export interface AccountStateDTO {
-  active_account_id: string | null;
-  active_org_id: string | null;
-  account_email?: string;
-  account_url?: string;
-}
-
-// ─── Route B: Project & Workspace Stats ─────────────────────────────────
-
-export interface ProjectStatsItem {
-  directory: string
-  sessionCount: number
-  tokenCount: number
-  cost: number
-}
-
-export interface WorkspaceStatsItem {
-  name: string
-  branch: string | null
-  totalTimeHours: number
-}
-
 // ─── Route B: Model & Provider Stats ─────────────────────────────────────
 
 export interface ModelRankingItem {
@@ -417,15 +347,4 @@ export interface ProviderStatsItem {
   sessionCount: number
   tokenCount: number
   totalCost: number
-}
-
-// ─── Route B: Account Usage ──────────────────────────────────────────────
-
-export interface AccountUsageItem {
-  accountId: string
-  email: string
-  sessionCount: number
-  tokenCount: number
-  totalCost: number
-  isActive: boolean
 }

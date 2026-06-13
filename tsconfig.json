@@ -25,7 +25,6 @@
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["./shared/*"],
-      "@electron/*": ["./electron/*"],
       "@/*": ["./src/*"]
     },
     "types": ["node"]

@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { DatabaseStats, TableStats } from '../shared/types'
+import type { DatabaseStats } from '../shared/types'
 
 /**
  * 基于 Node 24+ 内置 node:sqlite (DatabaseSync) 的 SQLite 管理器
@@ -149,23 +149,6 @@ export class DatabaseManager {
         error: (error as Error).message,
       }
     }
-  }
-
-  getTableStats(): TableStats[] {
-    const db = this.getDb()
-    const tables = ['session', 'message', 'part']
-    return tables.map(name => {
-      const row = db.prepare(`SELECT COUNT(*) as cnt FROM ${name}`).get() as { cnt: number }
-      // Estimate data size
-      const sizeRow = db.prepare(`SELECT SUM(LENGTH(data)) as size FROM ${name}`).get() as {
-        size: number | null
-      }
-      return {
-        name,
-        rowCount: row.cnt,
-        dataSize: sizeRow?.size ?? 0,
-      }
-    })
   }
 
   vacuum(): { before: number; after: number; freed: number } {

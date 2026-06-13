@@ -18,9 +18,8 @@ const __dirname = path.dirname(__filename)
 
 process.env.APP_ROOT = path.join(__dirname, '..')
 
-export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
-export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
-export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
+const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
+const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
@@ -110,14 +109,6 @@ function createWindow() {
 }
 
 function registerIpcHandlers() {
-  // App info
-  ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, (): IpcResult<string> => {
-    return { success: true, data: app.getVersion() }
-  })
-  ipcMain.handle(IPC_CHANNELS.APP_GET_PLATFORM, (): IpcResult<string> => {
-    return { success: true, data: process.platform }
-  })
-
   // Database operations
   ipcMain.handle(IPC_CHANNELS.DATABASE_OPEN, async (_event, dbPath: string): Promise<IpcResult<{ path: string }>> => {
     try {
@@ -210,7 +201,7 @@ function registerIpcHandlers() {
   // Open URL in system default browser (via OS shell)
   // 防止 window.open 在 Electron 中打开内置 webview
   // 协议白名单:仅允许 http(s) 协议,避免 javascript:/file:/cmd: 等协议注入
-  ipcMain.handle('shell:openExternal', async (_event, url: string): Promise<IpcResult<true>> => {
+  ipcMain.handle(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, async (_event, url: string): Promise<IpcResult<true>> => {
     try {
       if (typeof url !== 'string' || !url) {
         return { success: false, error: '链接为空' }

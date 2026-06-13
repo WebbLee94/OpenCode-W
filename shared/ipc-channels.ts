@@ -2,18 +2,11 @@
 
 // Query channels (read-only)
 export const IPC_CHANNELS = {
-  // App info
-  APP_GET_VERSION: 'app:getVersion',
-  APP_GET_PLATFORM: 'app:getPlatform',
-
   // Dashboard
   DASHBOARD_OVERVIEW: 'dashboard:overview',
   DASHBOARD_TOKENS: 'dashboard:tokens',
   DASHBOARD_TOOL_RANKING: 'dashboard:toolRanking',
   DASHBOARD_SKILL_USAGE: 'dashboard:skillUsage',
-  DASHBOARD_TRENDS: 'dashboard:trends',
-  DASHBOARD_PROJECTS: 'dashboard:projects',
-  DASHBOARD_WORKSPACES: 'dashboard:workspaces',
   DASHBOARD_MODEL_RANKING: 'dashboard:modelRanking',
   DASHBOARD_PROVIDER_STATS: 'dashboard:providerStats',
   DASHBOARD_SESSION_TREND: 'dashboard:sessionTrend',
@@ -25,7 +18,6 @@ export const IPC_CHANNELS = {
   SESSIONS_DETAIL: 'sessions:detail',
   SESSIONS_PROJECTS: 'sessions:projects',
   SESSIONS_DELETE: 'sessions:delete',
-  SESSIONS_PARENT: 'sessions:parent',
   SESSIONS_CHILDREN: 'sessions:children',
   SESSIONS_RENAME: 'sessions:rename',
 
@@ -47,6 +39,9 @@ export const IPC_CHANNELS = {
   DIALOG_OPEN_FILE: 'dialog:openFile',
   DIALOG_SAVE_FILE: 'dialog:saveFile',
 
+  // Shell
+  SHELL_OPEN_EXTERNAL: 'shell:openExternal',
+
   // Backup
   BACKUP_CREATE: 'backup:create',
   BACKUP_LIST: 'backup:list',
@@ -60,6 +55,3 @@ export const IPC_CHANNELS = {
   // Session Share — 仅保留会话详情页所需的单条查询
   SESSION_SHARE_GET: 'session-share:get',
 } as const;
-
-// Whitelist of channels allowed in renderer
-export const ALLOWED_CHANNELS = Object.values(IPC_CHANNELS);

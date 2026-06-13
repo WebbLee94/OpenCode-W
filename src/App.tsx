@@ -66,8 +66,6 @@ function Breadcrumb() {
     crumbs.push({ label: '清理向导' })
   } else if (path.startsWith('/backup')) {
     crumbs.push({ label: '备份恢复' })
-  } else if (path.startsWith('/shares')) {
-    crumbs.push({ label: '分享管理' })
   }
 
   return (
