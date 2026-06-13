@@ -62,10 +62,6 @@ export const IPC_CHANNELS = {
 
   // Session Share — 仅保留会话详情页所需的单条查询
   SESSION_SHARE_GET: 'session-share:get',
-
-  // Events
-  EVENTS_LIST: 'events:list',
-  EVENTS_DETAIL: 'events:detail',
 } as const;
 
 // Whitelist of channels allowed in renderer

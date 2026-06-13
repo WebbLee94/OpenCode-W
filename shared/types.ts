@@ -388,21 +388,6 @@ export interface AccountStateDTO {
   account_url?: string;
 }
 
-// Event DTOs
-export interface EventSequenceDTO {
-  aggregate_id: string;
-  seq: number;
-  owner_id: string | null;
-}
-
-export interface EventDTO {
-  id: string;
-  aggregate_id: string;
-  seq: number;
-  type: string;
-  data: string;
-}
-
 // ─── Route B: Project & Workspace Stats ─────────────────────────────────
 
 export interface ProjectStatsItem {

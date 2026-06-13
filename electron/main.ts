@@ -10,7 +10,6 @@ import * as cleanupIpc from './ipc/cleanup'
 import * as analyticsIpc from './ipc/analytics'
 import * as backupIpc from './ipc/backup'
 import * as todosIpc from './ipc/todos'
-import * as eventsIpc from './ipc/events'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type { IpcResult } from '../shared/types'
 
@@ -119,7 +118,6 @@ function registerIpcHandlers() {
   analyticsIpc.registerHandlers()
   backupIpc.registerHandlers()
   todosIpc.registerHandlers()
-  eventsIpc.registerHandlers()
 
   // Save file dialog
   ipcMain.handle(IPC_CHANNELS.DIALOG_SAVE_FILE, async (_event, { content, defaultName }: { content: string; defaultName: string }): Promise<IpcResult<{ success: boolean }>> => {

@@ -80,7 +80,6 @@ DBScope-OC/
 │       ├── sessions.ts    # 会话 CRUD
 │       ├── messages.ts    # 消息查询 + 全文搜索
 │       ├── todos.ts       # 会话详情内嵌待办 Tab
-│       ├── events.ts      # 事件序列查询
 │       ├── cleanup.ts     # 清理操作
 │       └── backup.ts      # 备份恢复
 ├── src/               # 渲染进程代码
