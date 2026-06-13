@@ -37,7 +37,7 @@ DBScope-OC 是一款跨平台桌面应用，用于可视化管理 OpenCode 的 S
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/JieYueGo/DBScope-OC.git
+git clone https://github.com/WebbLee94/DBScope-OC.git
 cd DBScope-OC
 
 # 2. 安装依赖

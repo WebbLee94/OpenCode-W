@@ -6,7 +6,7 @@
 
 ### 报告方式
 
-请通过 [GitHub Security Advisory](https://github.com/JieYueGo/DBScope-OC/security/advisories/new) 私下报告安全漏洞。
+请通过 [GitHub Security Advisory](https://github.com/WebbLee94/DBScope-OC/security/advisories/new) 私下报告安全漏洞。
 
 ### 报告内容
 

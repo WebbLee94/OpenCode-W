@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/JieYueGo/DBScope-OC"
+    "url": "https://github.com/WebbLee94/DBScope-OC"
   },
   "scripts": {
     "dev": "vite",
