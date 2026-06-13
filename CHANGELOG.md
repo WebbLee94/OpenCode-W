@@ -15,7 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **🔥 会话详情五 Tab 分栏布局**：点击会话后，页面自动进入 5%/95% 弹性分栏，右侧依次展示「**基础信息 / 解析 / 预览 / 待办 / 分享**」五个 Tab，可通过 URL 直接跳转到指定 Tab（支持从待办、分享等外部入口深度链接）。
 - **🔥 消息查看器全新升级（原生对话流）**：不再只是消息列表——新增「**预览 Tab**」可按连续对话流渲染消息，含 Markdown、代码高亮、Tool 调用内联、Reasoning 折叠、Step-finish 摘要等；同时新增「**解析 Tab**」查看结构化 Part 明细（12 种 Part 类型），并支持父/子会话合并查看。
 - **🔥 Dashboard 趋势查询**：新增会话数、成本、消息活跃度的趋势查询能力（配合已有的时间范围选择），让数据展示更完整。
-- **自动备份调度 + 保留策略**：「备份与恢复」页新增设置面板，可配置自动备份周期与保留数量，降低意外丢失风险。
 - **Sessions 键盘导航**：会话列表支持 `j / k` 上下移动、`Enter` 打开详情、`d` 删除，键鼠皆可高效操作。
 - **分享信息操作列**：分享管理列表支持一键复制分享链接、用默认浏览器打开分享 URL。
 
@@ -61,12 +60,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PageHeader` / `PaginationBar` / `SidebarGroup` / `SubSessionSelector` / `MessageViewer` 等共享组件沉淀
 - 最低 OpenCode 版本请参考 README 中的要求说明
 
-### 🔧 底层升级（顺手做的）
+### 🛠️ Changed (Technical)｜底层升级
 
-- **应用底座升级**：把应用从旧版升级到最新稳定版，顺带修复了浏览器内核的多个高危安全漏洞，整体更安全。
-- **数据库组件换新**：用系统自带的数据库组件替换了第三方的，启动更快、安装包更小，无需再手动编译本地代码。
-- **安全防护加严**：禁止界面加载外部脚本，并限制只能打开你指定的 OpenCode 数据库文件，避免被恶意页面或错误路径影响。
-- **打包流程精简**：移除了不再需要的编译步骤，升级时无需再额外执行任何命令。
+- **Electron 30.0.1 → 42.4.0**：跨 12 个大版本升级，Chromium 与 V8 升级修复多个高危 CVE。
+- **数据库驱动 `better-sqlite3` → `node:sqlite`**：迁移到 Node 24 内置 `DatabaseSync` 同步 API，零 C++ 原生模块，零 ABI 风险，安装包减少约 8MB；API 形态（`prepare/run/get/all/exec`）与 better-sqlite3 几乎一致，IPC handler 无需改为 async。
+- **`electron-builder` 24 → 25 + 移除 `npmRebuild` 步骤**：CI 流水线更精简。
+- **数据库路径白名单**：`validateDbPath` 限制仅可打开 `~/.local/share/opencode/` 与仓库内 `test-data/` 下的数据库文件（参见 `electron/main.ts`），避免任意路径误打开。
+- **Web 安全显式化**：`webPreferences` 显式声明 `contextIsolation: true`、`nodeIntegration: false`、`webSecurity: true`、`allowRunningInsecureContent: false`，禁止渲染进程加载外部脚本与未签名资源。
+- **`engines.node` 上调至 `>=20.11.1`**：与 Electron 42 内嵌 Node 24.15 对齐。
+- **扩展名校验**：`DATABASE_OPEN` handler 增 `.db` / `.sqlite` / `.sqlite3` 扩展名白名单。
 
 ## [1.0.1] - 2026-05-23
 

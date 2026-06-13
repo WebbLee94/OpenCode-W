@@ -44,27 +44,61 @@ perf: 性能优化描述
 # 安装依赖
 npm install
 
-# 重新编译原生模块（必须！）
-npm run rebuild-native
-
 # 启动开发模式
 npm run dev
 
 # 类型检查
 npx tsc --noEmit
 
+# 代码风格
+npm run lint
+
 # 生成测试数据库
 npm run generate-fixture
+
+# 运行测试
+npm test
 ```
 
-## PR 模板
+> 💡 自 v1.1.0 起已切换到 Node 内置 `node:sqlite`，**不再需要 `npm run rebuild-native`**。
 
-提交 PR 时请参考 [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md)。
+## PR 流程与模板
+
+提交 PR 时请遵循以下步骤：
+
+1. **PR 标题**：与首个 commit 的提交信息一致（中文、动词开头、单行）
+   - 好的标题：`fix(share): 修复分页大小变更不生效问题`
+   - 不好的标题：`update code` / `fix bug`
+2. **关联 Issue**：使用关键字 `Closes #123` / `Fixes #456` 关联对应 Issue
+3. **描述结构**（详见 [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md)）：
+   - **背景**：为什么要改
+   - **变更要点**：改了什么（高层面，不重复 commit 信息）
+   - **验证**：如何测试（截图、复现步骤、自动化测试）
+   - **风险**：可能的回归点
+4. **自检清单**：
+   - [ ] `npx tsc --noEmit` 通过
+   - [ ] `npm run lint` 无错
+   - [ ] `npm test` 通过（如新增/修改了测试）
+   - [ ] 文档同步更新（README、CHANGELOG、设计文档）
+   - [ ] 与 [AGENTS.md](AGENTS.md) 中"禁止事项"无冲突
+5. **Review 要求**：至少 1 名维护者 Approve + CI 4 平台构建通过
+6. **合并策略**：Squash and Merge（保持 master 线性历史）
 
 ## 禁止事项
 
 - 不引入 ORM（Drizzle/Prisma）
 - 不引入 Redux
 - 不引入 ECharts
-- 不在渲染进程直接访问 better-sqlite3
+- 不在渲染进程直接访问 node:sqlite
 - 不将 preload 输出为 `.mjs` 文件
+
+## 关于 `node-gyp` 依赖
+
+`package-lock.json` 中存在 `node-gyp` 是**正常且无害**的：
+
+- 它是 `@electron/rebuild`（electron-builder 子依赖）的传递依赖
+- 仅当存在 C++ 原生模块需要重编译时才会被调用
+- 自 v1.1.0 起 DBScope-OC 已切换到 Node 内置 `node:sqlite`，**项目无任何 C++ 原生模块**
+- CI 流水线不再调用 `npm run rebuild-native`（参见 `.github/workflows/ci.yml`）
+
+因此 `node-gyp` 在 lock 中残留不影响构建产物大小或安装时间，无需手动清理。

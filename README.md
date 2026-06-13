@@ -14,7 +14,7 @@ DBScope-OC 是一款跨平台桌面应用，用于可视化管理 OpenCode 的 S
 
 > 基于 [OpenCode](https://github.com/anomalyco/opencode) 构建
 > 
-> **支持的 OpenCode 版本**：需 OpenCode v1.x 及以上（`session` 表需包含 `parent_id` 列以支持会话层级功能）。旧版本数据库仍可打开，部分功能不可用。
+> - ✅ **支持OpenCode v1.x 及以上版本**：`session` 表需包含 `parent_id` 列以支持会话层级（父子会话、根/子统计）。
 
 ## ✨ 功能特性
 
@@ -23,7 +23,6 @@ DBScope-OC 是一款跨平台桌面应用，用于可视化管理 OpenCode 的 S
 - 📊 **首页仪表盘** - 时间范围选择 (7/30/90/全部)、6 行分区布局、时段对比、Token/工具/技能分析、增长趋势、并行加载
 - 💬 **会话浏览** - 搜索、日期筛选、项目筛选、排序、分页、详情面板 (Token/Tool/Skill/Todos/Share)
 - 📝 **消息查看器** - Markdown 渲染、代码语法高亮、全文搜索、跨 Session 搜索、Part 明细、Tool 展开
-- 🔗 **分享管理** - 会话分享记录浏览、复制链接、在浏览器打开
 - 🧹 **清理向导** - 4 种策略、预览确认、3 秒倒计时安全机制
 - 💾 **备份恢复** - 一键备份、版本管理、灾难恢复
 
@@ -32,7 +31,7 @@ DBScope-OC 是一款跨平台桌面应用，用于可视化管理 OpenCode 的 S
 ### 系统要求
 
 - macOS 12.0+, Windows 10+, Linux (x64)
-- Node.js 18.0 或更高版本
+- Node.js 20.11.1 或更高版本（与 Electron 42 内嵌 Node 24 对齐）
 
 ### 安装
 
@@ -44,27 +43,26 @@ cd DBScope-OC
 # 2. 安装依赖
 npm install
 
-# 3. 重新编译原生模块（重要！否则无法运行）
-npm run rebuild-native
-
-# 4. 生成测试数据（可选）
+# 3. 生成测试数据（可选）
 npm run generate-fixture
 
-# 5. 启动开发模式
+# 4. 启动开发模式
 npm run dev
 
-# 6. 打包应用
+# 5. 打包应用
 npm run build
 ```
 
+> 💡 自 v1.1.0 起已切换到 Node 内置 `node:sqlite`，**不再需要 `npm run rebuild-native`**，也彻底告别 `NODE_MODULE_VERSION` 报错。
+
 ## 🛠️ 技术栈
 
-- **桌面框架**: Electron
-- **前端**: React 18 + TypeScript
-- **数据库**: better-sqlite3
-- **样式**: Tailwind CSS
+- **桌面框架**: Electron 42
+- **前端**: React 18 + TypeScript 5
+- **数据库**: `node:sqlite`（Node 24 内置，零原生模块）
+- **样式**: Tailwind CSS 4
 - **图表**: Recharts
-- **构建工具**: Vite + electron-builder
+- **构建工具**: Vite 5 + electron-builder 25
 - **跨平台**: macOS Universal (arm64+x64) / Windows NSIS (x64+arm64) / Linux AppImage+deb (x64)
 
 ## 📁 项目结构
@@ -118,7 +116,7 @@ A: 运行 VACUUM 或重启应用。
 
 ### Q: 备份文件存储在哪里？
 
-A: 默认存储在 `~/opencode-backups/` 目录。
+A: 默认存储在 `~/.DBScope-OC/backups/` 目录。
 
 ## 🔧 数据库驱动
 
@@ -127,6 +125,11 @@ A: 默认存储在 `~/opencode-backups/` 目录。
 - 零外部依赖、零 ABI 风险、同步 API
 - API 形态与 better-sqlite3 几乎一致，IPC handler 无需改为 async
 - 升级 Electron 不再需要重新编译原生模块
+
+## 🔒 代码签名
+
+> ⚠️ **本仓库默认不包含代码签名证书**。
+> macOS 用户首次打开会看到「无法验证开发者」提示，需在「系统设置 → 隐私与安全性」中点击「仍要打开」；Windows 会触发 SmartScreen 警告。生产环境分发建议自行配置 `CSC_LINK` / `CSC_KEY_PASSWORD` 环境变量与 `electron-builder.yml` 的 `csc` 段。
 
 ## 🤝 贡献
 
