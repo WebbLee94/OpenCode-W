@@ -7,12 +7,14 @@ export type IpcResult<T = unknown> =
 
 // Database statistics
 export interface DatabaseStats {
-  dbSize: number;          // bytes
-  sessionCount: number;
+  dbSize: number;              // bytes
+  rootSessionCount: number;    // 根会话数:parent_id IS NULL
+  childSessionCount: number;   // 子会话数:parent_id IS NOT NULL
+  sessionCount: number;        // 根+子（合计,UI 已改为展示拆分值,保留字段以兼容老缓存）
   projectCount: number;
   partCount: number;
-  freelistSize: number;    // bytes
-  walSize: number;         // bytes
+  freelistSize: number;        // bytes
+  walSize: number;             // bytes
 }
 
 export interface TableStats {

@@ -169,8 +169,19 @@ export function registerHandlers(): void {
       }
 
       // Time-range filtered stats
-      const sessionCount = dbManager.rawGet<{ cnt: number }>(
-        `SELECT COUNT(*) as cnt FROM session WHERE date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?`,
+      // 会话数按 根/子 拆分：根 = parent_id IS NULL,子 = parent_id IS NOT NULL
+      // 走 session_parent_idx 索引,两条独立聚合可并行执行(已并入下方 Promise.all 中)
+      const rootSessionCount = dbManager.rawGet<{ cnt: number }>(
+        `SELECT COUNT(*) as cnt FROM session
+         WHERE parent_id IS NULL
+           AND date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?`,
+        [timeRange.startDate, timeRange.endDate]
+      )?.cnt ?? 0
+
+      const childSessionCount = dbManager.rawGet<{ cnt: number }>(
+        `SELECT COUNT(*) as cnt FROM session
+         WHERE parent_id IS NOT NULL
+           AND date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?`,
         [timeRange.startDate, timeRange.endDate]
       )?.cnt ?? 0
 
@@ -189,7 +200,9 @@ export function registerHandlers(): void {
 
       const stats: DatabaseStats = {
         dbSize: baseStats.dbSize,
-        sessionCount,
+        rootSessionCount,
+        childSessionCount,
+        sessionCount: rootSessionCount + childSessionCount,
         projectCount,
         partCount,
         freelistSize: baseStats.freelistSize,

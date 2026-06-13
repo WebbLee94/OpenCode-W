@@ -104,7 +104,8 @@ export class DatabaseManager {
     }
 
     try {
-      const sessionCount = (db.prepare('SELECT COUNT(*) as cnt FROM session').get() as { cnt: number }).cnt
+      const rootSessionCount = (db.prepare('SELECT COUNT(*) as cnt FROM session WHERE parent_id IS NULL').get() as { cnt: number }).cnt
+      const childSessionCount = (db.prepare('SELECT COUNT(*) as cnt FROM session WHERE parent_id IS NOT NULL').get() as { cnt: number }).cnt
       const projectCount = (
         db.prepare(
           "SELECT COUNT(DISTINCT project_id) as cnt FROM session WHERE project_id IS NOT NULL AND project_id != ''"
@@ -116,7 +117,9 @@ export class DatabaseManager {
 
       return {
         dbSize,
-        sessionCount,
+        rootSessionCount,
+        childSessionCount,
+        sessionCount: rootSessionCount + childSessionCount,
         projectCount,
         partCount,
         freelistSize: freelistCount * pageSize,
@@ -126,6 +129,8 @@ export class DatabaseManager {
     } catch (error) {
       return {
         dbSize,
+        rootSessionCount: 0,
+        childSessionCount: 0,
         sessionCount: 0,
         projectCount: 0,
         partCount: 0,

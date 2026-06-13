@@ -776,8 +776,8 @@ function Dashboard() {
               ) : dbStats && tokenStats ? (
                 <div className="grid grid-cols-2 gap-4 flex-1 grid-rows-2">
                   <StatCard
-                    label="会话数"
-                    value={formatNumber(dbStats.sessionCount)}
+                    label="根/子会话数"
+                    value={`${formatNumber(dbStats.rootSessionCount)}/${formatNumber(dbStats.childSessionCount)}`}
                     icon={<MessageSquare size={20} />}
                   />
                   <StatCard
