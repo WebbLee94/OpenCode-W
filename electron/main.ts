@@ -57,6 +57,16 @@ function validateDbPath(dbPath: string): { ok: true; absPath: string } | { ok: f
   return { ok: true, absPath }
 }
 
+/** 数据库文件扩展名白名单 */
+const ALLOWED_DB_EXT = /\.(db|sqlite|sqlite3)$/i
+function validateDbExtension(absPath: string): { ok: true } | { ok: false; reason: string } {
+  if (!ALLOWED_DB_EXT.test(absPath)) {
+    const base = absPath.split(/[/\\]/).pop() || absPath
+    return { ok: false, reason: '数据库扩展名不允许（仅接受 .db / .sqlite / .sqlite3）：' + base }
+  }
+  return { ok: true }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -71,6 +81,9 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
     },
   })
 
@@ -111,6 +124,10 @@ function registerIpcHandlers() {
       const guard = validateDbPath(dbPath)
       if (!guard.ok) {
         return { success: false, error: guard.reason }
+      }
+      const ext = validateDbExtension(guard.absPath)
+      if (!ext.ok) {
+        return { success: false, error: ext.reason }
       }
       DatabaseManager.open(guard.absPath)
       return { success: true, data: { path: guard.absPath } }
@@ -180,7 +197,11 @@ function registerIpcHandlers() {
         filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite', 'sqlite3'] }],
       })
       if (result.canceled || result.filePaths.length === 0) return { success: false, error: 'User cancelled' }
-      return { success: true, data: result.filePaths[0] }
+      const guard = validateDbPath(result.filePaths[0])
+      if (!guard.ok) return { success: false, error: guard.reason }
+      const ext = validateDbExtension(guard.absPath)
+      if (!ext.ok) return { success: false, error: ext.reason }
+      return { success: true, data: guard.absPath }
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
