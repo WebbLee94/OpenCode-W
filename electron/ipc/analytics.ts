@@ -7,7 +7,7 @@ import dbManager from '../database'
 function buildDateFilter(tableAlias: string, timeRange?: TimeRange): { sql: string; params: string[] } {
   if (!timeRange) return { sql: '', params: [] }
   return {
-    sql: `AND date(${tableAlias ? tableAlias + '.' : ''}time_created / 1000, 'unixepoch') BETWEEN ? AND ?`,
+    sql: `AND date(${tableAlias ? tableAlias + '.' : ''}time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?`,
     params: [timeRange.startDate, timeRange.endDate],
   }
 }
@@ -16,7 +16,7 @@ function buildDateFilter(tableAlias: string, timeRange?: TimeRange): { sql: stri
 function queryAllTrendData(): TrendDataPoint[] {
   const sessionRows = dbManager.rawQuery<Record<string, unknown>>(
     `SELECT
-      date(time_created / 1000, 'unixepoch') as date,
+      date(time_created / 1000, 'unixepoch', 'localtime') as date,
       COUNT(*) as newSessions
     FROM session
     GROUP BY date
@@ -25,7 +25,7 @@ function queryAllTrendData(): TrendDataPoint[] {
 
   const messageRows = dbManager.rawQuery<Record<string, unknown>>(
     `SELECT
-      date(time_created / 1000, 'unixepoch') as date,
+      date(time_created / 1000, 'unixepoch', 'localtime') as date,
       COUNT(*) as messageCount
     FROM message
     GROUP BY date
@@ -34,7 +34,7 @@ function queryAllTrendData(): TrendDataPoint[] {
 
   const partSizeRows = dbManager.rawQuery<Record<string, unknown>>(
     `SELECT
-      date(time_created / 1000, 'unixepoch') as date,
+      date(time_created / 1000, 'unixepoch', 'localtime') as date,
       COALESCE(SUM(LENGTH(data)), 0) as partSize
     FROM part
     GROUP BY date`
@@ -86,10 +86,10 @@ function queryAllTrendData(): TrendDataPoint[] {
 function queryTrendData(startDate: string, endDate: string): TrendDataPoint[] {
   const sessionRows = dbManager.rawQuery<Record<string, unknown>>(
     `SELECT
-      date(time_created / 1000, 'unixepoch') as date,
+      date(time_created / 1000, 'unixepoch', 'localtime') as date,
       COUNT(*) as newSessions
     FROM session
-    WHERE date(time_created / 1000, 'unixepoch') BETWEEN ? AND ?
+    WHERE date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?
     GROUP BY date
     ORDER BY date ASC`,
     [startDate, endDate]
@@ -97,10 +97,10 @@ function queryTrendData(startDate: string, endDate: string): TrendDataPoint[] {
 
   const messageRows = dbManager.rawQuery<Record<string, unknown>>(
     `SELECT
-      date(time_created / 1000, 'unixepoch') as date,
+      date(time_created / 1000, 'unixepoch', 'localtime') as date,
       COUNT(*) as messageCount
     FROM message
-    WHERE date(time_created / 1000, 'unixepoch') BETWEEN ? AND ?
+    WHERE date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?
     GROUP BY date
     ORDER BY date ASC`,
     [startDate, endDate]
@@ -109,10 +109,10 @@ function queryTrendData(startDate: string, endDate: string): TrendDataPoint[] {
   // Single GROUP BY query instead of N+1 per-date queries
   const partSizeRows = dbManager.rawQuery<Record<string, unknown>>(
     `SELECT
-      date(time_created / 1000, 'unixepoch') as date,
+      date(time_created / 1000, 'unixepoch', 'localtime') as date,
       COALESCE(SUM(LENGTH(data)), 0) as partSize
     FROM part
-    WHERE date(time_created / 1000, 'unixepoch') BETWEEN ? AND ?
+    WHERE date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?
     GROUP BY date`,
     [startDate, endDate]
   )
@@ -170,17 +170,17 @@ export function registerHandlers(): void {
 
       // Time-range filtered stats
       const sessionCount = dbManager.rawGet<{ cnt: number }>(
-        `SELECT COUNT(*) as cnt FROM session WHERE date(time_created / 1000, 'unixepoch') BETWEEN ? AND ?`,
+        `SELECT COUNT(*) as cnt FROM session WHERE date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?`,
         [timeRange.startDate, timeRange.endDate]
       )?.cnt ?? 0
 
       const projectCount = dbManager.rawGet<{ cnt: number }>(
-        `SELECT COUNT(DISTINCT project_id) as cnt FROM session WHERE project_id IS NOT NULL AND project_id != '' AND date(time_created / 1000, 'unixepoch') BETWEEN ? AND ?`,
+        `SELECT COUNT(DISTINCT project_id) as cnt FROM session WHERE project_id IS NOT NULL AND project_id != '' AND date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?`,
         [timeRange.startDate, timeRange.endDate]
       )?.cnt ?? 0
 
       const partCount = dbManager.rawGet<{ cnt: number }>(
-        `SELECT COUNT(*) as cnt FROM part WHERE date(time_created / 1000, 'unixepoch') BETWEEN ? AND ?`,
+        `SELECT COUNT(*) as cnt FROM part WHERE date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?`,
         [timeRange.startDate, timeRange.endDate]
       )?.cnt ?? 0
 
@@ -216,7 +216,7 @@ export function registerHandlers(): void {
 
       const rows = dbManager.rawQuery<Record<string, unknown>>(
         `SELECT
-          strftime('${fmt}', time_created / 1000, 'unixepoch') as period,
+          strftime('${fmt}', time_created / 1000, 'unixepoch', 'localtime') as period,
           COALESCE(SUM(tokens_input), 0) as inputTokens,
           COALESCE(SUM(tokens_output), 0) as outputTokens,
           COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens,
@@ -347,15 +347,16 @@ export function registerHandlers(): void {
     // With time range: return current + previous period comparison
     const { startDate, endDate } = timeRange
 
-    // Calculate previous period
+    // Calculate previous period (use local date to avoid UTC offset)
     const startMs = new Date(startDate).getTime()
     const endMs = new Date(endDate).getTime()
     const dayDiff = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24))
     const previousEnd = new Date(startMs)
     const previousStart = new Date(startMs - dayDiff * 24 * 60 * 60 * 1000)
-
-    const previousEndDate = previousEnd.toISOString().slice(0, 10)
-    const previousStartDate = previousStart.toISOString().slice(0, 10)
+    const toLocalYMD = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const previousEndDate = toLocalYMD(previousEnd)
+    const previousStartDate = toLocalYMD(previousStart)
 
     const current = queryTrendData(startDate, endDate)
     const previous = queryTrendData(previousStartDate, previousEndDate)
@@ -417,14 +418,15 @@ export function registerHandlers(): void {
   // ── Session 增长趋势 ────────────────────────────────────────────
   ipcMain.handle(
     IPC_CHANNELS.DASHBOARD_SESSION_TREND,
-    (_event, timeRange?: TimeRange): IpcResult<SessionTrendItem[]> => {
+    (_event, timeRange?: TimeRange, rootOnly?: boolean): IpcResult<SessionTrendItem[]> => {
       try {
         const dateFilter = buildDateFilter('', timeRange)
+        const rootFilter = rootOnly ? ' AND parent_id IS NULL' : ''
         const rows = dbManager.rawQuery<{ d: string; cnt: number }>(
-          `SELECT date(time_created / 1000, 'unixepoch') as d,
+          `SELECT date(time_created / 1000, 'unixepoch', 'localtime') as d,
                   COUNT(*) as cnt
            FROM session
-           WHERE 1=1 ${dateFilter.sql}
+           WHERE 1=1 ${dateFilter.sql}${rootFilter}
            GROUP BY d
            ORDER BY d ASC`,
           dateFilter.params
@@ -446,7 +448,7 @@ export function registerHandlers(): void {
       try {
         const dateFilter = buildDateFilter('', timeRange)
         const rows = dbManager.rawQuery<{ d: string; c: number }>(
-          `SELECT date(time_created / 1000, 'unixepoch') as d,
+          `SELECT date(time_created / 1000, 'unixepoch', 'localtime') as d,
                   COALESCE(SUM(cost), 0) as c
            FROM session
            WHERE 1=1 ${dateFilter.sql}
@@ -471,7 +473,7 @@ export function registerHandlers(): void {
       try {
         const dateFilter = buildDateFilter('', timeRange)
         const rows = dbManager.rawQuery<{ d: string; cnt: number }>(
-          `SELECT date(m.time_created / 1000, 'unixepoch') as d,
+          `SELECT date(m.time_created / 1000, 'unixepoch', 'localtime') as d,
                   COUNT(*) as cnt
            FROM message m
            WHERE 1=1 ${dateFilter.sql}
