@@ -61,6 +61,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PageHeader` / `PaginationBar` / `SidebarGroup` / `SubSessionSelector` / `MessageViewer` 等共享组件沉淀
 - 最低 OpenCode 版本请参考 README 中的要求说明
 
+### 🔧 底层升级（顺手做的）
+
+- **应用底座升级**：把应用从旧版升级到最新稳定版，顺带修复了浏览器内核的多个高危安全漏洞，整体更安全。
+- **数据库组件换新**：用系统自带的数据库组件替换了第三方的，启动更快、安装包更小，无需再手动编译本地代码。
+- **安全防护加严**：禁止界面加载外部脚本，并限制只能打开你指定的 OpenCode 数据库文件，避免被恶意页面或错误路径影响。
+- **打包流程精简**：移除了不再需要的编译步骤，升级时无需再额外执行任何命令。
+
 ## [1.0.1] - 2026-05-23
 
 ### Added
