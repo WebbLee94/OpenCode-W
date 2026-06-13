@@ -7,23 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.0] - 2026-06-13
 
-### Fixed
+> 一次聚焦「**会话浏览更直观、消息查看更顺滑、整体交互更一致**」的大版本。1.0.1 → 1.1.0 共 88 个 commit，**强烈建议升级**：本版修复了若干会导致页面空白/统计错位的问题，并把会话层级、消息查看、交互效率整体提了一档。
 
-- **Dashboard 4 个 state 不读 cache**：项目排行、模型排行、Provider 统计、timePreset 在组件首次/重新挂载时为空，改为从 `dashboardCache` 读取，修复"首次/重访仪表盘栏目不显示"问题
-- **timePreset 重新挂载被重置**：从 cache 读取 `timePreset` 保持用户时间范围选择一致
+### ✨ Added｜新增能力（建议升级的主要理由）
 
-### Changed
+- **🔥 会话层级视图（父子会话）**：在会话列表中可内联展开某个会话的子会话（👶 按钮），并支持「只看根会话 / 显示全部」切换；列表新增「子会话数」列取代原先的「消息数」，一眼分辨出活跃的根会话。
+- **🔥 会话详情五 Tab 分栏布局**：点击会话后，页面自动进入 5%/95% 弹性分栏，右侧依次展示「**基础信息 / 解析 / 预览 / 待办 / 分享**」五个 Tab，可通过 URL 直接跳转到指定 Tab（支持从待办、分享等外部入口深度链接）。
+- **🔥 消息查看器全新升级（原生对话流）**：不再只是消息列表——新增「**预览 Tab**」可按连续对话流渲染消息，含 Markdown、代码高亮、Tool 调用内联、Reasoning 折叠、Step-finish 摘要等；同时新增「**解析 Tab**」查看结构化 Part 明细（12 种 Part 类型），并支持父/子会话合并查看。
+- **🔥 Dashboard 趋势查询**：新增会话数、成本、消息活跃度的趋势查询能力（配合已有的时间范围选择），让数据展示更完整。
+- **自动备份调度 + 保留策略**：「备份与恢复」页新增设置面板，可配置自动备份周期与保留数量，降低意外丢失风险。
+- **Sessions 键盘导航**：会话列表支持 `j / k` 上下移动、`Enter` 打开详情、`d` 删除，键鼠皆可高效操作。
+- **分享信息操作列**：分享管理列表支持一键复制分享链接、用默认浏览器打开分享 URL。
 
-- **Dashboard 移除"项目与工作区统计"栏目**：工作区数据无意义，移除该区块及相关 state/fetch
-- **Dashboard "模型&Provider"改造为柱状图**：以 CSS 渐变柱状图展示 Top 10 模型，支持 `provider/model` 双层命名展示，含会话数与成本双指标
-- **系统级标题统一**（`PageHeader`）：7 个页面（Dashboard / Sessions / Todos / Shares / Accounts / Cleanup / Backup）标题统一为"图标 + 中文名"格式
-- **系统级分页栏统一**（`PaginationBar`）：4 个页面（Todos / Shares / Sessions / Messages）分页栏统一高度、样式、sticky 行为
-- **Sidebar 3 个一级分组**：左侧菜单按功能分类为「概览 / 数据 / 工具」3 个一级分组（`SidebarGroup`）
-- **Todos 移除"重置筛选"按钮**：与筛选重置行为整合，避免冗余
+### 🎯 Changed｜显著优化（升级后能明显感觉到更顺手）
 
-### Added
+- **列头可点击排序**：会话列表表头改为点击即切换排序字段 + 升/降序，不再需要下拉选择框。
+- **搜索栏精简 + 日期快捷选择**：筛选区瘦身，日期范围更易点选，视觉上更清爽。
+- **系统级标题统一**：所有页面标题统一为「图标 + 中文名」格式（`PageHeader` 组件）。
+- **系统级分页栏统一**：Todos / Shares / Sessions / Messages 四个列表分页栏样式、高度、sticky 行为一致。
+- **Sidebar 三分组**：左侧菜单按「概览 / 数据 / 工具」分为三个一级分组，更易定位。
+- **项目下拉体验优化**：项目下拉搜索支持输入过滤、按项目名排序（非完整路径），对齐会话列表与待办列表的筛选逻辑。
+- **会话详情头部优化**：标题改为根会话名（可点击编辑/重命名），删除 / 关闭按钮样式重整。
+- **子会话选择器**：解析 / 预览 / 待办 Tab 共用同一子会话选择器，切换子会话更直观，右侧附带子会话统计信息。
+- **MessageViewer 分页可配置**：默认 10 条/页，可选 10/20/50，设置持久化。
+- **长内容折叠展开**：会话列表和聊天界面中长内容支持折叠 / 展开，避免超长条目占据过多屏幕。
 
-- **3 个共享组件**：`PageHeader`（页面标题）、`PaginationBar`（分页栏）、`SidebarGroup`（侧边栏一级分组）
+### 🗑️ Removed｜已移除（升级前请留意）
+
+- **分享管理页（Shares）**：使用频次低、维护成本高，已从侧栏与路由中移除。
+- **全局待办（Todos）与账户管理（Accounts）页面**：为保持产品聚焦与可维护性，从本次版本起不再作为独立页面。
+- **Events 事件溯源页面**：当前 OpenCode 无对应事件数据，预留给后续版本。
+- **Session 详情右侧滑出面板**：已由本次的「五 Tab 分栏布局」取代，移除旧面板以避免布局冲突。
+
+### 🐛 Fixed｜问题修复（升级即可受益）
+
+- **🔥 会话浏览页面空白**：`Sessions.tsx` 中 `closeDetail` 的 `useCallback` 缺少闭合括号，导致整个页面编译失败并渲染空白——已修复并通过 `tsc --noEmit` 校验。
+- **🔥 Dashboard 统计时区偏差**：时间查询使用 UTC 时区导致与本地日期错位，已修正为按用户本地日期统计。
+- **🔥 Dashboard 首屏不显示数据**：项目排行、模型排行、Provider 统计、时间范围选择在组件首次挂载或页面切换后可能为空——已接入 `dashboardCache` 确保数据与用户选择持续生效。
+- **子会话数查询列名错误**：`parent_session_id` → `parent_id`；当数据表缺少该列时自动回退为「全部会话」模式，兼容旧版 schema。
+- **预览 Tab 显示「暂无消息」**：preload 白名单漏加 `messages:list-by-parent` 通道，导致预览 Tab 永远为空——已补齐。
+- **子会话列表排序可视性**：子会话下拉列表按时间戳排序并显示时间，避免顺序不明。
+- **Part 内容水平溢出**：解析 Tab 加 `word-wrap + overflow-auto`，长文本不再撑破页面。
+- **会话详情页 URL 联动分栏**：`openDetail` 会正确设置 URL `session` 参数并触发分栏布局。
+- **若干代码质量问题**：移除 `as any` 类型逃逸、空 `catch`、非 null 断言等常见隐患。
+
+### 🛠️ Technical｜实现细节（使用者无需关心，仅作记录）
+
+- `PartDTO` 扩展 + `parsePartData` 兼容 flat / nested state
+- 12 个 Part 独立组件 + 注册表（`PartBubbles`）
+- `ConversationView` 组件：连续对话流渲染
+- IPC 通道扩容：`MESSAGES_LIST_BY_PARENT` / `TODOS_BY_PARENT` / `SESSIONS_CHILDREN` / `SESSIONS_SHARE` 等 Route B 通道
+- 8 个 IPC handler + 6 个 DTO
+- `PageHeader` / `PaginationBar` / `SidebarGroup` / `SubSessionSelector` / `MessageViewer` 等共享组件沉淀
+- 最低 OpenCode 版本请参考 README 中的要求说明
 
 ## [1.0.1] - 2026-05-23
 
