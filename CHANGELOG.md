@@ -7,14 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.0] - 2026-06-15
 
-> 品牌升级：DBScope-OC → **OpenCode-W**，全新「AI 编程工程工坊」定位与条柱 W Logo。
+> **品牌升级 + 会话迁移新能力**：DBScope-OC → **OpenCode-W**，全新「AI 编程工程工坊」定位 + 条柱 W Logo；新增根会话批量迁移至指定项目目录的能力，一次整理多个会话更省心。推荐所有用户升级。
 
-### 🔄 Changed｜品牌升级
+### ✨ Added｜新增能力（建议升级的主要理由）
 
-- **品牌重命名**：项目名从 `DBScope-OC` 更名为 `OpenCode-W`，仓库同步迁移至 `OpenCode-W`
-- **新 Logo**：设计条柱 W Logo（蓝紫渐变 #3B82F6 → #8B5CF6），全套 SVG + PNG 12 尺寸 + icns + ico 资产
-- **工坊隐喻**：功能页面标题对齐工坊定位——工坊总览、素材库、工艺记录、整理车间、归档室
-- **文档同步**：README、AGENTS.md、CONTRIBUTING.md、SECURITY.md、CODE_OF_CONDUCT.md、docs/ 全量更新
+- **🔥 根会话批量迁移**：在会话列表勾选多个根会话后，可通过顶部「📁 迁移」按钮一键批量迁移到指定的项目目录；迁移后相关会话的 `directory` 与 `project_id` 会同步更新，对齐 OpenCode `session migrate` 的目录归属策略，便于按项目维度集中管理历史会话。
+
+### 🔄 Changed｜品牌升级与体验优化
+
+- **品牌重命名**：项目从 `DBScope-OC` 正式更名为 **OpenCode-W**，定位升级为「AI 编程工程工坊」，所有文档与配置项同步更新。
+- **新 Logo**：全新条柱 W Logo（蓝紫渐变 #3B82F6 → #8B5CF6），包括 SVG / PNG 12 尺寸 / icns / ico 等全规格资产。
+- **工坊式页面标题**：各功能页标题统一为工坊隐喻——工坊总览、素材库、工艺记录、整理车间、归档室，信息层级更直观。
+- **会话详情排版微调**：优化会话详情页布局类名与间距，阅读更舒适。
+- **文档与配置同步**：README、AGENTS.md、CONTRIBUTING.md、SECURITY.md、CODE_OF_CONDUCT.md、docs/ 全量更新到新版品牌与命名；Issue 模板同步更名。
+
+### 🗑️ Removed｜已移除（升级前请留意）
+
+- **文件导出功能**：该功能在实际使用中与核心数据管理链路关联较弱，为保持产品聚焦与维护性，本版统一移除相关 IPC 通道与页面入口。如你确有导出需求，欢迎通过 Issue 反馈。
+
+### 🐛 Fixed｜问题修复（升级即可受益）
+
+- **会话重命名后选中项未同步更新**：修复了在会话详情页重命名会话后，列表中当前选中项的数据（名称等）仍停留在旧值的问题；现在重命名完成后会自动拉取最新会话数据并刷新界面，并提供轻量操作反馈提示。
+
+### 🛠️ Technical｜实现细节（使用者无需关心，仅作记录）
+
+- 新增 `SESSIONS_BATCH_MIGRATE` 等 IPC 通道，主进程实现会话目录 / project_id 批量更新逻辑，渲染层新增目录选择弹窗与批量迁移交互。
+- 主进程与 preload 统一移除 `DIALOG_SAVE_FILE` / `saveFile` 相关通道。
+- 所有工程配置、构建描述中的项目名统一更新为 OpenCode-W。
 
 ## [1.1.0] - 2026-06-13
 
