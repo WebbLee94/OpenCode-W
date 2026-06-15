@@ -3,7 +3,10 @@
   "version": "1.2.0",
   "type": "module",
   "license": "MIT",
-  "author": "Webb Lee",
+  "author": {
+    "name": "Webb Lee",
+    "email": "dashaoming@sina.com"
+  },
   "description": "OpenCode 开发者的 AI 编程工程工坊 —— 数据分析 · 成本洞察 · 决策支撑",
   "engines": {
     "node": ">=20.11.1"
