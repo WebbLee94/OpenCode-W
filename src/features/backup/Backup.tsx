@@ -139,7 +139,7 @@ function Backup() {
             <div className="ml-13 space-y-2 text-sm">
               <div className="flex items-center gap-2 text-gray-600">
                 <HardDrive size={14} className="text-gray-400" />
-                <span>备份目录: ~/.DBScope-OC/backups/</span>
+                <span>备份目录: ~/.opencode-w/backups/</span>
               </div>
             </div>
           </div>

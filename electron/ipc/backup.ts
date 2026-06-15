@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 
-const BACKUP_DIR = path.join(os.homedir(), '.DBScope-OC', 'backups')
+const BACKUP_DIR = path.join(os.homedir(), '.opencode-w', 'backups')
 
 function ensureBackupDir(): void {
   if (!fs.existsSync(BACKUP_DIR)) {

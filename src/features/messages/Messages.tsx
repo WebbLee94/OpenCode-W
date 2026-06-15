@@ -41,7 +41,7 @@ hljs.registerLanguage('shell', bash)
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 const DEFAULT_PAGE_SIZE = 20
-const PAGE_SIZE_STORAGE_KEY = 'dbscope-messages-page-size'
+const PAGE_SIZE_STORAGE_KEY = 'opencode-w-messages-page-size'
 
 function getStoredPageSize(): number {
   try {

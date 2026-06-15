@@ -28,7 +28,7 @@ hljs.registerLanguage('html', html)
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 const DEFAULT_PAGE_SIZE = 10
-const PAGE_SIZE_STORAGE_KEY = 'dbscope-messageviewer-page-size'
+const PAGE_SIZE_STORAGE_KEY = 'opencode-w-messageviewer-page-size'
 
 interface MessageViewerProps { sessionId: string }
 

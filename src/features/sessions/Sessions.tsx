@@ -99,7 +99,7 @@ function Sessions() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(() => {
-    const saved = localStorage.getItem('dbscope-page-size')
+    const saved = localStorage.getItem('opencode-w-page-size')
     return saved ? parseInt(saved, 10) : DEFAULT_PAGE_SIZE
   })
   const [startDate, setStartDate] = useState('')
@@ -167,7 +167,7 @@ function Sessions() {
   // Preview tab pagination (外置分页 — Commit 5.1)
   const [previewPage, setPreviewPage] = useState(1)
   const [previewPageSize, setPreviewPageSize] = useState(() => {
-    const saved = localStorage.getItem('dbscope-preview-page-size')
+    const saved = localStorage.getItem('opencode-w-preview-page-size')
     return saved ? parseInt(saved, 10) : 50
   })
   const [previewTotal, setPreviewTotal] = useState(0)
@@ -360,7 +360,7 @@ const listRef = useRef<HTMLDivElement>(null)
     const selected = sessions.filter(s => selectedIds.has(s.id))
     const csv = '标题,项目,消息数,Token,最后活跃\n' +
       selected.map(s => `"${s.title}","${s.directory || ''}",${s.msg_count},${s.tokens_input + s.tokens_output},"${s.time_updated}"`).join('\n')
-    window.electronAPI.saveFile(csv, `DBScope-会话导出-${new Date().toISOString().slice(0, 10)}.csv`).then((res) => {
+    window.electronAPI.saveFile(csv, `OpenCode-W-会话导出-${new Date().toISOString().slice(0, 10)}.csv`).then((res) => {
       if (res?.success) addToast('已导出', 'success')
     })
   }
@@ -371,7 +371,7 @@ const listRef = useRef<HTMLDivElement>(null)
 
   const handlePageSizeChange = useCallback((newSize: number) => {
     setPageSize(newSize)
-    localStorage.setItem('dbscope-page-size', String(newSize))
+    localStorage.setItem('opencode-w-page-size', String(newSize))
     setPage(1)
   }, [])
 
@@ -696,7 +696,7 @@ const listRef = useRef<HTMLDivElement>(null)
                   onPageChange={setPreviewPage}
                   onPageSizeChange={(s) => {
                     setPreviewPageSize(s)
-                    localStorage.setItem('dbscope-preview-page-size', String(s))
+                    localStorage.setItem('opencode-w-preview-page-size', String(s))
                     setPreviewPage(1)
                   }}
                 />

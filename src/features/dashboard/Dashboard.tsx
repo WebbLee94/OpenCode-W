@@ -675,7 +675,7 @@ function Dashboard() {
       {/* ── Header ──────────────────────────────────────────────── */}
       <PageHeader
         icon={<LayoutDashboard size={24} />}
-        title="首页仪表盘"
+        title="仪表盘"
         description={dbPath || undefined}
         right={
           <div className="flex items-center gap-2">

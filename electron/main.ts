@@ -25,7 +25,7 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 
 let mainWindow: BrowserWindow | null = null
 
-app.setName('DBScope-OC')
+app.setName('OpenCode-W')
 
 /**
  * 校验用户传入的 OpenCode 数据库路径
@@ -236,7 +236,7 @@ app.whenReady().then(() => {
 
   // macOS About panel
   app.setAboutPanelOptions({
-    applicationName: 'DBScope-OC',
+    applicationName: 'OpenCode-W',
     applicationVersion: app.getVersion(),
     credits: 'by Webb Lee',
   })

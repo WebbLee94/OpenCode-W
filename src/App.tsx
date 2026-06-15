@@ -23,7 +23,7 @@ const navGroups: { label: string; items: NavItemDef[] }[] = [
   {
     label: '概览',
     items: [
-      { to: '/', label: '首页仪表盘', icon: LayoutDashboard },
+      { to: '/', label: '仪表盘', icon: LayoutDashboard },
     ],
   },
   {
@@ -125,10 +125,10 @@ function Layout() {
       <nav className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0 overflow-visible">
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center gap-2">
-            <img src={logoSvg} alt="DBScope-OC" className="w-6 h-6" />
+            <img src={logoSvg} alt="OpenCode-W" className="w-6 h-6" />
             <div>
-              <h1 className="text-base font-semibold text-gray-900">DBScope-OC</h1>
-              <p className="text-xs text-gray-500">Database Manager</p>
+              <h1 className="text-base font-semibold text-gray-900">OpenCode-W</h1>
+              <p className="text-xs text-gray-500">你的 AI 编程工坊</p>
             </div>
           </div>
         </div>

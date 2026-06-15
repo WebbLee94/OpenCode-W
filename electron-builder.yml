@@ -1,5 +1,5 @@
-appId: com.dbscope.oc
-productName: DBScope-OC
+appId: com.webb.opencode-w
+productName: OpenCode-W
 asar: true
 asarUnpack: []
 directories:
