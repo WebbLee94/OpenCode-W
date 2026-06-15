@@ -1,6 +1,6 @@
 ---
 name: 功能请求
-about: 为 DBScope-OC 提出新功能建议
+about: 为 OpenCode-W 提出新功能建议
 title: '[Feature] '
 labels: enhancement
 assignees: ''

@@ -1,6 +1,6 @@
 ---
 name: Bug 报告
-about: 报告 DBScope-OC 的问题
+about: 报告 OpenCode-W 的问题
 title: '[Bug] '
 labels: bug
 assignees: ''
@@ -12,7 +12,7 @@ assignees: ''
 
 ## 复现步骤
 
-1. 打开 DBScope-OC
+1. 打开 OpenCode-W
 2. 执行 '...'
 3. 出现问题
 
@@ -27,7 +27,7 @@ assignees: ''
 ## 环境信息
 
 - 操作系统: [如 macOS 14.5]
-- DBScope-OC 版本: [如 1.0.0]
+- OpenCode-W 版本: [如 1.0.0]
 - Electron 版本: [如 30.x]
 - 数据库文件大小: [如 50MB]
 
