@@ -305,7 +305,9 @@ export function registerHandlers(): void {
         }
         return c
       }
-    } catch {}
+    } catch {
+      // 无法读取 .git HEAD（权限/非 git 仓库/路径异常）时退化为 dir 的 sha1
+    }
     return crypto.createHash('sha1').update(dir).digest('hex')
   }
 
