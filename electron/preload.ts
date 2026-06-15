@@ -13,11 +13,12 @@ const ALLOWED_CHANNELS = [
   'cleanup:preview', 'cleanup:execute',
   'database:vacuum', 'database:checkpoint', 'database:open', 'database:health',
   'dialog:openFile',
+  'dialog:openDirectory',
   'shell:openExternal',
   'backup:create', 'backup:list', 'backup:restore', 'backup:delete', 'backup:preview',
   'todos:by-parent',
   'session-share:get',
-  'sessions:children', 'sessions:rename',
+  'sessions:children', 'sessions:rename', 'sessions:move',
   'dashboard:modelRanking', 'dashboard:providerStats',
   'dashboard:sessionTrend', 'dashboard:costTrend', 'dashboard:messageTrend',
 ]
@@ -41,4 +42,5 @@ function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
 
 contextBridge.exposeInMainWorld('electronAPI', { invoke,
   openExternal: (url: string) => invoke('shell:openExternal', url),
+  openDirectoryDialog: () => invoke('dialog:openDirectory'),
 })

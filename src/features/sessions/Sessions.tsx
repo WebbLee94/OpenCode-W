@@ -147,6 +147,9 @@ function Sessions() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showBatchDelete, setShowBatchDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showBatchMove, setShowBatchMove] = useState(false)
+  const [batchMovePath, setBatchMovePath] = useState('')
+  const [moving, setMoving] = useState(false)
   const { addToast } = useToast()
 
   // Todos state (Session detail panel)
@@ -353,6 +356,14 @@ const listRef = useRef<HTMLDivElement>(null)
     addToast(`已删除 ${count} 个会话`, 'success')
     setSessions((prev) => prev.filter((s) => !selectedIds.has(s.id)))
     setTotal((t) => t - count)
+  }
+
+  async function handleBatchMove() {
+    if (!window.electronAPI?.openDirectoryDialog) { addToast('仅 Electron 环境可用', 'error'); return }
+    const res = await window.electronAPI.openDirectoryDialog()
+    if (!res.success || !res.data) return
+    setBatchMovePath(res.data)
+    setShowBatchMove(true)
   }
 
   // ─── Pagination helpers ──────────────────────────────────────────────────
@@ -816,6 +827,12 @@ const listRef = useRef<HTMLDivElement>(null)
           <div className="flex items-center gap-4 bg-blue-50 px-4 py-2 rounded mb-2 text-sm">
             <span className="text-blue-700 font-medium">已选 {selectedIds.size} 项</span>
             <button
+              onClick={handleBatchMove}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-brand-600 border border-brand-300 rounded-md hover:bg-brand-50"
+            >
+              📁 迁移
+            </button>
+            <button
               onClick={() => setShowBatchDelete(true)}
               className="inline-flex items-center gap-1 text-red-600 hover:text-red-800"
             >
@@ -902,6 +919,27 @@ const listRef = useRef<HTMLDivElement>(null)
         confirmLabel="确认删除"
         variant="danger"
         loading={deleting}
+      />
+
+      {/* Confirm Dialog for batch move */}
+      <ConfirmDialog
+        isOpen={showBatchMove}
+        onClose={() => setShowBatchMove(false)}
+        onConfirm={async () => {
+          setMoving(true)
+          try {
+            const r = await invokeSafe<{ migrated: number }>(IPC_CHANNELS.SESSIONS_MOVE, { sessionIds: [...selectedIds], directory: batchMovePath })
+            addToast(`已迁移 ${r.migrated} 个会话`, 'success')
+            setSessions((prev) => prev.filter((s) => !selectedIds.has(s.id)))
+            setTotal((t) => t - r.migrated)
+            setSelectedIds(new Set())
+            setShowBatchMove(false)
+          } catch (e) { addToast(`迁移失败：${(e as Error).message}`, 'error') }
+          finally { setMoving(false) }
+        }}
+        title="确认迁移"
+        confirmLabel={moving ? '迁移中...' : '确认迁移'}
+        message={`将 ${selectedIds.size} 个根会话迁移到：\n${batchMovePath}\n\n同步更新 directory 和 project_id，不涉及子会话。`}
       />
     </div>
   )

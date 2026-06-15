@@ -7,6 +7,7 @@ import type { IpcResult } from '@shared/types'
 export interface ElectronAPI {
   invoke(channel: string, ...args: unknown[]): Promise<IpcResult>
   openExternal?(url: string): Promise<IpcResult<true>>
+  openDirectoryDialog?(): Promise<IpcResult<string | null>>
 }
 
 declare global {

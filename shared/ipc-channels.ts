@@ -20,6 +20,7 @@ export const IPC_CHANNELS = {
   SESSIONS_DELETE: 'sessions:delete',
   SESSIONS_CHILDREN: 'sessions:children',
   SESSIONS_RENAME: 'sessions:rename',
+  SESSIONS_MOVE: 'sessions:move',
 
   // Messages
   MESSAGES_LIST: 'messages:list',
@@ -37,6 +38,7 @@ export const IPC_CHANNELS = {
 
   // Dialog
   DIALOG_OPEN_FILE: 'dialog:openFile',
+  DIALOG_OPEN_DIRECTORY: 'dialog:openDirectory',
 
   // Shell
   SHELL_OPEN_EXTERNAL: 'shell:openExternal',

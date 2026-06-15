@@ -201,6 +201,16 @@ function registerIpcHandlers() {
       return { success: false, error: (error as Error).message }
     }
   })
+
+  // Open directory dialog for session migration
+  ipcMain.handle(IPC_CHANNELS.DIALOG_OPEN_DIRECTORY, async (): Promise<IpcResult<string | null>> => {
+    try {
+      const r = await dialog.showOpenDialog(mainWindow!, { properties: ['openDirectory'], title: '选择目标项目目录' })
+      return { success: true, data: r.canceled ? null : r.filePaths[0] }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
 }
 
 app.whenReady().then(() => {

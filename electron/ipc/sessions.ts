@@ -1,6 +1,9 @@
 import { ipcMain } from 'electron'
+import path from 'node:path'
+import crypto from 'node:crypto'
+import fs from 'node:fs'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
-import type { SessionDTO, SessionDetailDTO, SessionFilter, SessionShareDTO, TokenStats, ToolRanking, IpcResult } from '../../shared/types'
+import type { SessionDTO, SessionDetailDTO, SessionFilter, SessionMoveFilter, SessionShareDTO, TokenStats, ToolRanking, IpcResult } from '../../shared/types'
 import dbManager from '../database'
 
 function mapSessionRow(row: Record<string, unknown>): SessionDTO {
@@ -287,5 +290,44 @@ export function registerHandlers(): void {
       const mapped = children.map(mapSessionRow)
       return { success: true, data: mapped }
     } catch (error) { return { success: false, error: (error as Error).message } }
+  })
+
+  // ─── Session Move (directory migration) ─────────────────────────
+
+  function computeProjectId(dir: string): string {
+    try {
+      const h = path.join(dir, '.git', 'HEAD')
+      if (fs.existsSync(h)) {
+        const c = fs.readFileSync(h, 'utf8').trim()
+        if (c.startsWith('ref:')) {
+          const r = path.join(dir, '.git', c.slice(5))
+          if (fs.existsSync(r)) return fs.readFileSync(r, 'utf8').trim()
+        }
+        return c
+      }
+    } catch {}
+    return crypto.createHash('sha1').update(dir).digest('hex')
+  }
+
+  ipcMain.handle(IPC_CHANNELS.SESSIONS_MOVE, (_e, f: SessionMoveFilter): IpcResult<{ migrated: number }> => {
+    try {
+      const n = path.resolve(f.directory)
+      const p = computeProjectId(n)
+      // Ensure project row exists before updating session.project_id (FK constraint)
+      const existing = dbManager.rawGet<{ id: string }>('SELECT id FROM project WHERE id = ?', [p])
+      if (!existing) {
+        const now = Date.now()
+        dbManager.run(
+          'INSERT INTO project (id, worktree, name, time_created, time_updated, sandboxes, commands) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [p, n, n.split('/').pop() || n, now, now, '[]', '[]']
+        )
+      }
+      const ph = f.sessionIds.map(() => '?').join(',')
+      const r = dbManager.run(
+        `UPDATE session SET directory=?, project_id=? WHERE id IN (${ph}) AND parent_id IS NULL`,
+        [n, p, ...f.sessionIds]
+      )
+      return { success: true, data: { migrated: r.changes } }
+    } catch (e) { return { success: false, error: (e as Error).message } }
   })
 }

@@ -105,6 +105,8 @@ export interface SessionDetailDTO extends SessionDTO {
   skillList: string[];
 }
 
+export interface SessionMoveFilter { sessionIds: string[]; directory: string; }
+
 export interface SessionFilter {
   search?: string;
   projectId?: string;
