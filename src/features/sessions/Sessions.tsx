@@ -414,7 +414,14 @@ const listRef = useRef<HTMLDivElement>(null)
                       onChange={e => setEditTitle(e.target.value)}
                       onBlur={async () => {
                         if (editTitle.trim() && editTitle !== selectedSession?.title) {
-                          await invokeSafe(IPC_CHANNELS.SESSIONS_RENAME, { sessionId: activeSessionId, title: editTitle.trim() })
+                          try {
+                            await invokeSafe(IPC_CHANNELS.SESSIONS_RENAME, { sessionId: activeSessionId, title: editTitle.trim() })
+                            const updated = await invokeSafe<SessionDetailDTO | null>(IPC_CHANNELS.SESSIONS_DETAIL, activeSessionId)
+                            if (updated) setSelectedSession(updated)
+                            addToast('名称已更新', 'success')
+                          } catch {
+                            addToast('名称修改失败', 'error')
+                          }
                         }
                         setEditingTitle(false)
                       }}
