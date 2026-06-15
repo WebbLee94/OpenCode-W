@@ -1,16 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
   <defs>
-    <linearGradient id="bgGrad" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#3B82F6"/>
       <stop offset="100%" stop-color="#8B5CF6"/>
     </linearGradient>
   </defs>
-
-  <rect width="128" height="128" rx="28" fill="url(#bgGrad)"/>
-
-  <path d="M24 44 Q64 16 104 44 Q104 48 100 50 Q64 26 28 50 Q24 48 24 44Z" fill="white" opacity="0.25"/>
-
-  <rect x="44" y="53" width="40" height="12" rx="4" stroke="white" stroke-width="2.5" fill="none" opacity="0.9"/>
-  <rect x="44" y="69" width="40" height="12" rx="4" stroke="white" stroke-width="2.5" fill="none" opacity="0.72"/>
-  <rect x="44" y="85" width="40" height="12" rx="4" stroke="white" stroke-width="2.5" fill="none" opacity="0.55"/>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- W bars: heights form W profile — tall, short, short, tall -->
+  <rect x="22" y="34" width="16" height="62" rx="2" fill="white"/>
+  <rect x="44" y="60" width="16" height="36" rx="2" fill="white"/>
+  <rect x="66" y="60" width="16" height="36" rx="2" fill="white"/>
+  <rect x="88" y="34" width="16" height="62" rx="2" fill="white"/>
 </svg>

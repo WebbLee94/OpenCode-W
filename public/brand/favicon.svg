@@ -1,16 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <defs>
-    <linearGradient id="bgGrad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#3B82F6"/>
-      <stop offset="100%" stop-color="#8B5CF6"/>
-    </linearGradient>
-  </defs>
-
-  <rect width="32" height="32" rx="7" fill="url(#bgGrad)"/>
-
-  <path d="M6 11 Q16 4 26 11 Q26 12 25 12.5 Q16 6.5 7 12.5 Q6 12 6 11Z" fill="white" opacity="0.25"/>
-
-  <rect x="10" y="12.5" width="12" height="3.5" rx="1" stroke="white" stroke-width="0.8" fill="none" opacity="0.9"/>
-  <rect x="10" y="17" width="12" height="3.5" rx="1" stroke="white" stroke-width="0.8" fill="none" opacity="0.72"/>
-  <rect x="10" y="21.5" width="12" height="3.5" rx="1" stroke="white" stroke-width="0.8" fill="none" opacity="0.55"/>
+  <rect width="32" height="32" rx="7" fill="#6366F1"/>
+  <rect x="5" y="8" width="4" height="16" rx="0.5" fill="white"/>
+  <rect x="11" y="15" width="4" height="9" rx="0.5" fill="white"/>
+  <rect x="17" y="15" width="4" height="9" rx="0.5" fill="white"/>
+  <rect x="23" y="8" width="4" height="16" rx="0.5" fill="white"/>
 </svg>
