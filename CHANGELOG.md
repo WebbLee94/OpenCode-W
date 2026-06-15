@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-06-15
+
+> 品牌升级：DBScope-OC → **OpenCode-W**，全新「AI 编程工程工坊」定位与条柱 W Logo。
+
+### 🔄 Changed｜品牌升级
+
+- **品牌重命名**：项目名从 `DBScope-OC` 更名为 `OpenCode-W`，仓库同步迁移至 `OpenCode-W`
+- **新 Logo**：设计条柱 W Logo（蓝紫渐变 #3B82F6 → #8B5CF6），全套 SVG + PNG 12 尺寸 + icns + ico 资产
+- **工坊隐喻**：功能页面标题对齐工坊定位——工坊总览、素材库、工艺记录、整理车间、归档室
+- **文档同步**：README、AGENTS.md、CONTRIBUTING.md、SECURITY.md、CODE_OF_CONDUCT.md、docs/ 全量更新
+
 ## [1.1.0] - 2026-06-13
 
 > 一次聚焦「**会话浏览更直观、消息查看更顺滑、整体交互更一致**」的大版本。1.0.1 → 1.1.0 共 106 个 commit，**强烈建议升级**：本版修复了若干会导致页面空白/统计错位的问题，并把会话层级、消息查看、交互效率整体提了一档。

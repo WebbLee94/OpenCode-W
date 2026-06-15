@@ -1,6 +1,8 @@
-# DBScope-OC
+# OpenCode-W
 
-> OpenCode 数据库可视化管理工具 - 轻松管理你的 OpenCode 会话数据
+> **社区工具，与 [OpenCode](https://github.com/anomalyco/opencode) 没有正式关联.**
+
+> 让每一次 AI 对话，都成为你精进编程功力的工程资本
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Electron](https://img.shields.io/badge/Electron-42.4.0-blue.svg)](https://www.electronjs.org/)
@@ -10,21 +12,37 @@
 
 ## 📖 简介
 
-DBScope-OC 是一款跨平台桌面应用，用于可视化管理 OpenCode 的 SQLite 数据库。支持数据库概览仪表盘、会话与消息浏览、安全清理、备份恢复，覆盖 OpenCode 全部核心数据表。
+OpenCode-W 是你的 AI 编程工程工坊。它将每次 OpenCode 对话自动沉淀为可分析的数据资产——Token 消耗、工具偏好、模型 ROI、成本趋势——让你看清自己的编程行为模式，用数据而非感觉来做技术决策，系统性提升编程工程化能力。
+
+W = **W**orkshop（工坊），也是作者 **W**ebb 的印记。
 
 > 基于 [OpenCode](https://github.com/anomalyco/opencode) 构建
-> 
+>
 > - ✅ **支持OpenCode v1.x 及以上版本**：`session` 表需包含 `parent_id` 列以支持会话层级（父子会话、根/子统计）。
+
+## 🎯 为什么选择 OpenCode-W？
+
+通用 SQLite 浏览器能打开任何数据库——但不懂 OpenCode 的 Schema。OpenCode-W 专为 OpenCode 打造：
+
+| 你想要 | 通用工具 | OpenCode-W |
+|--------|---------|------------|
+| 知道花了多少钱 | ❌ 没有 AI 成本概念 | ✅ Token → 成本实时换算，趋势图一目了然 |
+| 找到那轮调试对话 | ⚠️ 手写 SQL 搜 | ✅ 全文搜索 + 父子会话层级展开 |
+| 看懂 AI 的内部运作 | ❌ 12 种 Part 类型看不懂 | ✅ 原生解析，按类型分 Tab 展示 |
+| 安全清理旧数据 | ❌ DELETE 即执行，无后悔药 | ✅ 预览 → 确认 → 3 秒倒计时 |
+| 开箱即用 | ⚠️ 需要选文件、懂 Schema | ✅ 自动检测 opencode.db，打开就用 |
+
+👤 **谁适合用？** 每周用 OpenCode 产生数十上百次 AI 对话、想看清花费和效率、希望从「凭感觉写」进阶到「凭数据工程」的开发者。
 
 ## ✨ 功能特性
 
 ![Dashboard](docs/images/dashboard.png)
 
-- 📊 **首页仪表盘** - 时间范围选择 (7/30/90/全部)、6 行分区布局、时段对比、Token/工具/技能分析、增长趋势、并行加载
-- 💬 **会话浏览** - 搜索、日期筛选、项目筛选、排序、分页、详情面板 (Token/Tool/Skill/Todos/Share)
-- 📝 **消息查看器** - Markdown 渲染、代码语法高亮、全文搜索、跨 Session 搜索、Part 明细、Tool 展开
-- 🧹 **清理向导** - 4 种策略、预览确认、3 秒倒计时安全机制
-- 💾 **备份恢复** - 一键备份、版本管理、灾难恢复
+- 📊 **仪表盘** — 会话资产、Token 消耗、成本水位、工具排行，Dashboard 一眼看清 AI 编程全貌
+- 💬 **会话浏览** — 父子会话完整工艺链，从需求到交付每一步都在这里，支持键盘导航
+- 📝 **消息查看** — 原生对话流渲染，像复盘棋局一样回溯编程过程；全文搜索一秒定位关键方案
+- 🧹 **清理向导** — 4 种清理策略，先预览再确认，3 秒倒计时安全回收，VACUUM 释放磁盘空间
+- 💾 **备份恢复** — 一键备份、版本管理、灾难恢复，像 Git commit 一样养成定期存档习惯
 
 ## 🚀 快速开始
 
@@ -37,8 +55,8 @@ DBScope-OC 是一款跨平台桌面应用，用于可视化管理 OpenCode 的 S
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/WebbLee94/DBScope-OC.git
-cd DBScope-OC
+git clone https://github.com/WebbLee94/OpenCode-W.git
+cd OpenCode-W
 
 # 2. 安装依赖
 npm install
@@ -68,7 +86,7 @@ npm run build
 ## 📁 项目结构
 
 ```
-DBScope-OC/
+OpenCode-W/
 ├── electron/           # 主进程代码
 │   ├── main.ts        # 主进程入口
 │   ├── database.ts    # DatabaseManager 单例
@@ -82,7 +100,7 @@ DBScope-OC/
 │       └── backup.ts      # 备份恢复
 ├── src/               # 渲染进程代码
 │   ├── features/      # 功能模块
-│   │   ├── dashboard/     # 首页仪表盘
+│   │   ├── dashboard/     # 仪表盘
 │   │   ├── sessions/      # 会话浏览
 │   │   ├── messages/      # 消息查看
 │   │   ├── cleanup/       # 清理向导
@@ -116,7 +134,7 @@ A: 运行 VACUUM 或重启应用。
 
 ### Q: 备份文件存储在哪里？
 
-A: 默认存储在 `~/.DBScope-OC/backups/` 目录。
+A: 默认存储在 `~/.opencode-w/backups/` 目录。
 
 ## 🔧 数据库驱动
 

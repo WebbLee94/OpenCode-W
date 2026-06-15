@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢你对 DBScope-OC 项目的关注！本文档将帮助你了解如何参与项目贡献。
+感谢你对 OpenCode-W 项目的关注！本文档将帮助你了解如何参与项目贡献。
 
 ## 提交流程
 
@@ -98,7 +98,7 @@ npm test
 
 - 它是 `@electron/rebuild`（electron-builder 子依赖）的传递依赖
 - 仅当存在 C++ 原生模块需要重编译时才会被调用
-- 自 v1.1.0 起 DBScope-OC 已切换到 Node 内置 `node:sqlite`，**项目无任何 C++ 原生模块**
+- 自 v1.1.0 起 OpenCode-W 已切换到 Node 内置 `node:sqlite`，**项目无任何 C++ 原生模块**
 - CI 流水线不再调用 `npm run rebuild-native`（参见 `.github/workflows/ci.yml`）
 
 因此 `node-gyp` 在 lock 中残留不影响构建产物大小或安装时间，无需手动清理。

@@ -2,11 +2,11 @@
 
 ## 漏洞报告
 
-如果你发现 DBScope-OC 存在安全漏洞，请**不要**通过公开的 GitHub Issue 报告。
+如果你发现 OpenCode-W 存在安全漏洞，请**不要**通过公开的 GitHub Issue 报告。
 
 ### 报告方式
 
-请通过 [GitHub Security Advisory](https://github.com/WebbLee94/DBScope-OC/security/advisories/new) 私下报告安全漏洞。
+请通过 [GitHub Security Advisory](https://github.com/WebbLee94/OpenCode-W/security/advisories/new) 私下报告安全漏洞。
 
 ### 报告内容
 
@@ -32,7 +32,7 @@
 
 ## 安全最佳实践
 
-DBScope-OC 遵循以下安全原则：
+OpenCode-W 遵循以下安全原则：
 
 - `contextIsolation: true` + `nodeIntegration: false` 隔离渲染进程
 - 所有 SQL 查询使用参数化查询，防止 SQL 注入

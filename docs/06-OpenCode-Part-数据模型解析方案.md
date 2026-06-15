@@ -2,12 +2,12 @@
 
 > 调研对象：OpenCode 消息 part 的所有类型、schema、解析策略、渲染方案
 > 调研时间：2026-06-12
-> 数据来源：OpenCode 开源仓库 canonical schema + 实际测试 DB 数据 + 当前 DBScope-OC 实现
-> 适用范围：DBScope-OC 预览 Tab（ConversationView）和解析 Tab（MessageViewer）
+> 数据来源：OpenCode 开源仓库 canonical schema + 实际测试 DB 数据 + 当前 OpenCode-W 实现
+> 适用范围：OpenCode-W 预览 Tab（ConversationView）和解析 Tab（MessageViewer）
 
 ## 一、调研背景
 
-DBScope-OC 当前对 OpenCode `part` 表的解析存在以下空缺：
+OpenCode-W 当前对 OpenCode `part` 表的解析存在以下空缺：
 
 1. **assistant 内容空缺** — `MessageDTO.content` 仅从 `message.data.content/text` 取值，而 assistant 消息的真实文本存储在 `part.data.text`（`type="text"`）中，导致 assistant 预览区几乎全部为空。
 2. **user 内容缺失** — `parsePartData` 对 `text` part 仅取 `text` 字段，未兼容旧 flat 格式（`content` 字段），且未处理 `synthetic/ignored` 标记。
@@ -67,7 +67,7 @@ export type TextPart = z.infer<typeof TextPart>
 }
 ```
 
-**当前 DBScope-OC 覆盖度**：部分（`electron/ipc/messages.ts:33-37` 仅读 `text/content`，未读 `synthetic/ignored/time/metadata`）。
+**当前 OpenCode-W 覆盖度**：部分（`electron/ipc/messages.ts:33-37` 仅读 `text/content`，未读 `synthetic/ignored/time/metadata`）。
 
 **解析策略**：
 
@@ -920,7 +920,7 @@ import { PartBubble } from '../../components/part-bubbles'
 
 - OpenCode 源码：`packages/opencode/src/session/message-v2.ts`（commit `5d2dc888` / `5c5069b6` / `dev`）
 - TypeScript Types 文档：<https://www.mintlify.com/anomalyco/opencode/sdk/types>
-- DBScope-OC 现有实现：
+- OpenCode-W 现有实现：
   - `electron/ipc/messages.ts:6-86`（parsePartData）
   - `shared/types.ts:154-173`（PartDTO）
   - `src/features/sessions/ConversationView.tsx:94-173`（内联渲染）
