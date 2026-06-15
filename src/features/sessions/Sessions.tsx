@@ -401,7 +401,7 @@ const listRef = useRef<HTMLDivElement>(null)
     {activeSessionId ? (
       <>
         {/* Detail panel */}
-        <div className="flex h-full flex-col min-w-0">
+        <div className="flex h-full flex-1 flex-col min-w-0">
           {activeSessionId && selectedSession ? (
             <>
               {/* 顶部 sticky — 头部 + Tab 栏 + SubSessionSelector */}
@@ -483,7 +483,7 @@ const listRef = useRef<HTMLDivElement>(null)
               </div>
 
               {/* 中间 — 各 Tab 内容区域 */}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 min-w-0 w-full overflow-hidden">
                 {activeTab === 'subsessions' && (
                   <div className="h-full overflow-hidden min-w-0">
                     <MessageViewer sessionId={(selectedChildId || activeSessionId)!} />
