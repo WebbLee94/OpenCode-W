@@ -9,6 +9,7 @@ on:
 jobs:
   ci:
     strategy:
+      fail-fast: false
       matrix:
         os: [macos-latest, macos-13, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
@@ -30,5 +31,5 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Build
-        run: npm run build
+      - name: Build (skip electron-builder)
+        run: npm run build:ci
