@@ -12,7 +12,7 @@ const ALLOWED_CHANNELS = [
   'messages:list', 'messages:detail', 'messages:search', 'messages:list-by-parent',
   'cleanup:preview', 'cleanup:execute',
   'database:vacuum', 'database:checkpoint', 'database:open', 'database:health',
-  'dialog:openFile', 'dialog:saveFile',
+  'dialog:openFile',
   'shell:openExternal',
   'backup:create', 'backup:list', 'backup:restore', 'backup:delete', 'backup:preview',
   'todos:by-parent',
@@ -39,16 +39,6 @@ function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
   return ipcRenderer.invoke(channel, ...args)
 }
 
-/**
- * Save content to a file via the system save dialog.
- * @param {string} content - File content to save
- * @param {string} defaultName - Suggested filename
- * @returns {Promise<IpcResult<{ success: boolean }>>}
- */
-function saveFile(content: string, defaultName: string): Promise<unknown> {
-  return invoke('dialog:saveFile', { content, defaultName })
-}
-
-contextBridge.exposeInMainWorld('electronAPI', { invoke, saveFile,
+contextBridge.exposeInMainWorld('electronAPI', { invoke,
   openExternal: (url: string) => invoke('shell:openExternal', url),
 })

@@ -37,7 +37,6 @@ export const IPC_CHANNELS = {
 
   // Dialog
   DIALOG_OPEN_FILE: 'dialog:openFile',
-  DIALOG_SAVE_FILE: 'dialog:saveFile',
 
   // Shell
   SHELL_OPEN_EXTERNAL: 'shell:openExternal',

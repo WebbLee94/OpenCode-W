@@ -26,14 +26,12 @@ import {
   Loader2,
   AlertCircle,
   Unplug,
-  Download,
   LayoutDashboard,
   Database,
   Trash2,
   FileText,
   Heart,
 } from 'lucide-react'
-import { useToast } from '../../hooks/useToast'
 import {
   PieChart,
   Pie,
@@ -131,7 +129,6 @@ let dashboardCache: DashboardCache | null = null
 // ── Dashboard ──────────────────────────────────────────────────────
 function Dashboard() {
   const navigate = useNavigate()
-  const { addToast } = useToast()
   const [dbStats, setDbStats] = useState<DatabaseStats | null>(dashboardCache?.dbStats ?? null)
   const [tokenStats, setTokenStats] = useState<TokenStats | null>(dashboardCache?.tokenStats ?? null)
   const [toolRanking, setToolRanking] = useState<ToolRanking[]>(dashboardCache?.toolRanking ?? [])
@@ -197,22 +194,6 @@ function Dashboard() {
         .catch(() => { /* 保持 null，UI 显示"不可用"提示 */ })
     }
   }, [connected, dbHealth, fastLoading])
-
-  // ── Export helpers ────────────────────────────────────────────────
-  function exportCSV(data: object[], filename: string) {
-    if (!data.length) return
-    const first = data[0] as Record<string, unknown>
-    const header = Object.keys(first).join(',')
-    const rows = data.map(r => Object.values(r as Record<string, unknown>).join(',')).join('\n')
-    window.electronAPI.saveFile(header + '\n' + rows, filename).then((res) => {
-      if (res.success && res.data?.success) addToast(`${filename} 已保存`, 'success')
-    })
-  }
-  function exportJSON(data: unknown, filename: string) {
-    window.electronAPI.saveFile(JSON.stringify(data, null, 2), filename).then((res) => {
-      if (res.success && res.data?.success) addToast(`${filename} 已保存`, 'success')
-    })
-  }
 
   const hasLoadedRef = useRef(!!dashboardCache)
 
@@ -763,7 +744,6 @@ function Dashboard() {
             {/* 左：时段统计 2×2 卡片 */}
             <div className="flex flex-col">
               <p className="text-xs text-gray-400 font-medium mb-2">📈 时段统计
-                {tokenStats && <button onClick={() => exportJSON(tokenStats, 'token-stats.json')} className="ml-2 text-brand-500 hover:text-brand-700" title="导出 JSON"><Download size={12} /></button>}
               </p>
               {fastLoading && !tokenStats ? (
                 <div className="grid grid-cols-2 gap-4 flex-1">
@@ -873,7 +853,6 @@ function Dashboard() {
           {/* ── 下部：数据库概览（与时间范围无关） ── */}
           <div>
             <p className="text-xs text-gray-400 font-medium mb-2">🗄 数据库概览
-              {dbStats && <button onClick={() => exportJSON(dbStats, 'db-overview.json')} className="ml-2 text-brand-500 hover:text-brand-700" title="导出 JSON"><Download size={12} /></button>}
             </p>
             {fastLoading && !dbStats ? (
               <div className="grid grid-cols-4 gap-4">
@@ -956,7 +935,6 @@ function Dashboard() {
           {/* Token 折线图（饼图已移到概览） */}
           <div className="h-full flex flex-col">
             <p className="text-xs text-gray-400 font-medium mb-2">📊 Token 趋势
-              {tokenGroupData.length > 0 && <button onClick={() => exportCSV(tokenGroupData, 'token-trend.csv')} className="ml-2 text-emerald-500 hover:text-emerald-700" title="导出 Token 趋势 CSV"><Download size={12} /></button>}
             </p>
             <div className="bg-white rounded-lg border border-gray-200 p-5 relative flex-1 flex flex-col">
               {fastLoading && !tokenGroupData.length && (
@@ -1009,7 +987,6 @@ function Dashboard() {
           <div className="h-full flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-gray-400 font-medium">💰 成本趋势
-                {costTrend.length > 0 && <button onClick={() => exportCSV(costTrend, 'cost-trend.csv')} className="ml-2 text-emerald-500 hover:text-emerald-700" title="导出 CSV"><Download size={12} /></button>}
                 {showCostCompare && prevCostTrend.length > 0 && prevRangeLabel && (
                   <span className="ml-2 text-xs text-gray-400 italic">（虚线：上期 {prevRangeLabel}）</span>
                 )}
@@ -1075,15 +1052,6 @@ function Dashboard() {
                 >
                   {rootOnly ? '仅根会话' : '全部会话'}
                 </button>
-                {sessionTrend.length > 0 && (
-                  <button
-                    onClick={() => exportCSV(sessionTrend, 'session-trend.csv')}
-                    className="ml-2 text-brand-500 hover:text-brand-700"
-                    title="导出 CSV"
-                  >
-                    <Download size={12} />
-                  </button>
-                )}
                 {showSessionCompare && prevSessionTrend.length > 0 && prevRangeLabel && (
                   <span className="ml-2 text-xs text-gray-400 italic">（虚线：上期 {prevRangeLabel}）</span>
                 )}
@@ -1136,7 +1104,6 @@ function Dashboard() {
           <div className="h-full flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-gray-400 font-medium">💬 消息活跃度趋势
-                {messageTrend.length > 0 && <button onClick={() => exportCSV(messageTrend, 'message-trend.csv')} className="ml-2 text-violet-500 hover:text-violet-700" title="导出 CSV"><Download size={12} /></button>}
                 {showMessageCompare && prevMessageTrend.length > 0 && prevRangeLabel && (
                   <span className="ml-2 text-xs text-gray-400 italic">（虚线：上期 {prevRangeLabel}）</span>
                 )}
@@ -1193,10 +1160,6 @@ function Dashboard() {
           {/* 上层：工具&技能 */}
           <div>
             <p className="text-xs text-gray-400 font-medium mb-2">🔧 工具 & 技能排行
-              <span className="ml-2 inline-flex gap-1">
-                {skillData.length > 0 && <button onClick={() => exportCSV(skillData, 'skill-usage.csv')} className="text-violet-500 hover:text-violet-700" title="导出技能使用 CSV"><Download size={12} /></button>}
-                {toolData.length > 0 && <button onClick={() => exportCSV(toolData, 'tool-ranking.csv')} className="text-brand-500 hover:text-brand-700" title="导出工具排行 CSV"><Download size={12} /></button>}
-              </span>
             </p>
             <div className="grid grid-cols-2 gap-4">
               {/* Skill Usage */}

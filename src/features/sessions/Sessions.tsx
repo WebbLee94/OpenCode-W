@@ -11,7 +11,6 @@ import {
   ChevronRight,
   X,
   Trash2,
-  Download,
   FolderOpen,
   Calendar,
   MessageSquare,
@@ -354,15 +353,6 @@ const listRef = useRef<HTMLDivElement>(null)
     addToast(`已删除 ${count} 个会话`, 'success')
     setSessions((prev) => prev.filter((s) => !selectedIds.has(s.id)))
     setTotal((t) => t - count)
-  }
-
-  function batchExport() {
-    const selected = sessions.filter(s => selectedIds.has(s.id))
-    const csv = '标题,项目,消息数,Token,最后活跃\n' +
-      selected.map(s => `"${s.title}","${s.directory || ''}",${s.msg_count},${s.tokens_input + s.tokens_output},"${s.time_updated}"`).join('\n')
-    window.electronAPI.saveFile(csv, `OpenCode-W-会话导出-${new Date().toISOString().slice(0, 10)}.csv`).then((res) => {
-      if (res?.success) addToast('已导出', 'success')
-    })
   }
 
   // ─── Pagination helpers ──────────────────────────────────────────────────
@@ -823,12 +813,6 @@ const listRef = useRef<HTMLDivElement>(null)
               className="inline-flex items-center gap-1 text-red-600 hover:text-red-800"
             >
               <Trash2 size={14} />删除所选
-            </button>
-            <button
-              onClick={batchExport}
-              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800"
-            >
-              <Download size={14} />导出所选
             </button>
             <button onClick={() => setSelectedIds(new Set())} className="text-gray-400 hover:text-gray-600 ml-auto">取消选择</button>
           </div>

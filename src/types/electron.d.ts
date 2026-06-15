@@ -6,7 +6,6 @@ import type { IpcResult } from '@shared/types'
  */
 export interface ElectronAPI {
   invoke(channel: string, ...args: unknown[]): Promise<IpcResult>
-  saveFile(content: string, defaultName: string): Promise<IpcResult<{ success: boolean }>>
   openExternal?(url: string): Promise<IpcResult<true>>
 }
 
