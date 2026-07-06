@@ -50,6 +50,7 @@ test-data/test.db
 .vite
 
 # opencode
+.omo/
 .sisyphus
 .superpowers
 superpowers/
