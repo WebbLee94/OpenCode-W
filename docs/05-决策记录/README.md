@@ -57,3 +57,4 @@
 | 0002 | 使用 node:sqlite 替代 better-sqlite3 | 已接受 |
 | 0003 | 移除分享管理页与全局待办页 | 已接受 |
 | 0004 | 品牌重命名为 OpenCode-W | 已接受 |
+| 0005 | 引入 electron-updater | 已接受 |
