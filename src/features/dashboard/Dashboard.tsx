@@ -834,6 +834,16 @@ function Dashboard() {
                         value={formatNumber(tokenStats.reasoningTokens)}
                         color="bg-violet-500"
                       />
+                      <TokenMetricRow
+                        label="缓存读Token"
+                        value={formatNumber(tokenStats.cacheRead)}
+                        color="bg-amber-500"
+                      />
+                      <TokenMetricRow
+                        label="缓存写Token"
+                        value={formatNumber(tokenStats.cacheWrite)}
+                        color="bg-rose-500"
+                      />
                       <div className="border-t border-gray-100 pt-2 mt-2">
                         <TokenMetricRow
                           label="缓存复用率"
@@ -974,6 +984,8 @@ function Dashboard() {
                       <Line type="monotone" dataKey="inputTokens" name="输入" stroke="#3B82F6" strokeWidth={2} dot={false} />
                       <Line type="monotone" dataKey="outputTokens" name="输出" stroke="#10B981" strokeWidth={2} dot={false} />
                       <Line type="monotone" dataKey="reasoningTokens" name="推理" stroke="#8B5CF6" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="cacheRead" name="缓存读" stroke="#F59E0B" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
+                      <Line type="monotone" dataKey="cacheWrite" name="缓存写" stroke="#F43F5E" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -1218,6 +1230,7 @@ function Dashboard() {
                         width={120}
                         tick={{ fontSize: 11 }}
                         stroke="#9ca3af"
+                        interval={0}
                       />
                       <Tooltip
                         contentStyle={{
