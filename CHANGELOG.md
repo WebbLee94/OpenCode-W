@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-07-07
+
+> **应用内版本更新能力上线**：在「设置」页可一键检查/下载/安装 GitHub Releases 新版本；侧边栏自动出现红点提示。本期采用手动确认模式（macOS / Windows 无代码签名场景下用户需在系统弹窗中确认一次）。
+
+### ✨ Added｜新增能力
+
+- **🔥 应用内版本更新**：启动后后台静默检查 GitHub Releases,发现新版本在侧边栏显示红点;在「设置 → 版本更新」查看详情,一键下载与安装（手动模式,避免静默安装被 Gatekeeper / SmartScreen 拦截）。
+- **侧边栏红点提示**：新版本可用时,「设置」导航项右侧出现红点。
+- **进度条 + 安装器接管**：下载过程实时显示百分比与已传输大小;下载完成后一键启动系统安装器。
+- **仪表盘缓存读写 Token 指标**：仪表盘新增缓存读、缓存写的独立指标卡片与趋势折线图，让 Token 复用情况一目了然。
+
+### 🛠️ Technical｜实现细节
+
+- 主进程集成 `electron-updater` 库,采用 `autoDownload=false` / `autoInstallOnAppQuit=false` 手动模式。
+- 复用现有 GitHub Releases 发布流程,无需额外基础设施。
+- 状态机管理（idle / available / downloading / downloaded / installing）,非法转换被拒绝。
+- 启动 5s 后单次静默检查,本会话失败不重试（避免启动期阻塞）。
+- 本地缓存 `update-cache.json` 记录上次检查时间,便于 UI 展示。
+
+### 🔄 Changed｜重构与优化
+
+- **侧边栏简化**：移除独立的「配置」分组，「设置」入口移到底部工具栏齿轮图标，左侧仅保留概览 / 数据 / 工具三组。
+- **设置页新增「数据源」区块**：展示当前数据库连接状态与文件路径，并提供「切换数据源」按钮（原位于侧边栏底部）。
+- **设置页布局对齐**：容器样式与 PageHeader 风格与仪表盘、会话浏览等页面保持一致。
+- **默认分页优化**：会话列表默认分页从 20 条调整为 10 条，减少初始加载的数据量，页面响应更轻快。
+
+### 🐛 Fixed｜问题修复（升级即可受益）
+
+- **仪表盘统计数据失真**：修复了跨天会话的 Token 和成本统计不准确问题；统计逻辑从 session 表改为从 part 表获取 step-finish 类型的真实逐次用量，确保数据精准。
+
 ## [1.2.0] - 2026-06-15
 
 > **品牌升级 + 会话迁移新能力**：DBScope-OC → **OpenCode-W**，全新「AI 编程工程工坊」定位 + 条柱 W Logo；新增根会话批量迁移至指定项目目录的能力，一次整理多个会话更省心。推荐所有用户升级。
