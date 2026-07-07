@@ -136,16 +136,18 @@ export function registerHandlers(): void {
 
       const session = mapSessionRow(row)
 
-      // Compute token stats
+      // Compute token stats — 从 part 表 step-finish 汇总(真实逐次用量)
+      // session 表 tokens_*/cost 是累计值, 与仪表盘口径保持一致改用 part 表
       const tokenStatsRow = dbManager.rawGet<Record<string, number>>(
         `SELECT
-          COALESCE(SUM(tokens_input), 0) as inputTokens,
-          COALESCE(SUM(tokens_output), 0) as outputTokens,
-          COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens,
-          COALESCE(SUM(tokens_cache_read), 0) as cacheRead,
-          COALESCE(SUM(tokens_cache_write), 0) as cacheWrite,
-          COALESCE(SUM(cost), 0) as estimatedCost
-        FROM session WHERE id = ?`,
+          COALESCE(SUM(json_extract(data, '$.tokens.input')), 0) as inputTokens,
+          COALESCE(SUM(json_extract(data, '$.tokens.output')), 0) as outputTokens,
+          COALESCE(SUM(json_extract(data, '$.tokens.reasoning')), 0) as reasoningTokens,
+          COALESCE(SUM(json_extract(data, '$.tokens.cache.read')), 0) as cacheRead,
+          COALESCE(SUM(json_extract(data, '$.tokens.cache.write')), 0) as cacheWrite,
+          COALESCE(SUM(json_extract(data, '$.cost')), 0) as estimatedCost
+        FROM part
+        WHERE session_id = ? AND json_extract(data, '$.type') = 'step-finish'`,
         [sessionId]
       )
 

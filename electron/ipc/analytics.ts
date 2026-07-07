@@ -69,7 +69,10 @@ export function registerHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.DASHBOARD_TOKENS, (_event, timeRange?: TimeRange, groupBy?: 'day' | 'week' | 'month'): IpcResult<TokenStats | TokenGroupDataPoint[]> => {
     try {
-    const dateFilter = buildDateFilter('', timeRange)
+    // Token / cost 真实逐次用量记录在 part 表 type='step-finish' 的 data JSON 中
+    // (session 表 tokens_*/cost 是 session 生命周期累计值, 按 session.time_created 归属
+    //  会导致跨天 session 的 token 全部算在创建日, 按天/范围统计严重失真)
+    const dateFilter = buildDateFilter('p', timeRange)
 
     if (groupBy) {
       const formatMap: Record<string, string> = {
@@ -81,15 +84,15 @@ export function registerHandlers(): void {
 
       const rows = dbManager.rawQuery<Record<string, unknown>>(
         `SELECT
-          strftime('${fmt}', time_created / 1000, 'unixepoch', 'localtime') as period,
-          COALESCE(SUM(tokens_input), 0) as inputTokens,
-          COALESCE(SUM(tokens_output), 0) as outputTokens,
-          COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens,
-          COALESCE(SUM(tokens_cache_read), 0) as cacheRead,
-          COALESCE(SUM(tokens_cache_write), 0) as cacheWrite,
-          COALESCE(SUM(cost), 0) as estimatedCost
-        FROM session
-        WHERE 1=1 ${dateFilter.sql}
+          strftime('${fmt}', p.time_created / 1000, 'unixepoch', 'localtime') as period,
+          COALESCE(SUM(json_extract(p.data, '$.tokens.input')), 0) as inputTokens,
+          COALESCE(SUM(json_extract(p.data, '$.tokens.output')), 0) as outputTokens,
+          COALESCE(SUM(json_extract(p.data, '$.tokens.reasoning')), 0) as reasoningTokens,
+          COALESCE(SUM(json_extract(p.data, '$.tokens.cache.read')), 0) as cacheRead,
+          COALESCE(SUM(json_extract(p.data, '$.tokens.cache.write')), 0) as cacheWrite,
+          COALESCE(SUM(json_extract(p.data, '$.cost')), 0) as estimatedCost
+        FROM part p
+        WHERE json_extract(p.data, '$.type') = 'step-finish' ${dateFilter.sql}
         GROUP BY period
         ORDER BY period ASC`,
         dateFilter.params
@@ -110,14 +113,14 @@ export function registerHandlers(): void {
 
     const row = dbManager.rawGet<Record<string, number>>(
       `SELECT
-        COALESCE(SUM(tokens_input), 0) as inputTokens,
-        COALESCE(SUM(tokens_output), 0) as outputTokens,
-        COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens,
-        COALESCE(SUM(tokens_cache_read), 0) as cacheRead,
-        COALESCE(SUM(tokens_cache_write), 0) as cacheWrite,
-        COALESCE(SUM(cost), 0) as estimatedCost
-      FROM session
-      WHERE 1=1 ${dateFilter.sql}`,
+        COALESCE(SUM(json_extract(p.data, '$.tokens.input')), 0) as inputTokens,
+        COALESCE(SUM(json_extract(p.data, '$.tokens.output')), 0) as outputTokens,
+        COALESCE(SUM(json_extract(p.data, '$.tokens.reasoning')), 0) as reasoningTokens,
+        COALESCE(SUM(json_extract(p.data, '$.tokens.cache.read')), 0) as cacheRead,
+        COALESCE(SUM(json_extract(p.data, '$.tokens.cache.write')), 0) as cacheWrite,
+        COALESCE(SUM(json_extract(p.data, '$.cost')), 0) as estimatedCost
+      FROM part p
+      WHERE json_extract(p.data, '$.type') = 'step-finish' ${dateFilter.sql}`,
       dateFilter.params
     )
 
@@ -205,9 +208,19 @@ export function registerHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, (_event, timeRange?: TimeRange): IpcResult<ModelRankingItem[]> => {
     try {
-      const dateFilter = buildDateFilter('', timeRange)
+      const dateFilter = buildDateFilter('p', timeRange)
       const rows = dbManager.rawQuery<Record<string, unknown>>(
-        `SELECT model, COUNT(*) as sessionCount, SUM(tokens_input + tokens_output) as tokenCount, SUM(cost) as totalCost FROM session WHERE model IS NOT NULL ${dateFilter.sql} GROUP BY model ORDER BY sessionCount DESC LIMIT 10`,
+        `SELECT s.model as model,
+                COUNT(DISTINCT p.session_id) as sessionCount,
+                COALESCE(SUM(json_extract(p.data, '$.tokens.total')), 0) as tokenCount,
+                COALESCE(SUM(json_extract(p.data, '$.cost')), 0) as totalCost
+         FROM part p
+         JOIN session s ON s.id = p.session_id
+         WHERE json_extract(p.data, '$.type') = 'step-finish'
+           AND s.model IS NOT NULL ${dateFilter.sql}
+         GROUP BY s.model
+         ORDER BY sessionCount DESC
+         LIMIT 10`,
         dateFilter.params
       )
       return { success: true, data: rows.map(r => ({ model: r.model as string, sessionCount: r.sessionCount as number, tokenCount: r.tokenCount as number, totalCost: r.totalCost as number })) }
@@ -216,13 +229,22 @@ export function registerHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, (_event, timeRange?: TimeRange): IpcResult<ProviderStatsItem[]> => {
     try {
-      const dateFilter = buildDateFilter('s.', timeRange)
-      const providerMap: Record<string, string> = { 'api.anthropic.com': 'Anthropic', 'api.openai.com': 'OpenAI', 'api.deepseek.com': 'DeepSeek', 'api.moonshot.cn': 'Moonshot', 'api.minimax.chat': 'MiniMax', 'generativelanguage.googleapis.com': 'Google' }
+      // session 表无 account_id 列, provider 信息从 session.model JSON 的 providerID 提取
+      const dateFilter = buildDateFilter('p', timeRange)
       const rows = dbManager.rawQuery<Record<string, unknown>>(
-        `SELECT a.url, COUNT(s.id) as sessionCount, SUM(s.tokens_input + s.tokens_output) as tokenCount, SUM(s.cost) as totalCost FROM session s JOIN account a ON s.account_id = a.id WHERE a.url IS NOT NULL ${dateFilter.sql} GROUP BY a.url ORDER BY sessionCount DESC`,
+        `SELECT json_extract(s.model, '$.providerID') as provider,
+                COUNT(DISTINCT p.session_id) as sessionCount,
+                COALESCE(SUM(json_extract(p.data, '$.tokens.total')), 0) as tokenCount,
+                COALESCE(SUM(json_extract(p.data, '$.cost')), 0) as totalCost
+         FROM part p
+         JOIN session s ON s.id = p.session_id
+         WHERE json_extract(p.data, '$.type') = 'step-finish'
+           AND json_extract(s.model, '$.providerID') IS NOT NULL ${dateFilter.sql}
+         GROUP BY provider
+         ORDER BY sessionCount DESC`,
         dateFilter.params
       )
-      return { success: true, data: rows.map(r => ({ provider: providerMap[r.url as string] || '其他', sessionCount: r.sessionCount as number, tokenCount: r.tokenCount as number, totalCost: r.totalCost as number })) }
+      return { success: true, data: rows.map(r => ({ provider: (r.provider as string) || 'unknown', sessionCount: r.sessionCount as number, tokenCount: r.tokenCount as number, totalCost: r.totalCost as number })) }
     } catch (error) { return { success: false, error: (error as Error).message } }
   })
 
@@ -257,12 +279,12 @@ export function registerHandlers(): void {
     IPC_CHANNELS.DASHBOARD_COST_TREND,
     (_event, timeRange?: TimeRange): IpcResult<CostTrendItem[]> => {
       try {
-        const dateFilter = buildDateFilter('', timeRange)
+        const dateFilter = buildDateFilter('p', timeRange)
         const rows = dbManager.rawQuery<{ d: string; c: number }>(
-          `SELECT date(time_created / 1000, 'unixepoch', 'localtime') as d,
-                  COALESCE(SUM(cost), 0) as c
-           FROM session
-           WHERE 1=1 ${dateFilter.sql}
+          `SELECT date(p.time_created / 1000, 'unixepoch', 'localtime') as d,
+                  COALESCE(SUM(json_extract(p.data, '$.cost')), 0) as c
+           FROM part p
+           WHERE json_extract(p.data, '$.type') = 'step-finish' ${dateFilter.sql}
            GROUP BY d
            ORDER BY d ASC`,
           dateFilter.params

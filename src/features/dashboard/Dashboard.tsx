@@ -1255,7 +1255,7 @@ function Dashboard() {
                         try {
                           const p = JSON.parse(m.model)
                           modelLabel = p.id || p.name || m.model
-                          providerLabel = p.provider || ''
+                          providerLabel = p.providerID || ''
                         } catch { /* keep raw */ }
                       }
                       const pct = (m.sessionCount / max) * 100
