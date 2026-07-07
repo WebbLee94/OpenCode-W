@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -10,6 +11,7 @@ import * as cleanupIpc from './ipc/cleanup'
 import * as analyticsIpc from './ipc/analytics'
 import * as backupIpc from './ipc/backup'
 import * as todosIpc from './ipc/todos'
+import * as updateIpc from './ipc/update'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type { IpcResult } from '../shared/types'
 
@@ -159,6 +161,8 @@ function registerIpcHandlers() {
   analyticsIpc.registerHandlers()
   backupIpc.registerHandlers()
   todosIpc.registerHandlers()
+  // 版本更新（必须在 createWindow 之前,因为它需要 getMainWindow 引用）
+  updateIpc.registerHandlers({ getMainWindow: () => mainWindow })
 
   // Open file dialog for database
   ipcMain.handle(IPC_CHANNELS.DIALOG_OPEN_FILE, async (): Promise<IpcResult<string>> => {
@@ -236,6 +240,15 @@ app.whenReady().then(() => {
 
   // Create window (must succeed even if DB fails)
   createWindow()
+
+  // 启动 5s 后后台静默检查更新
+  setTimeout(() => {
+    if (app.isPackaged) {
+      autoUpdater.checkForUpdates().catch(() => {
+        // 静默失败,渲染层会通过 error 事件收到
+      })
+    }
+  }, 5000)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

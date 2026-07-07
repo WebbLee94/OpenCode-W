@@ -37,3 +37,8 @@ linux:
       arch: [x64]
   category: Development
   icon: build/icon.png
+publish:
+  provider: github
+  owner: WebbLee94
+  repo: OpenCode-W
+  releaseType: release

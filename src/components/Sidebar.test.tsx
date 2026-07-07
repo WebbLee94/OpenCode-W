@@ -1,0 +1,55 @@
+/**
+ * Sidebar 单测 —— 验证 UpdateBadge 在 state='available' 时显示红点
+ */
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, cleanup } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
+import { Sidebar } from './Sidebar'
+import { UpdateContext } from '@/features/update/UpdateContext'
+import type { UseUpdateStatus } from '@/features/update/useUpdateStatus'
+
+vi.mock('@/lib/ipc', () => ({
+  isElectron: () => false,
+}))
+
+afterEach(() => {
+  cleanup()
+})
+
+function renderWithContext(state: UseUpdateStatus['state']) {
+  const mock: UseUpdateStatus = {
+    state,
+    info: null,
+    progress: null,
+    error: null,
+    isChecking: false,
+    check: vi.fn(),
+    download: vi.fn(),
+    install: vi.fn(),
+  }
+  return render(
+    <UpdateContext.Provider value={mock}>
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>
+    </UpdateContext.Provider>
+  )
+}
+
+describe('Sidebar', () => {
+  it('renders navigation labels', () => {
+    renderWithContext('idle')
+    expect(screen.getByText('仪表盘')).toBeTruthy()
+    expect(screen.getByText('设置')).toBeTruthy()
+  })
+
+  it('shows red dot when update is available', () => {
+    renderWithContext('available')
+    expect(screen.getByLabelText('有可用更新')).toBeTruthy()
+  })
+
+  it('hides red dot when idle', () => {
+    renderWithContext('idle')
+    expect(screen.queryByLabelText('有可用更新')).toBeNull()
+  })
+})

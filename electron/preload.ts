@@ -43,4 +43,35 @@ function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
 contextBridge.exposeInMainWorld('electronAPI', { invoke,
   openExternal: (url: string) => invoke('shell:openExternal', url),
   openDirectoryDialog: () => invoke('dialog:openDirectory'),
+  update: {
+    check: () => ipcRenderer.invoke('update:check'),
+    download: () => ipcRenderer.invoke('update:download'),
+    install: () => ipcRenderer.invoke('update:install'),
+    getState: () => ipcRenderer.invoke('update:get-state'),
+    onAvailable: (cb: (info: import('../shared/types').UpdateInfo) => void) => {
+      const listener = (_e: unknown, payload: import('../shared/types').UpdateInfo) => cb(payload)
+      ipcRenderer.on('update:event:available', listener)
+      return () => ipcRenderer.removeListener('update:event:available', listener)
+    },
+    onNotAvailable: (cb: () => void) => {
+      const listener = () => cb()
+      ipcRenderer.on('update:event:not-available', listener)
+      return () => ipcRenderer.removeListener('update:event:not-available', listener)
+    },
+    onProgress: (cb: (p: import('../shared/types').UpdateProgress) => void) => {
+      const listener = (_e: unknown, payload: import('../shared/types').UpdateProgress) => cb(payload)
+      ipcRenderer.on('update:event:progress', listener)
+      return () => ipcRenderer.removeListener('update:event:progress', listener)
+    },
+    onDownloaded: (cb: (info: import('../shared/types').UpdateInfo) => void) => {
+      const listener = (_e: unknown, payload: import('../shared/types').UpdateInfo) => cb(payload)
+      ipcRenderer.on('update:event:downloaded', listener)
+      return () => ipcRenderer.removeListener('update:event:downloaded', listener)
+    },
+    onError: (cb: (err: import('../shared/types').UpdateErrorPayload) => void) => {
+      const listener = (_e: unknown, payload: import('../shared/types').UpdateErrorPayload) => cb(payload)
+      ipcRenderer.on('update:event:error', listener)
+      return () => ipcRenderer.removeListener('update:event:error', listener)
+    },
+  },
 })

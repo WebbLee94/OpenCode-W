@@ -55,4 +55,16 @@ export const IPC_CHANNELS = {
 
   // Session Share — 仅保留会话详情页所需的单条查询
   SESSION_SHARE_GET: 'session-share:get',
+
+  // Update — 版本自动更新（手动模式）
+  UPDATE_CHECK: 'update:check',
+  UPDATE_DOWNLOAD: 'update:download',
+  UPDATE_INSTALL: 'update:install',
+  UPDATE_GET_STATE: 'update:get-state',
+  // 事件：main → renderer，单向推送
+  UPDATE_EVENT_AVAILABLE: 'update:event:available',
+  UPDATE_EVENT_NOT_AVAILABLE: 'update:event:not-available',
+  UPDATE_EVENT_PROGRESS: 'update:event:progress',
+  UPDATE_EVENT_DOWNLOADED: 'update:event:downloaded',
+  UPDATE_EVENT_ERROR: 'update:event:error',
 } as const;

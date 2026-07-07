@@ -350,3 +350,30 @@ export interface ProviderStatsItem {
   tokenCount: number
   totalCost: number
 }
+
+// === 版本更新 ===
+export type UpdateState =
+  | 'idle'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'installing'
+
+export interface UpdateInfo {
+  version: string         // 远端版本号，semver
+  releaseDate: string     // ISO 8601
+  releaseNotes: string    // Markdown
+  sizeBytes: number
+}
+
+export interface UpdateProgress {
+  bytesPerSecond: number
+  percent: number         // 0-100
+  transferred: number
+  total: number
+}
+
+export interface UpdateErrorPayload {
+  code: 'network' | 'ratelimit' | 'no-asset' | 'download-failed' | 'install-failed' | 'unknown'
+  message: string
+}
