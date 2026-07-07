@@ -129,11 +129,11 @@ function registerIpcHandlers() {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.DATABASE_HEALTH, (): IpcResult<{ ok: boolean; pageCount: number; freelistPages: number; walSize: number }> => {
+  ipcMain.handle(IPC_CHANNELS.DATABASE_HEALTH, (): IpcResult<{ ok: boolean; pageCount: number; freelistPages: number; walSize: number; currentPath: string | null }> => {
     try {
       return { success: true, data: DatabaseManager.healthCheck() }
     } catch {
-      return { success: true, data: { ok: false, pageCount: 0, freelistPages: 0, walSize: 0 } }
+      return { success: true, data: { ok: false, pageCount: 0, freelistPages: 0, walSize: 0, currentPath: null } }
     }
   })
 

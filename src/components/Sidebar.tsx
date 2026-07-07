@@ -4,9 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { invokeSafe, isElectron } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 import SidebarGroup from './SidebarGroup'
-import { UpdateBadge } from '@/features/update/UpdateBadge'
 import {
-  LayoutDashboard, MessageSquare, Trash2, HardDrive, FolderSync, Settings as SettingsIcon,
+  LayoutDashboard, MessageSquare, Trash2, HardDrive, Settings as SettingsIcon,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -36,12 +35,6 @@ const navGroups: { label: string; items: NavItemDef[] }[] = [
       { to: '/backup', label: '备份恢复', icon: HardDrive },
     ],
   },
-  {
-    label: '配置',
-    items: [
-      { to: '/settings', label: '设置', icon: SettingsIcon },
-    ],
-  },
 ]
 
 export function Sidebar() {
@@ -61,17 +54,6 @@ export function Sidebar() {
   }, [])
 
   useEffect(() => { checkConnection() }, [checkConnection])
-
-  const handleOpenDatabase = async () => {
-    try {
-      const filePath = await invokeSafe<string>(IPC_CHANNELS.DIALOG_OPEN_FILE)
-      await invokeSafe<{ path: string }>(IPC_CHANNELS.DATABASE_OPEN, filePath)
-      setDbConnected(true)
-      window.location.reload()
-    } catch (err) {
-      console.error('Failed to open database:', err)
-    }
-  }
 
   return (
     <nav className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0 overflow-visible">
@@ -102,7 +84,6 @@ export function Sidebar() {
               >
                 <Icon size={18} />
                 <span className="flex-1">{label}</span>
-                {to === '/settings' && <UpdateBadge />}
               </NavLink>
             ))}
           </SidebarGroup>
@@ -114,13 +95,19 @@ export function Sidebar() {
             <span className={`w-2 h-2 rounded-full shrink-0 ${dbConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
             <span className="truncate">{dbConnected ? '已连接' : '未连接'}</span>
           </div>
-          <button
-            onClick={handleOpenDatabase}
-            title="切换数据源"
-            className="flex items-center justify-center w-8 h-8 rounded-md bg-gray-50 hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700 shrink-0"
+          <NavLink
+            to="/settings"
+            title="设置"
+            className={({ isActive }) =>
+              `flex items-center justify-center w-8 h-8 rounded-md transition-colors shrink-0 ${
+                isActive
+                  ? 'bg-brand-50 text-brand-700'
+                  : 'bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-700'
+              }`
+            }
           >
-            <FolderSync size={14} />
-          </button>
+            <SettingsIcon size={14} />
+          </NavLink>
         </div>
       </div>
     </nav>

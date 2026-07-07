@@ -68,7 +68,7 @@ export class DatabaseManager {
     return this.currentPath
   }
 
-  healthCheck(): { ok: boolean; pageCount: number; freelistPages: number; walSize: number; error?: string } {
+  healthCheck(): { ok: boolean; pageCount: number; freelistPages: number; walSize: number; currentPath: string | null; error?: string } {
     try {
       const db = this.getDb()
       const integrity = db.prepare('PRAGMA integrity_check').get() as { integrity_check: string }
@@ -91,9 +91,10 @@ export class DatabaseManager {
         pageCount,
         freelistPages: freelistCount,
         walSize,
+        currentPath: this.currentPath,
       }
     } catch (error) {
-      return { ok: false, pageCount: 0, freelistPages: 0, walSize: 0, error: (error as Error).message }
+      return { ok: false, pageCount: 0, freelistPages: 0, walSize: 0, currentPath: this.currentPath, error: (error as Error).message }
     }
   }
 
