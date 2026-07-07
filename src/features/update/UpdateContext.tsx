@@ -60,12 +60,17 @@ export function UpdateProvider({ children }: UpdateProviderProps) {
       toast.addToast(`更新检查失败: ${err.message}`, 'error')
       // 错误不改变状态机:用户可重试
     })
+    const offNotAvail = api.onNotAvailable(() => {
+      // 触发场景:packaged 模式下 checkForUpdates() 确认无新版
+      toast.addToast('当前已是最新版本', 'success')
+    })
 
     return () => {
       offAvail()
       offProg()
       offDown()
       offErr()
+      offNotAvail()
     }
   }, [])
 
