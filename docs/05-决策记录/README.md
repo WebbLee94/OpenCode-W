@@ -53,8 +53,9 @@
 
 | 编号 | 标题 | 状态 |
 |------|------|------|
-| 0001 | 选用 Electron 与 React 技术栈 | 已接受 |
-| 0002 | 使用 node:sqlite 替代 better-sqlite3 | 已接受 |
+| 0001 | 选用 Electron 与 React 技术栈 | 已接受（被 0006 取代） |
+| 0002 | 使用 node-sqlite 替代 better-sqlite3 | 已接受（被 0006 取代） |
 | 0003 | 移除分享管理页与全局待办页 | 已接受 |
 | 0004 | 品牌重命名为 OpenCode-W | 已接受 |
-| 0005 | 引入 electron-updater | 已接受 |
+| 0005 | 引入 electron-updater | 已接受（被 0006 取代） |
+| 0006 | 迁移到 Tauri v2 与 Rust 后端 | 已接受 |
