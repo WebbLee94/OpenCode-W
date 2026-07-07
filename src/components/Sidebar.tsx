@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { invokeSafe, isElectron } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 import SidebarGroup from './SidebarGroup'
+import { UpdateBadge } from '@/features/update/UpdateBadge'
 import {
   LayoutDashboard, MessageSquare, Trash2, HardDrive, Settings as SettingsIcon,
   type LucideIcon,
@@ -107,6 +108,7 @@ export function Sidebar() {
             }
           >
             <SettingsIcon size={14} />
+            <UpdateBadge />
           </NavLink>
         </div>
       </div>

@@ -40,7 +40,8 @@ describe('Sidebar', () => {
   it('renders navigation labels', () => {
     renderWithContext('idle')
     expect(screen.getByText('仪表盘')).toBeTruthy()
-    expect(screen.getByText('设置')).toBeTruthy()
+    expect(screen.getByText('会话浏览')).toBeTruthy()
+    expect(screen.getByRole('link', { name: '设置' })).toBeTruthy()
   })
 
   it('shows red dot when update is available', () => {
@@ -51,5 +52,15 @@ describe('Sidebar', () => {
   it('hides red dot when idle', () => {
     renderWithContext('idle')
     expect(screen.queryByLabelText('有可用更新')).toBeNull()
+  })
+
+  it('hides red dot when downloading', () => {
+    renderWithContext('downloading')
+    expect(screen.queryByLabelText('有可用更新')).toBeNull()
+  })
+
+  it('shows red dot when downloaded', () => {
+    renderWithContext('downloaded')
+    expect(screen.getByLabelText('有可用更新')).toBeTruthy()
   })
 })
