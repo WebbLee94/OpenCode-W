@@ -35,7 +35,7 @@ import PaginationBar from '../../components/PaginationBar'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const DEFAULT_PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 
 const TOKEN_PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
