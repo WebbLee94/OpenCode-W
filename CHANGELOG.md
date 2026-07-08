@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **纯 Rust 数据库层**：所有 SQL 操作通过 Rust 端 `rusqlite` 同步 API 执行，命令模块结构保持不变但使用 Tauri 命令宏注册（`#[tauri::command]`）。
 - **单一 Binary Crate**：合并 `lib.rs` → `main.rs`，省略 `[lib]` 目标以绕过 macOS arm64 上 LLVM 归档器 `.rlib` 静态打包 bug。
 - **macOS 安装包发布模式变更**：`tauri build --bundles dmg` 输出 `.dmg` 格式，不再使用 `electron-builder` 的 `.dmg` 生成流程。
+- **数据库连接池优化**：引入 `r2d2` + `r2d2_sqlite` 连接池，替换原有的 `Arc<Mutex<Option<Connection>>>` 嵌套锁模式，提升并发查询性能。
+- **异步命令改造**：35+ 个同步命令改为 `async fn` + `spawn_blocking`，避免阻塞 Tauri 主线程导致 UI 卡顿。
+
+### ⚡ Added｜新增能力
+
+- **Dashboard 按 Tab 懒加载**：概览/统计/趋势三个 Tab 仅加载当前可见 Tab 的数据，大幅降低首屏加载时间。
+- **r2d2 数据库连接池**：支持连接复用与并发访问，合并 Dashboard 计数查询减少数据库调用次数。
+- **GitHub Actions CI 完整适配**：添加 Rust 工具链配置、`cargo check`、`cargo clippy` 校验步骤。
 
 ### 🐛 Fixed｜问题修复（升级即可受益）
 
@@ -23,17 +31,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **测试修正**：`errorClassifier.test.ts` 中 2 个测试期望值从 `unknown` 更新为 `no-asset`，1 处消息文本同步修正。
 - **TypeScript 配置清理**：移除已废弃的 `baseUrl` 配置项，`tsc --noEmit` 通过。
 - **测试范围修正**：`vite.config.ts` 中 vitest `include` / `exclude` 限定为 `src/**/*.{test,spec}.*`，不再尝试运行 e2e 测试。
+- **IPC 命令名转换修复**：camelCase 和连字符完整转换为 snake_case，确保命令正确匹配。
+- **Dialog 阻塞问题修复**：使用 `tokio::sync::oneshot` channel 将回调式 API 转换为 async，避免切换数据源时应用卡死。
+- **检查更新失败修复**：完善错误分类逻辑，`no-asset` 状态正确显示"暂无可用的更新"而非报错。
+- **Lint 错误修复**：移除 `e2e/console-errors.spec.ts` 未使用的 `expect` 导入；为 `UpdateContext` 的 `useCallback` 添加缺失的 `toast` 依赖。
+- **构建命令修复**：`tauri:build` 脚本改为先执行 `npm run build` 再调用 `tauri build`，确保前端资源已生成。
+- **Ubuntu 构建依赖修复**：更新系统依赖安装命令，使用 `libwebkit2gtk-4.1-dev` 替代过时的 `libwebkit2gtk-4.0-dev`。
+- **更新签名公钥修复**：移除 `tauri.conf.json` 中空字符串的 `pubkey` 字段，修复构建时公钥解析失败问题。
 
 ### 🧹 Cleanup｜代码清理
 
 - **移除 `isElectron` 别名**：`src/lib/ipc.ts` 中已无活跃引用的 `isElectron` 导出。
+- **移除 Electron 主入口配置**：删除 `package.json` 中的 `"main": "src-tauri/target/release/opencode-w"` 字段。
 - **GitHub Actions CI 更新**：CI 流程从 Electron 构建切换为 Tauri v2 构建矩阵。
+- **Issue 模板更新**：将"Electron版本"字段更新为"Tauri版本"。
 
 ### 🛠️ Technical｜技术细节
 
 - Rust toolchain: `rustc 1.96.1`（推荐，最低 1.77.2）
 - 前端开发：`npm run dev` 仅启动 Vite；`npm run tauri:dev` 启动完整 Tauri 开发模式
 - 打包：`npm run tauri:build`（macOS 输出 `.dmg`，也可指定 `--bundles`）
+- IPC 调用：命令名自动转换为 snake_case（如 `dashboard:overview` → `dashboard_overview`）
+- Serde 序列化：使用 `rename_all = "camelCase"` 确保前后端参数命名一致
 
 ### ⚠️ 升级注意事项
 
