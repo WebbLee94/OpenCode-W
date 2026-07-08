@@ -1,9 +1,10 @@
 /**
  * UpdateContext —— 全局更新状态
- * 在 App 顶层挂载,自动订阅 IPC 事件
+ * 使用 @tauri-apps/plugin-updater 替代 Electron autoUpdater
  */
 import { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { isElectron } from '@/lib/ipc'
+import { check as checkUpdate } from '@tauri-apps/plugin-updater'
+import { isTauri } from '@/lib/ipc'
 import { useToast } from '@/hooks/useToast'
 import { classifyUpdateError } from './errorClassifier'
 import { isValidTransition } from './stateMachine'
@@ -30,83 +31,55 @@ export function UpdateProvider({ children }: UpdateProviderProps) {
   const stateRef = useRef<UpdateState>('idle')
   const toast = useToast()
 
-  // 同步 ref 供事件回调内访问最新 state
   useEffect(() => { stateRef.current = state }, [state])
 
-  useEffect(() => {
-    if (!isElectron() || !window.electronAPI?.update) return
-
-    const api = window.electronAPI.update
-    const offAvail = api.onAvailable((payload) => {
-      if (isValidTransition(stateRef.current, 'available')) {
+  const handleCheck = useCallback(async () => {
+    if (!isTauri()) return
+    setIsChecking(true)
+    setError(null)
+    try {
+      const update = await checkUpdate()
+      if (update) {
         stateRef.current = 'available'
         setState('available')
-        setInfo(payload)
-        setError(null)
+        setInfo({
+          version: update.version,
+          releaseDate: update.date ?? '',
+          releaseNotes: update.body ?? '',
+          sizeBytes: 0,
+        })
+      } else {
+        toast.addToast('当前已是最新版本', 'success')
       }
-    })
-    const offProg = api.onProgress((p) => {
-      setProgress(p)
-    })
-    const offDown = api.onDownloaded((payload) => {
-      if (isValidTransition(stateRef.current, 'downloaded')) {
-        stateRef.current = 'downloaded'
-        setState('downloaded')
-        setInfo(payload)
-      }
-    })
-    const offErr = api.onError((err) => {
-      setError(err)
-      toast.addToast(`更新检查失败: ${err.message}`, 'error')
-      // 错误不改变状态机:用户可重试
-    })
-    const offNotAvail = api.onNotAvailable(() => {
-      // 触发场景:packaged 模式下 checkForUpdates() 确认无新版
-      toast.addToast('当前已是最新版本', 'success')
-    })
-
-    return () => {
-      offAvail()
-      offProg()
-      offDown()
-      offErr()
-      offNotAvail()
-    }
-  }, [])
-
-  const check = useCallback(async () => {
-    if (!isElectron() || !window.electronAPI?.update) return
-    setIsChecking(true)
-    try {
-      const result = await window.electronAPI.update.check() as { success: boolean; data?: { skipped?: boolean } }
-      if (result.data?.skipped) {
-        // dev 模式:主进程直接返回 skipped=true,不会触发 update-available/not-available
-        toast.addToast('开发模式已跳过检查，请使用打包后版本验证', 'info')
-      } else if (!result.success) {
-        setError(classifyUpdateError(new Error('check failed')))
-        toast.addToast('检查更新失败', 'error')
-      }
-      // success && !skipped:等待 update-available 或 update-not-available 事件给出反馈
     } catch (err) {
-      setError(classifyUpdateError(err))
-      toast.addToast('检查更新失败', 'error')
+      console.error('检查更新错误:', err)
+      const classified = classifyUpdateError(err)
+      if (classified.code === 'network') {
+        toast.addToast(classified.message, 'error')
+      } else {
+        toast.addToast(classified.message, 'info')
+      }
     } finally {
       setIsChecking(false)
     }
   }, [])
 
-  const download = useCallback(async () => {
-    if (!isElectron() || !window.electronAPI?.update) return
+  const handleDownload = useCallback(async () => {
+    if (!isTauri()) return
     if (!isValidTransition(stateRef.current, 'downloading')) return
     stateRef.current = 'downloading'
     setState('downloading')
-    setProgress(null)
+    setProgress({ bytesPerSecond: 0, percent: 0, transferred: 0, total: 0 })
     try {
-      const result = await window.electronAPI.update.download() as { success: boolean; error?: string }
-      if (!result.success) {
-        setError(classifyUpdateError(new Error(result.error ?? 'download failed')))
-        stateRef.current = 'available'
-        setState('available')
+      const update = await checkUpdate()
+      if (update) {
+        setProgress({ bytesPerSecond: 0, percent: 50, transferred: 0, total: 0 })
+        await update.downloadAndInstall()
+        setProgress({ bytesPerSecond: 0, percent: 100, transferred: 0, total: 0 })
+        stateRef.current = 'downloaded'
+        setState('downloaded')
+      } else {
+        throw new Error('更新已不可用，请重新检查')
       }
     } catch (err) {
       setError(classifyUpdateError(err))
@@ -115,16 +88,26 @@ export function UpdateProvider({ children }: UpdateProviderProps) {
     }
   }, [])
 
-  const install = useCallback(async () => {
-    if (!isElectron() || !window.electronAPI?.update) return
+  const handleInstall = useCallback(async () => {
+    if (!isTauri()) return
     if (!isValidTransition(stateRef.current, 'installing')) return
     stateRef.current = 'installing'
     setState('installing')
-    await window.electronAPI.update.install()
+    try {
+      const { relaunch } = await import('@tauri-apps/plugin-process')
+      await relaunch()
+    } catch {
+      toast.addToast('重启失败，请手动启动应用', 'error')
+    }
   }, [])
 
   return (
-    <UpdateContext.Provider value={{ state, info, progress, error, isChecking, check, download, install }}>
+    <UpdateContext.Provider value={{
+      state, info, progress, error, isChecking,
+      check: handleCheck,
+      download: handleDownload,
+      install: handleInstall,
+    }}>
       {children}
     </UpdateContext.Provider>
   )

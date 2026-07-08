@@ -13,7 +13,8 @@ export function formatBytes(bytes: number, decimals = 1): string {
 /**
  * Format number with locale-aware separators
  */
-export function formatNumber(num: number): string {
+export function formatNumber(num: number | undefined | null): string {
+  if (num == null || isNaN(num)) return '0'
   return num.toLocaleString()
 }
 

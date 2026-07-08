@@ -2,11 +2,21 @@
  * 设置页 - 版本更新区
  * 展示当前版本 + 上次检查时间 + 检查更新按钮
  */
+import { useEffect, useState } from 'react'
+import { getVersion } from '@tauri-apps/api/app'
+import { isTauri } from '@/lib/ipc'
 import { useUpdateStatus } from '@/features/update/useUpdateStatus'
 import { RefreshCw, Loader2, CheckCircle2 } from 'lucide-react'
 
 export function UpdateSection() {
-  const { state, info, error, isChecking, check } = useUpdateStatus()
+  const { state, info, isChecking, check } = useUpdateStatus()
+  const [currentVersion, setCurrentVersion] = useState('—')
+
+  useEffect(() => {
+    if (isTauri()) {
+      getVersion().then(v => setCurrentVersion(`v${v}`)).catch(() => {})
+    }
+  }, [])
 
   return (
     <section className="bg-white rounded-lg border border-gray-200 p-6">
@@ -14,7 +24,7 @@ export function UpdateSection() {
       <div className="space-y-3 text-sm">
         <div className="flex justify-between">
           <span className="text-gray-500">当前版本</span>
-          <span className="text-gray-900 font-medium">v1.2.1</span>
+          <span className="text-gray-900 font-medium">{currentVersion}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">最新版本</span>
@@ -22,9 +32,6 @@ export function UpdateSection() {
             {info ? `v${info.version}` : '—'}
           </span>
         </div>
-        {error && (
-          <div className="text-red-600 text-xs bg-red-50 p-2 rounded">{error.message}</div>
-        )}
         <button
           onClick={check}
           disabled={isChecking || state === 'downloading' || state === 'installing'}

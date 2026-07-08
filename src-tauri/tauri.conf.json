@@ -1,0 +1,66 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "OpenCode-W",
+  "version": "1.3.0",
+  "identifier": "com.webb.opencode-w",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "vite"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "hardenedRuntime": true,
+      "minimumSystemVersion": "10.13"
+    },
+    "windows": {
+      "nsis": null,
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    },
+    "linux": {
+      "appimage": {},
+      "deb": {}
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [
+        "https://github.com/WebbLee94/OpenCode-W/releases/latest/download/latest-mac.yml",
+        "https://github.com/WebbLee94/OpenCode-W/releases/latest/download/latest.yml",
+        "https://github.com/WebbLee94/OpenCode-W/releases/latest/download/latest-linux.yml"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

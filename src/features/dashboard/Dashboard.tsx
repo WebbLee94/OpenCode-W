@@ -164,6 +164,11 @@ function Dashboard() {
   const [loading, setLoading] = useState(!dashboardCache)
   const [fastLoading, setFastLoading] = useState(!dashboardCache?.dbStats)
   const [slowLoading, setSlowLoading] = useState(!dashboardCache?.toolRanking?.length && !dashboardCache?.skillUsage?.length)
+  // 按 tab 懒加载：stats / trends 数据是否已在当前时间范围下加载完成
+  // 切换时间范围或刷新时重置为 false，切换 tab 时按需触发加载
+  const [statsLoaded, setStatsLoaded] = useState<boolean>(!!(dashboardCache?.toolRanking?.length || dashboardCache?.skillUsage?.length))
+  const [trendsLoaded, setTrendsLoaded] = useState<boolean>(!!(dashboardCache?.sessionTrend?.length || dashboardCache?.costTrend?.length || dashboardCache?.messageTrend?.length))
+  const [trendsLoading, setTrendsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -203,7 +208,7 @@ function Dashboard() {
     const [stats, tokens, groupData, health] = await Promise.all([
       invokeSafe<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW, tr),
       invokeSafe<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS, tr),         // no groupBy → TokenStats
-      invokeSafe<TokenGroupDataPoint[]>(IPC_CHANNELS.DASHBOARD_TOKENS, tr, gb),  // with groupBy → grouped data
+      invokeSafe<TokenGroupDataPoint[]>(IPC_CHANNELS.DASHBOARD_TOKENS, { ...(tr || {}), groupBy: gb }),  // with groupBy → grouped data
       invokeSafe<{ ok: boolean; pageCount: number; freelistPages: number; walSize: number }>(IPC_CHANNELS.DATABASE_HEALTH),
     ])
     setDbStats(stats)
@@ -223,38 +228,54 @@ function Dashboard() {
     return { stats, tokens, groupData, dbHealth: nextHealth }
   }, [])
 
-  // ── Load slow data (tools + skills + 3 new trends) ──────────────
+  // ── Load stats data (tools + skills + models + providers) ────────
+  // 仅在切换到"统计"tab 时按需加载，避免初始加载和切换时间范围时的不必要开销
   const loadSlowData = useCallback(async (tr: TimeRange | undefined) => {
     setSlowLoading(true)
-    const [tools, skills, models, providers, sessionTr, costTr, msgTr] = await Promise.all([
+    const [tools, skills, models, providers] = await Promise.all([
       invokeSafe<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, tr),
       invokeSafe<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE, tr),
       invokeSafe<ModelRankingItem[]>(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, tr).catch(() => [] as ModelRankingItem[]),
       invokeSafe<ProviderStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, tr).catch(() => [] as ProviderStatsItem[]),
-      invokeSafe<SessionTrendItem[]>(IPC_CHANNELS.DASHBOARD_SESSION_TREND, tr, rootOnly).catch(() => [] as SessionTrendItem[]),
-      invokeSafe<CostTrendItem[]>(IPC_CHANNELS.DASHBOARD_COST_TREND, tr).catch(() => [] as CostTrendItem[]),
-      invokeSafe<MessageTrendItem[]>(IPC_CHANNELS.DASHBOARD_MESSAGE_TREND, tr).catch(() => [] as MessageTrendItem[]),
     ])
     setToolRanking(tools ?? [])
     setSkillUsage(skills ?? [])
     setModelRanking(models ?? [])
     setProviderStats(providers ?? [])
-    setSessionTrend(sessionTr ?? [])
-    setCostTrend(costTr ?? [])
-    setMessageTrend(msgTr ?? [])
     setSlowLoading(false)
+    setStatsLoaded(true)
     return {
       tools: tools ?? [],
       skills: skills ?? [],
       models: models ?? [],
       providers: providers ?? [],
+    }
+  }, [])
+
+  // ── Load trends data (session + cost + message trends) ───────────
+  // 仅在切换到"趋势"tab 时按需加载
+  const loadTrendsData = useCallback(async (tr: TimeRange | undefined) => {
+    setTrendsLoading(true)
+    const [sessionTr, costTr, msgTr] = await Promise.all([
+      invokeSafe<SessionTrendItem[]>(IPC_CHANNELS.DASHBOARD_SESSION_TREND, tr, rootOnly).catch(() => [] as SessionTrendItem[]),
+      invokeSafe<CostTrendItem[]>(IPC_CHANNELS.DASHBOARD_COST_TREND, tr).catch(() => [] as CostTrendItem[]),
+      invokeSafe<MessageTrendItem[]>(IPC_CHANNELS.DASHBOARD_MESSAGE_TREND, tr).catch(() => [] as MessageTrendItem[]),
+    ])
+    setSessionTrend(sessionTr ?? [])
+    setCostTrend(costTr ?? [])
+    setMessageTrend(msgTr ?? [])
+    setTrendsLoading(false)
+    setTrendsLoaded(true)
+    return {
       sessionTrend: sessionTr ?? [],
       costTrend: costTr ?? [],
       messageTrend: msgTr ?? [],
     }
   }, [rootOnly])
 
-  // ── Load all data with async groups ──────────────────────────────
+  // ── Load overview data only (懒加载策略) ─────────────────────────
+  // 首次加载 / 切换数据库 / VACUUM/Checkpoint 后只加载 overview tab 所需数据
+  // stats / trends 数据在切换到对应 tab 时按需加载
   const loadAllData = useCallback(async (forceRefresh = false) => {
     // Use cache if available and not forcing refresh
     if (dashboardCache && !forceRefresh) {
@@ -269,71 +290,97 @@ function Dashboard() {
       setGroupBy(dashboardCache.groupBy)
       setModelRanking(dashboardCache.modelRanking ?? [])
       setProviderStats(dashboardCache.providerStats ?? [])
+      setSessionTrend(dashboardCache.sessionTrend ?? [])
+      setCostTrend(dashboardCache.costTrend ?? [])
+      setMessageTrend(dashboardCache.messageTrend ?? [])
+      setStatsLoaded(!!(dashboardCache.toolRanking?.length || dashboardCache.skillUsage?.length))
+      setTrendsLoaded(!!(dashboardCache.sessionTrend?.length || dashboardCache.costTrend?.length || dashboardCache.messageTrend?.length))
       setFastLoading(false)
       setSlowLoading(false)
-      // Don't return — still refresh Route B data below
+      setTrendsLoading(false)
+      return
     }
 
     setError(null)
     try {
-      // Run fast and slow data loading in parallel to prevent UI freeze
-      const [fastResult, slowResult] = await Promise.all([
-        loadFastData(timeRange, groupBy),
-        loadSlowData(timeRange),
-      ])
+      // 只加载 overview tab 所需的 fast data
+      // stats / trends 数据按 tab 切换时懒加载
+      const fastResult = await loadFastData(timeRange, groupBy)
 
-      // Update cache
       dashboardCache = {
         dbStats: fastResult.stats,
         tokenStats: fastResult.tokens,
         tokenGroupData: fastResult.groupData,
-        toolRanking: slowResult.tools,
-        skillUsage: slowResult.skills,
+        toolRanking: dashboardCache?.toolRanking ?? [],
+        skillUsage: dashboardCache?.skillUsage ?? [],
         dbHealth: fastResult.dbHealth,
         timeRange,
         timePreset,
         groupBy,
-        modelRanking: slowResult.models,
-        providerStats: slowResult.providers,
-        sessionTrend: slowResult.sessionTrend,
-        costTrend: slowResult.costTrend,
-        messageTrend: slowResult.messageTrend,
+        modelRanking: dashboardCache?.modelRanking ?? [],
+        providerStats: dashboardCache?.providerStats ?? [],
+        sessionTrend: dashboardCache?.sessionTrend ?? [],
+        costTrend: dashboardCache?.costTrend ?? [],
+        messageTrend: dashboardCache?.messageTrend ?? [],
+      }
+      // 强制刷新时重置 stats / trends 加载状态，让 tab 切换 effect 重新加载
+      if (forceRefresh) {
+        setStatsLoaded(false)
+        setTrendsLoaded(false)
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
     }
-  }, [loadFastData, loadSlowData, timeRange, groupBy, timePreset])
+  }, [loadFastData, timeRange, groupBy, timePreset])
 
-  // ── Refresh handler (force reload) ───────────────────────────────
+  // ── Refresh handler (只刷新当前 tab 数据) ────────────────────────
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
+    setError(null)
     try {
-      const [fastResult, slowResult] = await Promise.all([
-        loadFastData(timeRange, groupBy),
-        loadSlowData(timeRange),
-      ])
+      // 始终刷新 overview（fast data）
+      const fastResult = await loadFastData(timeRange, groupBy)
+
+      // 根据当前 tab 刷新对应数据，并重置其他 tab 的 loaded 状态
+      // loadSlowData / loadTrendsData 返回最新数据用于缓存
+      let statsResult: { tools: ToolRanking[]; skills: SkillUsage[]; models: ModelRankingItem[]; providers: ProviderStatsItem[] } | null = null
+      let trendsResult: { sessionTrend: SessionTrendItem[]; costTrend: CostTrendItem[]; messageTrend: MessageTrendItem[] } | null = null
+      if (dashboardTab === 'stats') {
+        statsResult = await loadSlowData(timeRange)
+        setTrendsLoaded(false)
+      } else if (dashboardTab === 'trends') {
+        trendsResult = await loadTrendsData(timeRange)
+        setStatsLoaded(false)
+      } else {
+        // overview tab：重置 stats / trends loaded 状态，切换时再加载
+        setStatsLoaded(false)
+        setTrendsLoaded(false)
+        setSlowLoading(false)
+        setTrendsLoading(false)
+      }
+
       dashboardCache = {
         dbStats: fastResult.stats,
         tokenStats: fastResult.tokens,
         tokenGroupData: fastResult.groupData,
-        toolRanking: slowResult.tools,
-        skillUsage: slowResult.skills,
+        toolRanking: statsResult?.tools ?? (dashboardCache?.toolRanking ?? []),
+        skillUsage: statsResult?.skills ?? (dashboardCache?.skillUsage ?? []),
         dbHealth: fastResult.dbHealth,
         timeRange,
         timePreset,
         groupBy,
-        modelRanking: slowResult.models,
-        providerStats: slowResult.providers,
-        sessionTrend: slowResult.sessionTrend,
-        costTrend: slowResult.costTrend,
-        messageTrend: slowResult.messageTrend,
+        modelRanking: statsResult?.models ?? (dashboardCache?.modelRanking ?? []),
+        providerStats: statsResult?.providers ?? (dashboardCache?.providerStats ?? []),
+        sessionTrend: trendsResult?.sessionTrend ?? (dashboardCache?.sessionTrend ?? []),
+        costTrend: trendsResult?.costTrend ?? (dashboardCache?.costTrend ?? []),
+        messageTrend: trendsResult?.messageTrend ?? (dashboardCache?.messageTrend ?? []),
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to refresh dashboard data')
     } finally {
       setRefreshing(false)
     }
-  }, [loadFastData, loadSlowData, timeRange, groupBy, timePreset])
+  }, [loadFastData, loadSlowData, loadTrendsData, timeRange, groupBy, timePreset, dashboardTab])
 
   // ── Initial connection check ─────────────────────────────────────
   useEffect(() => {
@@ -351,10 +398,16 @@ function Dashboard() {
         setGroupBy(dashboardCache.groupBy)
         setModelRanking(dashboardCache.modelRanking ?? [])
         setProviderStats(dashboardCache.providerStats ?? [])
+        setSessionTrend(dashboardCache.sessionTrend ?? [])
+        setCostTrend(dashboardCache.costTrend ?? [])
+        setMessageTrend(dashboardCache.messageTrend ?? [])
+        setStatsLoaded(!!(dashboardCache.toolRanking?.length || dashboardCache.skillUsage?.length))
+        setTrendsLoaded(!!(dashboardCache.sessionTrend?.length || dashboardCache.costTrend?.length || dashboardCache.messageTrend?.length))
         setConnected(true)
         setLoading(false)
         setFastLoading(false)
         setSlowLoading(false)
+        setTrendsLoading(false)
         hasLoadedRef.current = true
         return
       }
@@ -376,6 +429,20 @@ function Dashboard() {
     }
     init()
   }, [loadAllData])
+
+  // ── Tab 切换懒加载 ───────────────────────────────────────────────
+  // 切换到"统计"/"趋势"tab 时，若对应数据未加载则按需触发加载
+  // 避免初始加载和切换时间范围时的不必要开销
+  useEffect(() => {
+    if (!connected) return
+    if (dashboardTab === 'stats' && !statsLoaded) {
+      // 直接加载，由 loadSlowData 内部管理 slowLoading 状态
+      loadSlowData(timeRange)
+    } else if (dashboardTab === 'trends' && !trendsLoaded) {
+      // 直接加载，由 loadTrendsData 内部管理 trendsLoading 状态
+      loadTrendsData(timeRange)
+    }
+  }, [dashboardTab, statsLoaded, trendsLoaded, connected, timeRange, loadSlowData, loadTrendsData])
 
   // ── Connect to a database ────────────────────────────────────────
   const handleConnect = useCallback(async () => {
@@ -471,74 +538,88 @@ function Dashboard() {
     return `${fmt(prevTR.startDate)}~${fmt(prevTR.endDate)}`
   }, [timeRange])
 
-  // ── Time range change handler ──────────────────────────────────
+  // ── Time range change handler (只重新加载当前 tab 数据) ──────────
   const handleTimePresetChange = useCallback(async (days: TimePreset) => {
     setTimePreset(days)
     const tr = computeTimeRange(days, customStart, customEnd)
     setTimeRange(tr)
     dashboardCache = null
-    // Directly load with new params (state updates are async, so pass computed values)
+    // 时间范围变化：所有 tab 的数据都需要重新加载（但按 tab 懒加载）
     setFastLoading(true)
-    setSlowLoading(true)
+    setSlowLoading(dashboardTab === 'stats')
+    setTrendsLoading(dashboardTab === 'trends')
+    setStatsLoaded(false)
+    setTrendsLoaded(false)
     setError(null)
     try {
-      const [fastResult, slowResult] = await Promise.all([
-        loadFastData(tr, groupBy),
-        loadSlowData(tr),
-      ])
+      // 始终加载 overview（fast data）
+      const fastResult = await loadFastData(tr, groupBy)
+
+      // 根据当前 tab 加载对应数据
+      let statsResult: { tools: ToolRanking[]; skills: SkillUsage[]; models: ModelRankingItem[]; providers: ProviderStatsItem[] } | null = null
+      let trendsResult: { sessionTrend: SessionTrendItem[]; costTrend: CostTrendItem[]; messageTrend: MessageTrendItem[] } | null = null
+      if (dashboardTab === 'stats') {
+        statsResult = await loadSlowData(tr)
+      } else if (dashboardTab === 'trends') {
+        trendsResult = await loadTrendsData(tr)
+      } else {
+        setSlowLoading(false)
+        setTrendsLoading(false)
+      }
+
       dashboardCache = {
         dbStats: fastResult.stats,
         tokenStats: fastResult.tokens,
         tokenGroupData: fastResult.groupData,
-        toolRanking: slowResult.tools,
-        skillUsage: slowResult.skills,
+        toolRanking: statsResult?.tools ?? [],
+        skillUsage: statsResult?.skills ?? [],
         dbHealth: fastResult.dbHealth,
         timeRange: tr,
         timePreset: days,
         groupBy,
-        modelRanking: slowResult.models,
-        providerStats: slowResult.providers,
-        sessionTrend: slowResult.sessionTrend,
-        costTrend: slowResult.costTrend,
-        messageTrend: slowResult.messageTrend,
+        modelRanking: statsResult?.models ?? [],
+        providerStats: statsResult?.providers ?? [],
+        sessionTrend: trendsResult?.sessionTrend ?? [],
+        costTrend: trendsResult?.costTrend ?? [],
+        messageTrend: trendsResult?.messageTrend ?? [],
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
     }
-  }, [loadFastData, loadSlowData, groupBy, customStart, customEnd])
+  }, [loadFastData, loadSlowData, loadTrendsData, groupBy, customStart, customEnd, dashboardTab])
 
-  // ── GroupBy change handler ─────────────────────────────────────
+  // ── GroupBy change handler (只影响 tokenGroupData，无需加载 stats/trends) ──
   const handleGroupByChange = useCallback(async (gb: GroupBy) => {
     setGroupBy(gb)
+    // 保存当前缓存（stats / trends 数据不依赖 groupBy，可保留）
+    const prevCache = dashboardCache
     dashboardCache = null
     setFastLoading(true)
-    setSlowLoading(true)
     setError(null)
     try {
-      const [fastResult, slowResult] = await Promise.all([
-        loadFastData(timeRange, gb),
-        loadSlowData(timeRange),
-      ])
+      // groupBy 只影响 tokenGroupData（fast data 的一部分）
+      // stats / trends 数据不依赖 groupBy，无需重新加载
+      const fastResult = await loadFastData(timeRange, gb)
       dashboardCache = {
         dbStats: fastResult.stats,
         tokenStats: fastResult.tokens,
         tokenGroupData: fastResult.groupData,
-        toolRanking: slowResult.tools,
-        skillUsage: slowResult.skills,
+        toolRanking: prevCache?.toolRanking ?? [],
+        skillUsage: prevCache?.skillUsage ?? [],
         dbHealth: fastResult.dbHealth,
         timeRange,
         timePreset,
         groupBy: gb,
-        modelRanking: slowResult.models,
-        providerStats: slowResult.providers,
-        sessionTrend: slowResult.sessionTrend,
-        costTrend: slowResult.costTrend,
-        messageTrend: slowResult.messageTrend,
+        modelRanking: prevCache?.modelRanking ?? [],
+        providerStats: prevCache?.providerStats ?? [],
+        sessionTrend: prevCache?.sessionTrend ?? [],
+        costTrend: prevCache?.costTrend ?? [],
+        messageTrend: prevCache?.messageTrend ?? [],
       }
     } catch (err) {
       setError((err as Error).message || 'Failed to load dashboard data')
     }
-  }, [loadFastData, loadSlowData, timeRange, timePreset])
+  }, [loadFastData, timeRange, timePreset])
 
   // ── 对比上期：拉取 session/cost/message 三个趋势的上期数据 ─────
   const anyNewCompareOn = showSessionCompare || showCostCompare || showMessageCompare
@@ -985,7 +1066,6 @@ function Dashboard() {
                       <Line type="monotone" dataKey="outputTokens" name="输出" stroke="#10B981" strokeWidth={2} dot={false} />
                       <Line type="monotone" dataKey="reasoningTokens" name="推理" stroke="#8B5CF6" strokeWidth={2} dot={false} />
                       <Line type="monotone" dataKey="cacheRead" name="缓存读" stroke="#F59E0B" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
-                      <Line type="monotone" dataKey="cacheWrite" name="缓存写" stroke="#F43F5E" strokeWidth={1.5} dot={false} strokeDasharray="4 3" />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -1014,7 +1094,11 @@ function Dashboard() {
               </label>
             </div>
             <div className="bg-white rounded-lg border border-gray-200 p-5 flex-1 flex flex-col">
-              {costTrend.length > 0 ? (
+              {trendsLoading ? (
+                <div className="h-40 flex items-center justify-center">
+                  <Loader2 size={20} className="text-brand-400 animate-spin" />
+                </div>
+              ) : costTrend.length > 0 ? (
                 <div className="h-40">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={mergedCostTrend}>
@@ -1079,7 +1163,11 @@ function Dashboard() {
               </label>
             </div>
             <div className="bg-white rounded-lg border border-gray-200 p-5 flex-1 flex flex-col">
-              {sessionTrend.length > 0 ? (
+              {trendsLoading ? (
+                <div className="h-40 flex items-center justify-center">
+                  <Loader2 size={20} className="text-brand-400 animate-spin" />
+                </div>
+              ) : sessionTrend.length > 0 ? (
                 <div className="h-40">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
@@ -1131,7 +1219,11 @@ function Dashboard() {
               </label>
             </div>
             <div className="bg-white rounded-lg border border-gray-200 p-5 flex-1 flex flex-col">
-              {messageTrend.length > 0 ? (
+              {trendsLoading ? (
+                <div className="h-40 flex items-center justify-center">
+                  <Loader2 size={20} className="text-brand-400 animate-spin" />
+                </div>
+              ) : messageTrend.length > 0 ? (
                 <div className="h-40">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={mergedMessageTrend}>
@@ -1230,7 +1322,6 @@ function Dashboard() {
                         width={120}
                         tick={{ fontSize: 11 }}
                         stroke="#9ca3af"
-                        interval={0}
                       />
                       <Tooltip
                         contentStyle={{

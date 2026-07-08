@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { BackupDTO, BackupPreviewDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
-import { invokeSafe } from '../../lib/ipc'
+import { invokeSafe, isTauri } from '../../lib/ipc'
 import { formatBytes, formatNumber, formatRelativeTime } from '../../lib/format'
 import PageHeader from '../../components/PageHeader'
 import { HardDrive, Archive, Trash2, RotateCcw, Download, Upload, AlertTriangle, Check, X, Clock } from 'lucide-react'
@@ -29,6 +29,10 @@ function Backup() {
 
   // ─── Load backups on mount ──────────────────────────────────────────────
   const loadBackups = async () => {
+    if (!isTauri()) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setListError(null)
     try {

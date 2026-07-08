@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router'
 import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShareDTO } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe, openExternal } from '../../lib/ipc'
+import { open as showDialog } from '@tauri-apps/plugin-dialog'
 import { formatBytes, formatNumber, formatRelativeTime, truncateText } from '../../lib/format'
 import { useToast } from '../../hooks/useToast'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -359,10 +360,9 @@ const listRef = useRef<HTMLDivElement>(null)
   }
 
   async function handleBatchMove() {
-    if (!window.electronAPI?.openDirectoryDialog) { addToast('仅 Electron 环境可用', 'error'); return }
-    const res = await window.electronAPI.openDirectoryDialog()
-    if (!res.success || !res.data) return
-    setBatchMovePath(res.data)
+    const selected = await showDialog({ directory: true, multiple: false, title: '选择目标目录' })
+    if (!selected) return
+    setBatchMovePath(selected as string)
     setShowBatchMove(true)
   }
 

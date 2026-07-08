@@ -3,7 +3,7 @@
  * 显示当前数据库连接状态 + 切换数据源按钮
  */
 import { useState, useEffect, useCallback } from 'react'
-import { invokeSafe, isElectron } from '@/lib/ipc'
+import { invokeSafe, isTauri } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 import { Database, FolderSync, Loader2 } from 'lucide-react'
 
@@ -13,7 +13,7 @@ export function DataSourceSection() {
   const [switching, setSwitching] = useState(false)
 
   const refreshStatus = useCallback(async () => {
-    if (!isElectron()) {
+    if (!isTauri()) {
       setDbConnected(false)
       setDbPath('')
       return
@@ -28,16 +28,27 @@ export function DataSourceSection() {
     }
   }, [])
 
-  useEffect(() => { refreshStatus() }, [refreshStatus])
+  useEffect(() => {
+    refreshStatus()
+    // 当窗口重新获得焦点时刷新状态（解决启动时序竞争问题）
+    const onFocus = () => refreshStatus()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refreshStatus])
 
   const handleSwitch = async () => {
     try {
       setSwitching(true)
-      const filePath = await invokeSafe<string>(IPC_CHANNELS.DIALOG_OPEN_FILE)
-      await invokeSafe<{ path: string }>(IPC_CHANNELS.DATABASE_OPEN, filePath)
+      // dialog_open_file 返回 Option<String>，用户取消时为 null
+      const filePath = await invokeSafe<string | null>(IPC_CHANNELS.DIALOG_OPEN_FILE)
+      if (!filePath) {
+        // 用户取消了选择
+        return
+      }
+      await invokeSafe<string>(IPC_CHANNELS.DATABASE_OPEN, filePath)
       window.location.reload()
-    } catch {
-      // 用户取消选择，不做处理
+    } catch (err) {
+      console.error('切换数据源失败:', err)
     } finally {
       setSwitching(false)
     }

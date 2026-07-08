@@ -9,7 +9,7 @@ import { UpdateContext } from '@/features/update/UpdateContext'
 import type { UseUpdateStatus } from '@/features/update/useUpdateStatus'
 
 vi.mock('@/lib/ipc', () => ({
-  isElectron: () => false,
+  isTauri: () => false,
 }))
 
 afterEach(() => {

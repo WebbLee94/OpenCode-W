@@ -10,6 +10,11 @@ release
 build
 !build/icon.*
 !build/entitlements.mac.plist
+target/
+
+# Tauri generated schemas
+src-tauri/gen/schemas/
+test-results/
 
 # Environment files
 .env
