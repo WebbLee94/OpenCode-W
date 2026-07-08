@@ -30,6 +30,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
       - name: Typecheck
         run: npx tsc --noEmit
 
@@ -39,21 +44,27 @@ jobs:
       - name: Test
         run: npm test -- --run
 
-      - name: Build
+      - name: Build (Tauri)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri:build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.os }}
+          name: bundle-${{ matrix.os }}
           path: |
-            dist/*.dmg
-            dist/*.zip
-            dist/*.exe
-            dist/*.AppImage
-            dist/*.deb
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.app
+            src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.zip
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.tar.gz
+            src-tauri/target/release/bundle/**/*.sig
           if-no-files-found: warn
           retention-days: 14
 
@@ -77,9 +88,13 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/**/*.dmg
-            artifacts/**/*.zip
+            artifacts/**/*.app
             artifacts/**/*.exe
+            artifacts/**/*.msi
+            artifacts/**/*.zip
             artifacts/**/*.AppImage
             artifacts/**/*.deb
+            artifacts/**/*.tar.gz
+            artifacts/**/*.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

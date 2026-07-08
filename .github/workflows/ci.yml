@@ -26,11 +26,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cargo Check
+        run: cd src-tauri && cargo check
+
+      - name: Cargo Clippy
+        run: cd src-tauri && cargo clippy -- -D warnings
+
       - name: Typecheck
         run: npx tsc --noEmit
 
       - name: Lint
         run: npm run lint
 
-      - name: Build (skip electron-builder)
+      - name: Build (frontend only)
         run: npm run build:ci

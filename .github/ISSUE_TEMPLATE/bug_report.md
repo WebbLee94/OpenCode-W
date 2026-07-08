@@ -28,7 +28,7 @@ assignees: ''
 
 - 操作系统: [如 macOS 14.5]
 - OpenCode-W 版本: [如 1.0.0]
-- Electron 版本: [如 30.x]
+- Tauri 版本: [如 2.x]
 - 数据库文件大小: [如 50MB]
 
 ## 截图
