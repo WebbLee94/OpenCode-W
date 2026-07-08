@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-07-08
+
+> **构建与签名解耦（利好开源协作）**：贡献者 Pull 代码后无需任何签名密钥即可本地出包；自动更新能力对终端用户完全无感知。
+
+### 🔧 Changed｜构建配置
+
+- **自动更新签名与本地构建解耦**：`tauri.conf.json` 中 `createUpdaterArtifacts` 默认由 `true` 改为 `false`，贡献者 / GitHub 上的非发布构建无需 `TAURI_SIGNING_PRIVATE_KEY` 等私钥即可正常出包。仅 **tag 发布** 时，Release CI（`.github/workflows/release.yml`）临时将该项置为 `true` 并注入签名 Secret，生成 `.sig` 更新构件。公开的 `pubkey` 始终保留在仓库中，本地构建出的 App 仍可验证官方发布的更新。
+
+### 🐛 Fixed｜问题修复
+
+- **修复贡献者本地构建被私钥卡住**：此前 `createUpdaterArtifacts: true` 与公开 `pubkey` 一同提交仓库，导致任何本地 `npm run tauri:build` 都会因缺少维护者私钥而报错（`A public key has been found, but no private key`）。现将更新构件生成默认关闭，本地出包与开源协作不再依赖签名密钥。
+
+### 📌 升级说明
+
+- **终端用户无感知**：应用内自动更新能力保持不变，官方 Release 仍由 CI 用私钥签名、App 用提交的公开 `pubkey` 验签。
+- **维护者发布带自动更新的版本**：仍需在仓库 **Secrets** 配置 `TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（Tauri 不读取 `.env`，必须是真实环境变量 / CI Secret）。
+
 ## [1.3.0] - 2026-07-08
 
 > **重大架构迁移：从 Electron 42 切换到 Tauri v2 (Rust 后端)**。应用体积更小（安装包 7.1 MB）、启动更快、彻底告别 `NODE_MODULE_VERSION` 报错。同时清理了大量 Electron 遗留代码与配置。
