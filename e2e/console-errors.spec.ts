@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, type Page } from '@playwright/test'
 
 /**
  * 控制台错误巡检

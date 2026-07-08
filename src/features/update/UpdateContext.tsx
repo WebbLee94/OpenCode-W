@@ -62,7 +62,7 @@ export function UpdateProvider({ children }: UpdateProviderProps) {
     } finally {
       setIsChecking(false)
     }
-  }, [])
+  }, [toast])
 
   const handleDownload = useCallback(async () => {
     if (!isTauri()) return
@@ -99,7 +99,7 @@ export function UpdateProvider({ children }: UpdateProviderProps) {
     } catch {
       toast.addToast('重启失败，请手动启动应用', 'error')
     }
-  }, [])
+  }, [toast])
 
   return (
     <UpdateContext.Provider value={{
