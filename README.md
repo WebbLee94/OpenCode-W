@@ -159,6 +159,14 @@ A: 默认存储在 `~/.opencode-w/backups/` 目录。
 > ⚠️ **本仓库默认不包含代码签名证书**。
 > macOS 用户首次打开会看到「无法验证开发者」提示，需在「系统设置 → 隐私与安全性」中点击「仍要打开」；Windows 会触发 SmartScreen 警告。生产环境分发建议自行配置苹果开发者证书。Tauri 打包使用 `tauri build --bundles dmg`（macOS）或 `--bundles msi`（Windows）。
 
+### 自动更新签名（与代码签名无关）
+
+应用内自动更新所需的 Tauri 更新器签名，仅在 **GitHub 发布（tag 推送）** 时由 CI 注入私钥生成 `.sig` 更新构件。
+
+- ✅ **本地构建 / 他人 Pull 后构建**：`tauri.conf.json` 中 `createUpdaterArtifacts` 默认 `false`，`npm run tauri:build` 无需任何签名密钥即可出包。
+- ✅ **运行期验签**：仓库已提交公开 `pubkey`，本地构建出的 App 仍能验证官方发布的更新。
+- 🔑 **发布带自动更新的版本**：维护者需在仓库 **Secrets** 中配置 `TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（Tauri 不读取 `.env`，必须是真实环境变量 / CI Secret）。
+
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！

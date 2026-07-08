@@ -243,10 +243,10 @@ pub fn validate_db_path(path: &str) -> Result<PathBuf, String> {
 ```json
 // tauri.conf.json
 {
-  "bundle": { "createUpdaterArtifacts": true },
+  "bundle": { "createUpdaterArtifacts": false }, // 默认关闭：本地/PR 构建无需私钥即可出包
   "plugins": {
     "updater": {
-      "pubkey": "CONTENT FROM PUBLICKEY.PEM",
+      "pubkey": "CONTENT FROM PUBLICKEY.PEM", // 公开，仓库提交；仅用于运行期验签
       "endpoints": [
         "https://github.com/WebbLee94/OpenCode-W/releases/latest/download/latest.json"
       ]
@@ -254,6 +254,8 @@ pub fn validate_db_path(path: &str) -> Result<PathBuf, String> {
   }
 }
 ```
+
+> **构建与签名解耦**：`createUpdaterArtifacts` 默认 `false`，贡献者 / GitHub 上的非发布构建无需配置任何签名密钥即可正常出包。仅有 **tag 发布** 时，Release CI 会临时将该项置为 `true` 并注入 `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 Secret，生成 `.sig` 更新签名构件。公开的 `pubkey` 始终保留，确保本地构建出的 App 仍能验证官方发布的更新。
 
 ### 6.2 状态机 + 事件推送
 
@@ -266,7 +268,7 @@ Rust 后端管理 `UpdateState`（idle/available/downloading/downloaded/installi
 ```json
 {
   "productName": "OpenCode-W",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "identifier": "com.webb.opencode-w",
   "build": {
     "frontendDist": "../dist",

@@ -49,7 +49,7 @@
       "appimage": {},
       "deb": {}
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": false
   },
   "plugins": {
     "updater": {

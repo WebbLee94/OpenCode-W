@@ -48,6 +48,10 @@ jobs:
       - name: Test
         run: npm test -- --run
 
+      - name: Enable updater artifacts (tag release only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.bundle.createUpdaterArtifacts=true;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
+
       - name: Build (Tauri)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
