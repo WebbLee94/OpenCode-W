@@ -713,13 +713,9 @@ pub async fn messages_list(
 ) -> IpcResult<MessageListResult> {
     let db = app.state::<DbState>().clone_inner();
     tauri::async_runtime::spawn_blocking(move || {
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         let page = page.unwrap_or(1).max(1);
@@ -794,13 +790,9 @@ pub async fn messages_detail(
     tauri::async_runtime::spawn_blocking(move || {
         let message_id = value;
 
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         // Get message — select specific columns (schema: id, session_id, data, time_created)
@@ -912,13 +904,9 @@ pub async fn messages_list_by_parent(
 ) -> IpcResult<MessageListResult> {
     let db = app.state::<DbState>().clone_inner();
     tauri::async_runtime::spawn_blocking(move || {
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         let page = page.unwrap_or(1).max(1);
@@ -1033,13 +1021,9 @@ pub async fn messages_search(
     tauri::async_runtime::spawn_blocking(move || {
         let keyword = value;
 
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         if keyword.trim().is_empty() {

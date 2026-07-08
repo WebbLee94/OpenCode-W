@@ -61,13 +61,9 @@ pub async fn todos_by_parent(
             return IpcResult::ok(Vec::new());
         }
 
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         // Build placeholders for IN (?) clause

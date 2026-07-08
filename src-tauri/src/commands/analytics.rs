@@ -1,13 +1,17 @@
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
+use chrono::TimeZone;
 
 use crate::db::{self, DbState};
 use crate::models::dto::{
     CostTrendItem, DatabaseStats, IpcResult, MessageTrendItem, ModelRankingItem, ProviderStatsItem,
     SessionTrendItem, SkillUsage, TokenGroupDataPoint, TokenStats, ToolRanking,
 };
-use rusqlite::Connection;
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 
 /// Dual return type for `dashboard_tokens` — either aggregate stats or grouped data points.
 /// Uses `#[serde(untagged)]` to match the TypeScript union `TokenStats | TokenGroupDataPoint[]`.
@@ -25,7 +29,7 @@ pub enum TokenStatsResult {
 async fn run_db_task<T, F>(app: AppHandle, f: F) -> IpcResult<T>
 where
     T: Send + 'static,
-    F: FnOnce(&Arc<Mutex<Option<Connection>>>) -> IpcResult<T> + Send + 'static,
+    F: FnOnce(&Arc<Mutex<Option<Pool<SqliteConnectionManager>>>>) -> IpcResult<T> + Send + 'static,
 {
     let db = app.state::<DbState>().clone_inner();
     tauri::async_runtime::spawn_blocking(move || f(&db))
@@ -46,7 +50,7 @@ fn build_date_filter(
     table_alias: &str,
     start_date: Option<&str>,
     end_date: Option<&str>,
-) -> (String, Vec<String>) {
+) -> (String, Vec<i64>) {
     match (start_date, end_date) {
         (Some(s), Some(e)) => {
             let prefix = if table_alias.is_empty() {
@@ -54,13 +58,32 @@ fn build_date_filter(
             } else {
                 format!("{}.", table_alias)
             };
-            let sql = format!(
-                "AND date({}time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?",
-                prefix
-            );
-            (sql, vec![s.to_string(), e.to_string()])
+            let start_epoch = date_to_epoch_ms(s, true);
+            let end_epoch = date_to_epoch_ms(e, false);
+            let sql = format!("AND {}time_created BETWEEN ? AND ?", prefix);
+            (sql, vec![start_epoch, end_epoch])
         }
         _ => (String::new(), Vec::new()),
+    }
+}
+
+/// Parse "YYYY-MM-DD" date string to epoch milliseconds for the start or end of day in local timezone.
+/// `start_of_day = true` → 00:00:00 local; `start_of_day = false` → 23:59:59 local.
+/// Matches the original SQL `'localtime'` modifier behavior.
+fn date_to_epoch_ms(date_str: &str, start_of_day: bool) -> i64 {
+    if let Ok(parsed) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+        let naive_dt = if start_of_day {
+            parsed.and_hms_opt(0, 0, 0).unwrap()
+        } else {
+            parsed.and_hms_opt(23, 59, 59).unwrap()
+        };
+        match chrono::Local.from_local_datetime(&naive_dt) {
+            chrono::LocalResult::Single(dt) => dt.timestamp_millis(),
+            chrono::LocalResult::Ambiguous(earliest, _) => earliest.timestamp_millis(),
+            chrono::LocalResult::None => naive_dt.and_utc().timestamp_millis(),
+        }
+    } else {
+        0
     }
 }
 
@@ -96,57 +119,44 @@ pub async fn dashboard_overview(
     }
 
     // Time-range filtered stats
-    let lock = match db::get_db(db) {
-        Ok(l) => l,
-        Err(e) => return IpcResult::err(e),
-    };
-    let conn = match lock.as_ref() {
-        Some(c) => c,
-        None => return IpcResult::err("No database open"),
-    };
+        let conn = match db::get_db(db) {
+            Ok(c) => c,
+            Err(e) => return IpcResult::err(e),
+        };
 
-    let sd = start_date.as_ref().unwrap();
-    let ed = end_date.as_ref().unwrap();
-    let sql_params = [sd.as_str(), ed.as_str()];
+    let start_epoch = date_to_epoch_ms(start_date.as_ref().unwrap(), true);
+    let end_epoch = date_to_epoch_ms(end_date.as_ref().unwrap(), false);
+    let params: [&dyn rusqlite::types::ToSql; 2] = [&start_epoch, &end_epoch];
 
-    let root_session_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) as cnt FROM session
-             WHERE parent_id IS NULL
-               AND date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?",
-            sql_params,
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
-
-    let child_session_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) as cnt FROM session
-             WHERE parent_id IS NOT NULL
-               AND date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?",
-            sql_params,
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
-
-    let project_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(DISTINCT project_id) as cnt FROM session
-             WHERE project_id IS NOT NULL AND project_id != ''
-               AND date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?",
-            sql_params,
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
-
-    let part_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) as cnt FROM part
-             WHERE date(time_created / 1000, 'unixepoch', 'localtime') BETWEEN ? AND ?",
-            sql_params,
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
+    let _overview_start = Instant::now();
+    let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let compound_sql =
+        "SELECT 'root_session' as label, COUNT(*) as cnt FROM session WHERE parent_id IS NULL AND time_created BETWEEN ?1 AND ?2
+         UNION ALL
+         SELECT 'child_session', COUNT(*) FROM session WHERE parent_id IS NOT NULL AND time_created BETWEEN ?1 AND ?2
+         UNION ALL
+         SELECT 'project', COUNT(DISTINCT project_id) FROM session WHERE project_id IS NOT NULL AND project_id != '' AND time_created BETWEEN ?1 AND ?2
+         UNION ALL
+         SELECT 'part', COUNT(*) FROM part WHERE time_created BETWEEN ?1 AND ?2";
+    if let Ok(mut stmt) = conn.prepare(compound_sql) {
+        if let Ok(rows) = stmt.query_map(params, |row| {
+            let label: String = row.get(0)?;
+            let cnt: i64 = row.get(1)?;
+            Ok((label, cnt))
+        }) {
+            for row in rows {
+                if let Ok((label, cnt)) = row {
+                    counts.insert(label, cnt);
+                }
+            }
+        }
+    }
+    let root_session_count = counts.get("root_session").copied().unwrap_or(0);
+    let child_session_count = counts.get("child_session").copied().unwrap_or(0);
+    let project_count = counts.get("project").copied().unwrap_or(0);
+    let part_count = counts.get("part").copied().unwrap_or(0);
+    #[cfg(debug_assertions)]
+    eprintln!("[perf] dashboard_overview::count_queries: {}ms", _overview_start.elapsed().as_millis());
 
     // File-level stats (don't depend on time range)
     let current_path = conn.path().map(|p| p.to_string());
@@ -196,14 +206,10 @@ pub async fn dashboard_tokens(
     group_by: Option<String>,
 ) -> IpcResult<TokenStatsResult> {
     run_db_task(app, move |db| {
-    let lock = match db::get_db(db) {
-        Ok(l) => l,
-        Err(e) => return IpcResult::err(e),
-    };
-    let conn = match lock.as_ref() {
-        Some(c) => c,
-        None => return IpcResult::err("No database open"),
-    };
+        let conn = match db::get_db(db) {
+            Ok(c) => c,
+            Err(e) => return IpcResult::err(e),
+        };
 
     let (filter_sql, filter_params) = build_date_filter(
         "p",
@@ -211,6 +217,7 @@ pub async fn dashboard_tokens(
         end_date.as_deref(),
     );
 
+    let _token_start = Instant::now();
     // Grouped mode: return time-series data points
     if let Some(g) = group_by.as_deref().filter(|g| !g.is_empty()) {
         let fmt = match g {
@@ -268,6 +275,8 @@ pub async fn dashboard_tokens(
                 Err(e) => return IpcResult::err(e.to_string()),
             }
         }
+        #[cfg(debug_assertions)]
+        eprintln!("[perf] dashboard_tokens::grouped: {}ms", _token_start.elapsed().as_millis());
         return IpcResult::ok(TokenStatsResult::Groups(grouped));
     }
 
@@ -331,6 +340,8 @@ pub async fn dashboard_tokens(
         Err(e) => return IpcResult::err(e.to_string()),
     };
 
+    #[cfg(debug_assertions)]
+    eprintln!("[perf] dashboard_tokens::aggregate: {}ms", _token_start.elapsed().as_millis());
     IpcResult::ok(TokenStatsResult::Stats(stats))
     }).await
 }
@@ -345,14 +356,11 @@ pub async fn dashboard_tool_ranking(
     end_date: Option<String>,
 ) -> IpcResult<Vec<ToolRanking>> {
     run_db_task(app, move |db| {
-    let lock = match db::get_db(db) {
-        Ok(l) => l,
-        Err(e) => return IpcResult::err(e),
-    };
-    let conn = match lock.as_ref() {
-        Some(c) => c,
-        None => return IpcResult::err("No database open"),
-    };
+        let conn = match db::get_db(db) {
+            Ok(c) => c,
+            Err(e) => return IpcResult::err(e),
+        };
+    let _t_tool = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("", start_date.as_deref(), end_date.as_deref());
     let sql = format!(
@@ -391,6 +399,8 @@ pub async fn dashboard_tool_ranking(
             Err(e) => return IpcResult::err(e.to_string()),
         }
     }
+    #[cfg(debug_assertions)]
+    eprintln!("[perf] dashboard_tool_ranking: {}ms", _t_tool.elapsed().as_millis());
     IpcResult::ok(ranking)
     }).await
 }
@@ -405,14 +415,11 @@ pub async fn dashboard_skill_usage(
     end_date: Option<String>,
 ) -> IpcResult<Vec<SkillUsage>> {
     run_db_task(app, move |db| {
-    let lock = match db::get_db(db) {
-        Ok(l) => l,
-        Err(e) => return IpcResult::err(e),
-    };
-    let conn = match lock.as_ref() {
-        Some(c) => c,
-        None => return IpcResult::err("No database open"),
-    };
+        let conn = match db::get_db(db) {
+            Ok(c) => c,
+            Err(e) => return IpcResult::err(e),
+        };
+    let _t_skill = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("", start_date.as_deref(), end_date.as_deref());
     let sql = format!(
@@ -452,6 +459,8 @@ pub async fn dashboard_skill_usage(
             Err(e) => return IpcResult::err(e.to_string()),
         }
     }
+    #[cfg(debug_assertions)]
+    eprintln!("[perf] dashboard_skill_usage: {}ms", _t_skill.elapsed().as_millis());
     IpcResult::ok(usage)
     }).await
 }
@@ -466,14 +475,11 @@ pub async fn dashboard_model_ranking(
     end_date: Option<String>,
 ) -> IpcResult<Vec<ModelRankingItem>> {
     run_db_task(app, move |db| {
-    let lock = match db::get_db(db) {
-        Ok(l) => l,
-        Err(e) => return IpcResult::err(e),
-    };
-    let conn = match lock.as_ref() {
-        Some(c) => c,
-        None => return IpcResult::err("No database open"),
-    };
+        let conn = match db::get_db(db) {
+            Ok(c) => c,
+            Err(e) => return IpcResult::err(e),
+        };
+    let _t_model = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("p", start_date.as_deref(), end_date.as_deref());
     let sql = format!(
@@ -519,6 +525,8 @@ pub async fn dashboard_model_ranking(
             Err(e) => return IpcResult::err(e.to_string()),
         }
     }
+    #[cfg(debug_assertions)]
+    eprintln!("[perf] dashboard_model_ranking: {}ms", _t_model.elapsed().as_millis());
     IpcResult::ok(items)
     }).await
 }
@@ -533,14 +541,11 @@ pub async fn dashboard_provider_stats(
     end_date: Option<String>,
 ) -> IpcResult<Vec<ProviderStatsItem>> {
     run_db_task(app, move |db| {
-    let lock = match db::get_db(db) {
-        Ok(l) => l,
-        Err(e) => return IpcResult::err(e),
-    };
-    let conn = match lock.as_ref() {
-        Some(c) => c,
-        None => return IpcResult::err("No database open"),
-    };
+        let conn = match db::get_db(db) {
+            Ok(c) => c,
+            Err(e) => return IpcResult::err(e),
+        };
+    let _t_prov = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("p", start_date.as_deref(), end_date.as_deref());
     let sql = format!(
@@ -586,6 +591,8 @@ pub async fn dashboard_provider_stats(
             Err(e) => return IpcResult::err(e.to_string()),
         }
     }
+    #[cfg(debug_assertions)]
+    eprintln!("[perf] dashboard_provider_stats: {}ms", _t_prov.elapsed().as_millis());
     IpcResult::ok(items)
     }).await
 }
@@ -603,14 +610,11 @@ pub async fn dashboard_session_trend(
     root_only: Option<bool>,
 ) -> IpcResult<Vec<SessionTrendItem>> {
     run_db_task(app, move |db| {
-    let lock = match db::get_db(db) {
-        Ok(l) => l,
-        Err(e) => return IpcResult::err(e),
-    };
-    let conn = match lock.as_ref() {
-        Some(c) => c,
-        None => return IpcResult::err("No database open"),
-    };
+        let conn = match db::get_db(db) {
+            Ok(c) => c,
+            Err(e) => return IpcResult::err(e),
+        };
+    let _t_st = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("", start_date.as_deref(), end_date.as_deref());
     let root_filter = if root_only.unwrap_or(false) {
@@ -656,6 +660,8 @@ pub async fn dashboard_session_trend(
             Err(e) => return IpcResult::err(e.to_string()),
         }
     }
+    #[cfg(debug_assertions)]
+    eprintln!("[perf] dashboard_session_trend: {}ms", _t_st.elapsed().as_millis());
     IpcResult::ok(items)
     }).await
 }
@@ -670,14 +676,11 @@ pub async fn dashboard_cost_trend(
     end_date: Option<String>,
 ) -> IpcResult<Vec<CostTrendItem>> {
     run_db_task(app, move |db| {
-    let lock = match db::get_db(db) {
-        Ok(l) => l,
-        Err(e) => return IpcResult::err(e),
-    };
-    let conn = match lock.as_ref() {
-        Some(c) => c,
-        None => return IpcResult::err("No database open"),
-    };
+        let conn = match db::get_db(db) {
+            Ok(c) => c,
+            Err(e) => return IpcResult::err(e),
+        };
+    let _t_cost = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("p", start_date.as_deref(), end_date.as_deref());
     let sql = format!(
@@ -718,6 +721,8 @@ pub async fn dashboard_cost_trend(
             Err(e) => return IpcResult::err(e.to_string()),
         }
     }
+    #[cfg(debug_assertions)]
+    eprintln!("[perf] dashboard_cost_trend: {}ms", _t_cost.elapsed().as_millis());
     IpcResult::ok(items)
     }).await
 }
@@ -732,14 +737,11 @@ pub async fn dashboard_message_trend(
     end_date: Option<String>,
 ) -> IpcResult<Vec<MessageTrendItem>> {
     run_db_task(app, move |db| {
-    let lock = match db::get_db(db) {
-        Ok(l) => l,
-        Err(e) => return IpcResult::err(e),
-    };
-    let conn = match lock.as_ref() {
-        Some(c) => c,
-        None => return IpcResult::err("No database open"),
-    };
+        let conn = match db::get_db(db) {
+            Ok(c) => c,
+            Err(e) => return IpcResult::err(e),
+        };
+    let _t_msg = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("", start_date.as_deref(), end_date.as_deref());
     let sql = format!(
@@ -780,6 +782,8 @@ pub async fn dashboard_message_trend(
             Err(e) => return IpcResult::err(e.to_string()),
         }
     }
+    #[cfg(debug_assertions)]
+    eprintln!("[perf] dashboard_message_trend: {}ms", _t_msg.elapsed().as_millis());
     IpcResult::ok(items)
     }).await
 }

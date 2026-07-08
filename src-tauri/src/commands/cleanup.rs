@@ -263,13 +263,9 @@ pub async fn cleanup_preview(
             Err(e) => return IpcResult::err(e),
         };
 
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         let sql = format!(
@@ -374,13 +370,9 @@ pub async fn cleanup_execute(
             Err(e) => return IpcResult::err(e),
         };
 
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         // Get matching session IDs

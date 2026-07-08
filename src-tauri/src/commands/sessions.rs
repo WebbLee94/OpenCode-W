@@ -13,6 +13,7 @@
 use rusqlite::{Row, ToSql};
 use serde::Serialize;
 use sha1::{Digest, Sha1};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use tauri::{AppHandle, Manager};
@@ -63,9 +64,12 @@ pub struct SessionMoveResult {
 ///
 /// Column set expected (in order):
 ///   id, title, directory, model, agent, project_id,
-///   msg_count, total_tokens, data_size,
+///   total_tokens,
 ///   tokens_input, tokens_output, tokens_reasoning,
-///   time_created, time_updated, cost, childCount
+///   time_created, time_updated, cost
+///
+/// msg_count, data_size, child_count are set to 0 here and populated
+/// by batch queries in sessions_list.
 fn map_session_row(row: &Row) -> rusqlite::Result<SessionDTO> {
     let time_created: i64 = row.get("time_created")?;
     let time_updated: i64 = row.get("time_updated")?;
@@ -76,17 +80,68 @@ fn map_session_row(row: &Row) -> rusqlite::Result<SessionDTO> {
         model: row.get("model")?,
         agent: row.get("agent")?,
         project_id: row.get("project_id")?,
-        msg_count: row.get("msg_count")?,
+        msg_count: 0,         // populated by batch query
         total_tokens: row.get("total_tokens")?,
-        data_size: row.get("data_size")?,
+        data_size: 0,         // populated by batch query
         tokens_input: row.get("tokens_input")?,
         tokens_output: row.get("tokens_output")?,
         tokens_reasoning: row.get("tokens_reasoning")?,
         time_created,
         time_updated,
         cost: row.get("cost")?,
-        child_count: row.get("childCount")?,
+        child_count: None,    // populated by batch query
     })
+}
+
+// ─── WHERE clause builder ─────────────────────────────────────────────────
+
+/// Build WHERE clause and parameters for session list queries.
+/// Extracted from sessions_list so both COUNT and data queries share the same logic.
+fn build_session_where(
+    conn: &rusqlite::Connection,
+    search: &Option<String>,
+    project_id: &Option<String>,
+    start_date: &Option<String>,
+    end_date: &Option<String>,
+    parent_filter: &Option<String>,
+) -> (String, Vec<Box<dyn ToSql>>) {
+    let mut conditions: Vec<String> = Vec::new();
+    let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+
+    if let Some(s) = search {
+        conditions.push("(s.title LIKE ? OR s.id LIKE ?)".to_string());
+        params.push(Box::new(format!("%{}%", s)));
+        params.push(Box::new(format!("%{}%", s)));
+    }
+    if let Some(p) = project_id {
+        conditions.push("s.directory = ?".to_string());
+        params.push(Box::new(p.clone()));
+    }
+    if let Some(sd) = start_date {
+        conditions.push("date(s.time_created / 1000, 'unixepoch') >= ?".to_string());
+        params.push(Box::new(sd.clone()));
+    }
+    if let Some(ed) = end_date {
+        conditions.push("date(s.time_created / 1000, 'unixepoch') <= ?".to_string());
+        params.push(Box::new(ed.clone()));
+    }
+
+    if check_parent_column(conn) {
+        match parent_filter.as_deref() {
+            Some("children") => conditions.push("s.parent_id IS NOT NULL".to_string()),
+            None | Some("root") => conditions.push("s.parent_id IS NULL".to_string()),
+            Some("all") => {}
+            _ => conditions.push("s.parent_id IS NULL".to_string()),
+        }
+    }
+
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    };
+
+    (where_clause, params)
 }
 
 // ─── Parent column detection ──────────────────────────────────────────────
@@ -143,13 +198,9 @@ pub async fn sessions_list(
 ) -> IpcResult<SessionListResult> {
     let db = app.state::<DbState>().clone_inner();
     tauri::async_runtime::spawn_blocking(move || {
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         let page = page.unwrap_or(1).max(1);
@@ -158,42 +209,10 @@ pub async fn sessions_list(
         let sort_by = sort_by.unwrap_or_else(|| "time_updated".to_string());
         let sort_order = sort_order.unwrap_or_else(|| "desc".to_string());
 
-        // Build WHERE clause
-        let mut conditions: Vec<String> = Vec::new();
-        let mut params: Vec<Box<dyn ToSql>> = Vec::new();
-
-        if let Some(s) = &search {
-            conditions.push("(s.title LIKE ? OR s.id LIKE ?)".to_string());
-            params.push(Box::new(format!("%{}%", s)));
-            params.push(Box::new(format!("%{}%", s)));
-        }
-        if let Some(p) = &project_id {
-            conditions.push("s.directory = ?".to_string());
-            params.push(Box::new(p.clone()));
-        }
-        if let Some(sd) = &start_date {
-            conditions.push("date(s.time_created / 1000, 'unixepoch') >= ?".to_string());
-            params.push(Box::new(sd.clone()));
-        }
-        if let Some(ed) = &end_date {
-            conditions.push("date(s.time_created / 1000, 'unixepoch') <= ?".to_string());
-            params.push(Box::new(ed.clone()));
-        }
-
-        if check_parent_column(conn) {
-            match parent_filter.as_deref() {
-                Some("children") => conditions.push("s.parent_id IS NOT NULL".to_string()),
-                None | Some("root") => conditions.push("s.parent_id IS NULL".to_string()),
-                Some("all") => {}
-                _ => conditions.push("s.parent_id IS NULL".to_string()),
-            }
-        }
-
-        let where_clause = if conditions.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", conditions.join(" AND "))
-        };
+        // Build WHERE clause using extracted helper
+        let (where_clause, params) = build_session_where(
+            &*conn, &search, &project_id, &start_date, &end_date, &parent_filter,
+        );
 
         // Validate sort column (SQL injection prevention)
         let allowed_sort_columns = [
@@ -201,12 +220,9 @@ pub async fn sessions_list(
             "time_updated",
             "title",
             "cost",
-            "msg_count",
-            "total_tokens",
-            "data_size",
             "tokens_input",
             "tokens_output",
-            "childCount",
+            "total_tokens",
         ];
         let safe_sort_by = if allowed_sort_columns.contains(&sort_by.as_str()) {
             sort_by.as_str()
@@ -214,14 +230,14 @@ pub async fn sessions_list(
             "time_updated"
         };
         let safe_sort_order = if sort_order == "asc" { "ASC" } else { "DESC" };
-        let computed_columns = ["msg_count", "total_tokens", "data_size", "childCount"];
+        // total_tokens is still a computed expression in SQL (no s. prefix);
+        // msg_count, data_size, childCount are batch-fetched, so not sortable via SQL.
+        let computed_columns = ["total_tokens"];
         let order_expr = if computed_columns.contains(&safe_sort_by) {
             safe_sort_by.to_string()
         } else {
             format!("s.{}", safe_sort_by)
         };
-
-        let child_select = ", COALESCE((SELECT COUNT(*) FROM session c WHERE c.parent_id = s.id), 0) as childCount";
 
         // Count total
         let count_sql = format!("SELECT COUNT(*) as cnt FROM session s {}", where_clause);
@@ -231,7 +247,8 @@ pub async fn sessions_list(
             Err(e) => return IpcResult::err(e.to_string()),
         };
 
-        // Query rows
+        // Query rows — simple SELECT without heavy subqueries
+        // msg_count, data_size, childCount are fetched via batch queries below.
         let list_sql = format!(
             "SELECT s.id, s.title, s.directory, s.model, s.agent, s.project_id, \
              COALESCE(s.tokens_input, 0) as tokens_input, \
@@ -240,14 +257,10 @@ pub async fn sessions_list(
              COALESCE(s.tokens_cache_read, 0) as tokens_cache_read, \
              COALESCE(s.tokens_cache_write, 0) as tokens_cache_write, \
              s.cost, s.time_created, s.time_updated, \
-             COALESCE(msg_cnt.cnt, 0) as msg_count, \
-             (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0)) as total_tokens, \
-             COALESCE(part_size.total, 0) as data_size{} \
+             (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0)) as total_tokens \
              FROM session s \
-             LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id \
-             LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id \
              {} ORDER BY {} {} LIMIT ? OFFSET ?",
-            child_select, where_clause, order_expr, safe_sort_order
+            where_clause, order_expr, safe_sort_order
         );
 
         let mut all_params: Vec<Box<dyn ToSql>> = params;
@@ -268,6 +281,82 @@ pub async fn sessions_list(
             match r {
                 Ok(dto) => data.push(dto),
                 Err(e) => return IpcResult::err(e.to_string()),
+            }
+        }
+
+        // Batch-fetch childCount, msg_count, and data_size for all returned sessions
+        if !data.is_empty() {
+            let ids: Vec<String> = data.iter().map(|d| d.id.clone()).collect();
+            let id_placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
+            let id_list = id_placeholders.join(",");
+
+            // childCount: how many children each session has
+            let child_sql = format!(
+                "SELECT parent_id, COUNT(*) FROM session WHERE parent_id IN ({}) GROUP BY parent_id",
+                id_list
+            );
+            let child_map: HashMap<String, i64> = {
+                let mut stmt = match conn.prepare(&child_sql) {
+                    Ok(s) => s,
+                    Err(e) => return IpcResult::err(e.to_string()),
+                };
+                let id_params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
+                let rows = match stmt.query_map(id_params.as_slice(), |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+                }) {
+                    Ok(r) => r,
+                    Err(e) => return IpcResult::err(e.to_string()),
+                };
+                rows.filter_map(|r| r.ok()).collect()
+            };
+            for dto in data.iter_mut() {
+                dto.child_count = child_map.get(&dto.id).copied().map(|v| v as i64);
+            }
+
+            // msg_count: messages per session (via IN clause, not full table scan)
+            let msg_sql = format!(
+                "SELECT session_id, COUNT(*) FROM message WHERE session_id IN ({}) GROUP BY session_id",
+                id_list
+            );
+            let msg_map: HashMap<String, i64> = {
+                let mut stmt = match conn.prepare(&msg_sql) {
+                    Ok(s) => s,
+                    Err(e) => return IpcResult::err(e.to_string()),
+                };
+                let id_params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
+                let rows = match stmt.query_map(id_params.as_slice(), |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+                }) {
+                    Ok(r) => r,
+                    Err(e) => return IpcResult::err(e.to_string()),
+                };
+                rows.filter_map(|r| r.ok()).collect()
+            };
+            for dto in data.iter_mut() {
+                dto.msg_count = msg_map.get(&dto.id).copied().unwrap_or(0);
+            }
+
+            // data_size: total part data per session (via IN clause)
+            let part_sql = format!(
+                "SELECT session_id, COALESCE(SUM(LENGTH(data)), 0) FROM part WHERE session_id IN ({}) GROUP BY session_id",
+                id_list
+            );
+            let part_map: HashMap<String, i64> = {
+                let mut stmt = match conn.prepare(&part_sql) {
+                    Ok(s) => s,
+                    Err(e) => return IpcResult::err(e.to_string()),
+                };
+                let id_params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
+                let rows = match stmt.query_map(id_params.as_slice(), |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+                }) {
+                    Ok(r) => r,
+                    Err(e) => return IpcResult::err(e.to_string()),
+                };
+                rows.filter_map(|r| r.ok()).collect()
+            };
+            for dto in data.iter_mut() {
+                dto.data_size = part_map.get(&dto.id).copied().unwrap_or(0);
             }
         }
 
@@ -292,13 +381,9 @@ pub async fn sessions_detail(app: AppHandle, value: String) -> IpcResult<Option<
     tauri::async_runtime::spawn_blocking(move || {
         let session_id = value;
 
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         // Get session base info
@@ -441,13 +526,9 @@ pub async fn sessions_detail(app: AppHandle, value: String) -> IpcResult<Option<
 pub async fn sessions_projects(app: AppHandle) -> IpcResult<Vec<String>> {
     let db = app.state::<DbState>().clone_inner();
     tauri::async_runtime::spawn_blocking(move || {
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         let mut stmt = match conn.prepare(
@@ -483,13 +564,9 @@ pub async fn sessions_delete(app: AppHandle, value: String) -> IpcResult<Session
     tauri::async_runtime::spawn_blocking(move || {
         let session_id = value;
 
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         // Use a transaction — Electron used 3 separate run() calls; we keep the
@@ -555,13 +632,9 @@ pub async fn session_share_get(app: AppHandle, value: String) -> IpcResult<Optio
     tauri::async_runtime::spawn_blocking(move || {
         let session_id = value;
 
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         // TS type uses snake_case field names (session_id, time_created) — keep as-is.
@@ -599,13 +672,9 @@ pub async fn sessions_rename(
 ) -> IpcResult<bool> {
     let db = app.state::<DbState>().clone_inner();
     tauri::async_runtime::spawn_blocking(move || {
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         match conn.execute(
@@ -630,16 +699,12 @@ pub async fn sessions_children(app: AppHandle, value: String) -> IpcResult<Vec<S
     tauri::async_runtime::spawn_blocking(move || {
         let session_id = value;
 
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
         };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
-        };
 
-        if !check_parent_column(conn) {
+        if !check_parent_column(&*conn) {
             return IpcResult::ok(Vec::new());
         }
 
@@ -696,13 +761,9 @@ pub async fn sessions_move(
             return IpcResult::ok(SessionMoveResult { migrated: 0 });
         }
 
-        let lock = match db::get_db(&db) {
-            Ok(l) => l,
+        let conn = match db::get_db(&db) {
+            Ok(c) => c,
             Err(e) => return IpcResult::err(e),
-        };
-        let conn = match lock.as_ref() {
-            Some(c) => c,
-            None => return IpcResult::err("No database open"),
         };
 
         // Resolve directory (path::resolve equivalent)
