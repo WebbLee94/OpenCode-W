@@ -5,8 +5,9 @@
 > 让每一次 AI 对话，都成为你精进编程功力的工程资本
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Electron](https://img.shields.io/badge/Electron-42.4.0-blue.svg)](https://www.electronjs.org/)
+[![Tauri](https://img.shields.io/badge/Tauri-2.0-purple.svg)](https://v2.tauri.app/)
 [![React](https://img.shields.io/badge/React-18.2.0-61dafb.svg)](https://react.dev/)
+[![Rust](https://img.shields.io/badge/Rust-1.77-orange.svg)](https://www.rust-lang.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.2.2-blue.svg)](https://www.typescriptlang.org/)
 [![OpenCode](https://img.shields.io/badge/OpenCode-%E2%86%92-blueviolet.svg)](https://github.com/anomalyco/opencode)
 
@@ -52,7 +53,8 @@ W = **W**orkshop（工坊），也是作者 **W**ebb 的印记。
 ### 系统要求
 
 - macOS 12.0+, Windows 10+, Linux (x64)
-- Node.js 20.11.1 或更高版本（与 Electron 42 内嵌 Node 24 对齐）
+- Node.js 20.11.1 或更高版本
+- Rust 1.77.2 或更高版本（Tauri v2 后端编译）
 
 ### 安装
 
@@ -61,58 +63,68 @@ W = **W**orkshop（工坊），也是作者 **W**ebb 的印记。
 git clone https://github.com/WebbLee94/OpenCode-W.git
 cd OpenCode-W
 
-# 2. 安装依赖
+# 2. 安装前端依赖
 npm install
 
 # 3. 生成测试数据（可选）
 npm run generate-fixture
 
-# 4. 启动开发模式
-npm run dev
+# 4. 启动 Tauri 开发模式
+npm run tauri:dev
 
-# 5. 打包应用
-npm run build
+# 5. 打包桌面应用
+npm run tauri:build
 ```
 
-> 💡 自 v1.1.0 起已切换到 Node 内置 `node:sqlite`，**不再需要 `npm run rebuild-native`**，也彻底告别 `NODE_MODULE_VERSION` 报错。
+> 💡 v1.3.0 起已从 Electron 42 迁移到 Tauri v2，**不再依赖 Electron 运行时**。后端使用 Rust + `rusqlite` 替代 Node.js `node:sqlite`，彻底告别 `NODE_MODULE_VERSION` 报错。`npm run tauri:dev` 会自动编译 Rust 后拉起应用窗口，首次启动可能需要下载 Cargo crate。
 
 ## 🛠️ 技术栈
 
-- **桌面框架**: Electron 42
+- **桌面框架**: Tauri v2（Rust 后端）
 - **前端**: React 18 + TypeScript 5
-- **数据库**: `node:sqlite`（Node 24 内置，零原生模块）
+- **数据库**: `rusqlite`（基于 SQLite C 库的 Rust 绑定，bundled 编译）
+- **IPC 通信**: Tauri `invoke()` + 命令路由
 - **样式**: Tailwind CSS 4
 - **图表**: Recharts
-- **构建工具**: Vite 5 + electron-builder 25
-- **跨平台**: macOS Universal (arm64+x64) / Windows NSIS (x64+arm64) / Linux AppImage+deb (x64)
+- **构建工具**: Vite 5 + Tauri CLI
+- **跨平台**: macOS arm64 / Windows x64+arm64 / Linux x64
 
 ## 📁 项目结构
 
 ```
 OpenCode-W/
-├── electron/           # 主进程代码
-│   ├── main.ts        # 主进程入口
-│   ├── database.ts    # DatabaseManager 单例
-│   ├── preload.ts     # contextBridge API
-│   └── ipc/           # IPC 处理器
-│       ├── analytics.ts   # Dashboard 数据聚合
-│       ├── sessions.ts    # 会话 CRUD
-│       ├── messages.ts    # 消息查询 + 全文搜索
-│       ├── todos.ts       # 会话详情内嵌待办 Tab
-│       ├── cleanup.ts     # 清理操作
-│       └── backup.ts      # 备份恢复
-├── src/               # 渲染进程代码
-│   ├── features/      # 功能模块
-│   │   ├── dashboard/     # 仪表盘
-│   │   ├── sessions/      # 会话浏览
-│   │   ├── messages/      # 消息查看
-│   │   ├── cleanup/       # 清理向导
-│   │   └── backup/        # 备份恢复
-│   ├── components/    # 共享 UI 组件
-│   └── lib/           # 工具函数
-├── shared/            # 共享类型和常量
-├── docs/              # 设计文档和用户手册
-└── test-data/         # 测试数据
+├── src-tauri/          # Rust 后端代码
+│   ├── src/
+│   │   ├── main.rs    # 入口 + Tauri Builder
+│   │   ├── db.rs      # DbState (Mutex<Option<Connection>>)
+│   │   ├── security.rs # 路径/URL/扩展名校验
+│   │   ├── models/    # DTO 类型定义
+│   │   └── commands/  # IPC 命令处理器
+│   │       ├── analytics.rs  # Dashboard 数据聚合
+│   │       ├── sessions.rs   # 会话 CRUD
+│   │       ├── messages.rs   # 消息查询 + 全文搜索
+│   │       ├── todos.rs      # 待办 Tab
+│   │       ├── cleanup.rs    # 清理操作
+│   │       ├── backup.rs     # 备份恢复
+│   │       └── update.rs     # 应用更新
+│   ├── Cargo.toml
+│   └── tauri.conf.json
+├── src/                # 前端渲染进程 (React)
+│   ├── main.tsx        # React 入口
+│   ├── App.tsx         # 路由 + 侧边栏布局
+│   ├── features/       # 功能模块
+│   │   ├── dashboard/  # 仪表盘
+│   │   ├── sessions/   # 会话浏览
+│   │   ├── messages/   # 消息查看
+│   │   ├── cleanup/    # 清理向导
+│   │   └── backup/     # 备份恢复
+│   ├── components/     # 共享 UI 组件
+│   └── lib/            # 工具函数
+│       ├── ipc.ts      # Tauri invoke 封装
+│       └── format.ts   # 格式化工具
+├── shared/             # 共享类型和常量
+├── docs/               # 设计文档（8 维度分类）
+└── test-data/          # 测试数据和夹具生成
 ```
 
 ## 📚 文档
@@ -121,9 +133,9 @@ OpenCode-W/
 
 ## 💡 常见问题
 
-### Q: 升级 Electron 后遇到 "NODE_MODULE_VERSION mismatch" 错误怎么办？
+### Q: 升级 Rust 后遇到编译错误怎么办？
 
-A: 自 v1.2.0 起已切换到 Node 内置 `node:sqlite`，**不再有原生模块**，此问题不再出现。
+A: 运行 `cargo clean` 清除缓存后重新编译。如果报错与 LLVM 相关，确保系统 `ar` 兼容（macOS arm64 已知问题，可跳过 `[lib]` 目标直接构建 binary crate）。
 
 ### Q: 清理后空间未释放怎么办？
 
@@ -135,16 +147,17 @@ A: 默认存储在 `~/.opencode-w/backups/` 目录。
 
 ## 🔧 数据库驱动
 
-主进程使用 Node 24 内置 `node:sqlite`（`DatabaseSync`），不再使用 `better-sqlite3` 等 C++ 原生模块。
+后端使用 `rusqlite` crate（`bundled` 特性），将 SQLite C 库静态编译进 Rust 二进制。
 
-- 零外部依赖、零 ABI 风险、同步 API
-- API 形态与 better-sqlite3 几乎一致，IPC handler 无需改为 async
-- 升级 Electron 不再需要重新编译原生模块
+- 零运行时依赖、零 ABI 风险、同步 API
+- API 形态与 `better-sqlite3` / `node:sqlite` 几乎一致（`prepare`/`run`/`get`/`all`）
+- 无需 Node.js `node:sqlite` 或 C++ 原生模块
+- macOS arm64 已知限制：release 模式下 LLVM 归档器对超大 `.rlib` 文件存在 bug（已通过单一 binary crate 绕过）
 
 ## 🔒 代码签名
 
 > ⚠️ **本仓库默认不包含代码签名证书**。
-> macOS 用户首次打开会看到「无法验证开发者」提示，需在「系统设置 → 隐私与安全性」中点击「仍要打开」；Windows 会触发 SmartScreen 警告。生产环境分发建议自行配置 `CSC_LINK` / `CSC_KEY_PASSWORD` 环境变量与 `electron-builder.yml` 的 `csc` 段。
+> macOS 用户首次打开会看到「无法验证开发者」提示，需在「系统设置 → 隐私与安全性」中点击「仍要打开」；Windows 会触发 SmartScreen 警告。生产环境分发建议自行配置苹果开发者证书。Tauri 打包使用 `tauri build --bundles dmg`（macOS）或 `--bundles msi`（Windows）。
 
 ## 🤝 贡献
 

@@ -44,7 +44,10 @@ perf: 性能优化描述
 # 安装依赖
 npm install
 
-# 启动开发模式
+# 启动 Tauri 开发模式
+npm run tauri:dev
+
+# 仅启动 Vite 前端开发服务器（不启动 Rust 后端）
 npm run dev
 
 # 类型检查
@@ -60,7 +63,7 @@ npm run generate-fixture
 npm test
 ```
 
-> 💡 自 v1.1.0 起已切换到 Node 内置 `node:sqlite`，**不再需要 `npm run rebuild-native`**。
+> 💡 自 v1.3.0 起已从 Electron 42 迁移到 Tauri v2。前端 `npm run dev` 仅启动 Vite 开发服务器；如需完整桌面应用预览请用 `npm run tauri:dev`（自动编译 Rust 后端并拉起窗口）。
 
 ## PR 流程与模板
 
@@ -90,15 +93,14 @@ npm test
 - 不引入 Redux
 - 不引入 ECharts
 - 不在渲染进程直接访问 node:sqlite
-- 不将 preload 输出为 `.mjs` 文件
 
 ## 关于 `node-gyp` 依赖
 
-`package-lock.json` 中存在 `node-gyp` 是**正常且无害**的：
+`package-lock.json` 中的 `node-gyp` 是旧版 Electron 构建链的遗留物：
 
-- 它是 `@electron/rebuild`（electron-builder 子依赖）的传递依赖
-- 仅当存在 C++ 原生模块需要重编译时才会被调用
-- 自 v1.1.0 起 OpenCode-W 已切换到 Node 内置 `node:sqlite`，**项目无任何 C++ 原生模块**
-- CI 流水线不再调用 `npm run rebuild-native`（参见 `.github/workflows/ci.yml`）
+- 它是 `electron-builder` 及其子依赖的传递依赖
+- 自 v1.3.0 起已迁移到 Tauri v2，**不再依赖 Electron 及 C++ 原生模块**
+- 项目 Rust 后端通过 `rusqlite`（bundled 特性）编译 SQLite C 库，无需系统级构建工具
+- CI 流水线不再涉及任何 `npm rebuild` 步骤
 
-因此 `node-gyp` 在 lock 中残留不影响构建产物大小或安装时间，无需手动清理。
+`node-gyp` 在 lock 中的残留不影响构建产物大小，移除 `electron-builder` 后可在下次 `npm install` 时自动清理。

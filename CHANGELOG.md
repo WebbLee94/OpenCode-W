@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-08
+
+> **重大架构迁移：从 Electron 42 切换到 Tauri v2 (Rust 后端)**。应用体积更小（安装包 7.1 MB）、启动更快、彻底告别 `NODE_MODULE_VERSION` 报错。同时清理了大量 Electron 遗留代码与配置。
+
+### 🔥 Changed｜重大架构变更（升级前请务必阅读）
+
+- **🔥 Electron → Tauri v2**：从 Electron 42 + Node.js 迁移到 Tauri v2 + Rust 后端，`rusqlite`（bundled）替代 `node:sqlite`，IPC 从 `contextBridge` 迁移到 Tauri `invoke()`。
+- **删除旧 Electron 代码**：`electron/`、`dist-electron/`、`src/types/electron.d.ts` 目录及文件已移除；`electron-builder`、`@electron/rebuild` 等 npm 依赖已卸载。
+- **纯 Rust 数据库层**：所有 SQL 操作通过 Rust 端 `rusqlite` 同步 API 执行，命令模块结构保持不变但使用 Tauri 命令宏注册（`#[tauri::command]`）。
+- **单一 Binary Crate**：合并 `lib.rs` → `main.rs`，省略 `[lib]` 目标以绕过 macOS arm64 上 LLVM 归档器 `.rlib` 静态打包 bug。
+- **macOS 安装包发布模式变更**：`tauri build --bundles dmg` 输出 `.dmg` 格式，不再使用 `electron-builder` 的 `.dmg` 生成流程。
+
+### 🐛 Fixed｜问题修复（升级即可受益）
+
+- **Release 构建成功**：修复 LLVM 归档器对超大 `.rlib` 文件引发 `error(ErrorArchive)` 崩溃问题。
+- **测试修正**：`errorClassifier.test.ts` 中 2 个测试期望值从 `unknown` 更新为 `no-asset`，1 处消息文本同步修正。
+- **TypeScript 配置清理**：移除已废弃的 `baseUrl` 配置项，`tsc --noEmit` 通过。
+- **测试范围修正**：`vite.config.ts` 中 vitest `include` / `exclude` 限定为 `src/**/*.{test,spec}.*`，不再尝试运行 e2e 测试。
+
+### 🧹 Cleanup｜代码清理
+
+- **移除 `isElectron` 别名**：`src/lib/ipc.ts` 中已无活跃引用的 `isElectron` 导出。
+- **GitHub Actions CI 更新**：CI 流程从 Electron 构建切换为 Tauri v2 构建矩阵。
+
+### 🛠️ Technical｜技术细节
+
+- Rust toolchain: `rustc 1.96.1`（推荐，最低 1.77.2）
+- 前端开发：`npm run dev` 仅启动 Vite；`npm run tauri:dev` 启动完整 Tauri 开发模式
+- 打包：`npm run tauri:build`（macOS 输出 `.dmg`，也可指定 `--bundles`）
+
+### ⚠️ 升级注意事项
+
+| 项目 | v1.2.x (Electron) | v1.3.0 (Tauri) |
+|------|-------------------|----------------|
+| 开发启动 | `npm run dev` | `npm run tauri:dev` |
+| 打包命令 | `npm run build` | `npm run tauri:build` |
+| 数据库驱动 | `node:sqlite` (Node.js) | `rusqlite` (Rust, bundled) |
+| IPC 调用 | `window.electronAPI.invoke()` | `window.__TAURI_INTERNALS__.invoke()` |
+| 安装包格式 | Electron + electron-builder | Tauri + 系统原生格式 |
+| Rust 工具链 | 不需要 | 必须安装 `rustc` + `cargo` |
+
 ## [1.2.1] - 2026-07-07
 
 > **应用内版本更新能力上线**：在「设置」页可一键检查/下载/安装 GitHub Releases 新版本；侧边栏自动出现红点提示。本期采用手动确认模式（macOS / Windows 无代码签名场景下用户需在系统弹窗中确认一次）。
