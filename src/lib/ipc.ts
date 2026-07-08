@@ -20,9 +20,6 @@ export function isTauri(): boolean {
     && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)
 }
 
-/** @deprecated Use isTauri() instead */
-export const isElectron = isTauri
-
 /**
  * Invoke a Tauri command and return the raw IpcResult<T> wrapper.
  * Callers must manually check `success` and handle `data` or `error`.

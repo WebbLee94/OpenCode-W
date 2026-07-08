@@ -10,7 +10,7 @@ describe('classifyUpdateError', () => {
     const err = Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' })
     expect(classifyUpdateError(err)).toEqual({
       code: 'network',
-      message: '网络异常，请检查网络连接',
+      message: '网络异常，请检查网络连接后重试',
     })
   })
 
@@ -24,14 +24,14 @@ describe('classifyUpdateError', () => {
     expect(classifyUpdateError(err).code).toBe('no-asset')
   })
 
-  it('classifies generic Error as unknown', () => {
+  it('classifies generic Error as no-asset (default fallback)', () => {
     const err = new Error('boom')
-    expect(classifyUpdateError(err).code).toBe('unknown')
+    expect(classifyUpdateError(err).code).toBe('no-asset')
   })
 
-  it('handles non-Error values', () => {
-    expect(classifyUpdateError('string error').code).toBe('unknown')
-    expect(classifyUpdateError(undefined).code).toBe('unknown')
-    expect(classifyUpdateError(null).code).toBe('unknown')
+  it('handles non-Error values (default fallback)', () => {
+    expect(classifyUpdateError('string error').code).toBe('no-asset')
+    expect(classifyUpdateError(undefined).code).toBe('no-asset')
+    expect(classifyUpdateError(null).code).toBe('no-asset')
   })
 })
