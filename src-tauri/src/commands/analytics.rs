@@ -144,10 +144,8 @@ pub async fn dashboard_overview(
             let cnt: i64 = row.get(1)?;
             Ok((label, cnt))
         }) {
-            for row in rows {
-                if let Ok((label, cnt)) = row {
-                    counts.insert(label, cnt);
-                }
+            for (label, cnt) in rows.flatten() {
+                counts.insert(label, cnt);
             }
         }
     }

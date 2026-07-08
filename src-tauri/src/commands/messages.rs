@@ -620,7 +620,7 @@ fn parse_part_data(
             part.subtask_prompt = pick_str_opt(&data, &["prompt"]);
             part.subtask_description = pick_str_opt(&data, &["description"]);
             part.subtask_agent = pick_str_opt(&data, &["agent"]);
-            part.subtask_model = pick_first(&data, &["model"]).map(|v| v.clone());
+            part.subtask_model = pick_first(&data, &["model"]).cloned();
             part.subtask_command = pick_str_opt(&data, &["command"]);
             part.summary = Some(
                 part.subtask_description

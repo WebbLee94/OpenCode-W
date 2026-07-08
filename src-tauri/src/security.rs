@@ -13,7 +13,7 @@ pub fn validate_db_path(path_str: &str) -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("无法获取家目录路径")?;
     let cwd = std::env::current_dir().unwrap_or_default();
 
-    let allowed_roots = vec![
+    let allowed_roots = [
         home.join(".local/share/opencode"),
         cwd.join("test-data"),
     ];

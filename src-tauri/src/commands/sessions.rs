@@ -53,11 +53,10 @@ pub struct SessionMoveResult {
     pub migrated: i64,
 }
 
-/// Payload for sessions_rename — frontend sends `{ sessionId, title }`.
-/// Tauri maps camelCase keys to snake_case params automatically,
-/// so we use spread fields rather than a wrapper struct.
+// Payload for sessions_rename — frontend sends `{ sessionId, title }`.
+// Tauri maps camelCase keys to snake_case params automatically,
+// so we use spread fields rather than a wrapper struct.
 // (No struct needed — see sessions_rename signature.)
-
 // ─── Row mappers ──────────────────────────────────────────────────────────
 
 /// Map a session row to SessionDTO. Mirrors mapSessionRow in sessions.ts.
@@ -161,12 +160,10 @@ fn check_parent_column(conn: &rusqlite::Connection) -> bool {
                 Err(_) => return false,
             };
             let mut found = false;
-            for r in rows {
-                if let Ok(name) = r {
-                    if name == "parent_id" {
-                        found = true;
-                        break;
-                    }
+            for name in rows.flatten() {
+                if name == "parent_id" {
+                    found = true;
+                    break;
                 }
             }
             found
@@ -184,6 +181,7 @@ fn check_parent_column(conn: &rusqlite::Connection) -> bool {
 /// Frontend calls: `invokeSafe('sessions:list', filter)`
 /// Tauri auto-maps camelCase keys to snake_case params.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn sessions_list(
     app: AppHandle,
     search: Option<String>,
@@ -211,7 +209,7 @@ pub async fn sessions_list(
 
         // Build WHERE clause using extracted helper
         let (where_clause, params) = build_session_where(
-            &*conn, &search, &project_id, &start_date, &end_date, &parent_filter,
+            &conn, &search, &project_id, &start_date, &end_date, &parent_filter,
         );
 
         // Validate sort column (SQL injection prevention)
@@ -310,7 +308,7 @@ pub async fn sessions_list(
                 rows.filter_map(|r| r.ok()).collect()
             };
             for dto in data.iter_mut() {
-                dto.child_count = child_map.get(&dto.id).copied().map(|v| v as i64);
+                dto.child_count = child_map.get(&dto.id).copied();
             }
 
             // msg_count: messages per session (via IN clause, not full table scan)
@@ -704,7 +702,7 @@ pub async fn sessions_children(app: AppHandle, value: String) -> IpcResult<Vec<S
             Err(e) => return IpcResult::err(e),
         };
 
-        if !check_parent_column(&*conn) {
+        if !check_parent_column(&conn) {
             return IpcResult::ok(Vec::new());
         }
 

@@ -99,7 +99,6 @@ pub fn open(
              PRAGMA temp_store = MEMORY;
              PRAGMA threads = 4;",
         )
-        .map_err(|e| e.into())
     });
 
     let pool = Pool::builder()
