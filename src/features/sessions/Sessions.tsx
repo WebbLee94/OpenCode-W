@@ -520,63 +520,79 @@ const listRef = useRef<HTMLDivElement>(null)
                 )}
                 {activeTab === 'basic' && (
                   <div className="overflow-y-auto h-full p-4">
-                    <div className="space-y-6">
-                      <div>
-                        <h5 className="text-sm font-medium text-gray-700 mb-2">📋 基础信息</h5>
-                        <div className="space-y-2 text-sm">
-                          <p><span className="text-gray-500">目录:</span> {selectedSession.directory || '-'}</p>
-                          <p><span className="text-gray-500">模型:</span> {selectedSession.model || '-'}</p>
-                          <p><span className="text-gray-500">时间:</span> {selectedSession.time_created ? new Date(selectedSession.time_created).toLocaleString() : '-'}</p>
-                        </div>
-                      </div>
-                      {((tokenPieData.length > 0) || (toolBarData.length > 0)) && (
-                        <div className="grid grid-cols-2 gap-4">
-                          {/* Token Pie */}
-                          {tokenPieData.length > 0 && (
-                            <div>
-                              <h5 className="text-sm font-medium text-gray-700 mb-2">💰 Token 明细</h5>
-                              <ResponsiveContainer width="100%" height={180}>
-                                <PieChart><Pie data={tokenPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value">
-                                  {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
-                                </Pie><RechartsTooltip formatter={(v: number) => formatNumber(v)} /></PieChart>
-                              </ResponsiveContainer>
-                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                                {tokenPieData.map((entry, i) => (
-                                  <div key={entry.name} className="flex items-center gap-1.5 text-xs text-gray-600">
-                                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{backgroundColor: TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]}}/>
-                                    {entry.name}: {formatNumber(entry.value)}
-                                  </div>
-                                ))}
+                    <div className="space-y-4">
+                      {/* Row 1: 基础信息 | Token 明细 */}
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* 基础信息 */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                          <h5 className="text-sm font-medium text-gray-700 mb-3">📋 基础信息</h5>
+                          {(() => {
+                            const { modelId, providerId } = parseModelJson(selectedSession.model)
+                            return (
+                              <div className="space-y-2 text-sm">
+                                <p><span className="text-gray-500">目录:</span> {selectedSession.directory || '-'}</p>
+                                <p><span className="text-gray-500">厂商:</span> {providerId}</p>
+                                <p><span className="text-gray-500">模型:</span> <span className="font-mono">{modelId}</span></p>
+                                <p><span className="text-gray-500">时间:</span> {selectedSession.time_created ? new Date(selectedSession.time_created).toLocaleString() : '-'}</p>
                               </div>
-                            </div>
-                          )}
-                          {/* Tool Ranking */}
-                          {toolBarData.length > 0 && (
-                            <div>
-                              <h5 className="text-sm font-medium text-gray-700 mb-2">🔧 Tool 排行</h5>
-                              <ResponsiveContainer width="100%" height={toolBarData.length * 32 + 20}>
-                                <BarChart data={toolBarData} layout="vertical" margin={{left:80,right:20}}>
-                                  <XAxis type="number" tickFormatter={v => formatNumber(v)} />
-                                  <YAxis type="category" dataKey="name" width={80} tick={{fontSize:12}} />
-                                  <RechartsTooltip contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }} formatter={(v: number) => formatNumber(v)} />
-                                  <Bar dataKey="count" fill="#3B82F6" radius={[0,4,4,0]} />
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </div>
-                          )}
+                            )
+                          })()}
                         </div>
-                      )}
-                      {/* Skill List */}
-                      {selectedSession.skillList?.length > 0 && (
-                        <div>
-                          <h5 className="text-sm font-medium text-gray-700 mb-2">🎯 Skill 列表</h5>
-                          <div className="flex flex-wrap gap-2">
-                            {selectedSession.skillList.map((skillName, i) => (
-                              <span key={i} className="px-2.5 py-0.5 rounded-full bg-purple-50 text-xs text-purple-700">{skillName}</span>
-                            ))}
+                        {/* Token 明细 */}
+                        {tokenPieData.length > 0 && (
+                          <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <h5 className="text-sm font-medium text-gray-700 mb-2">💰 Token 明细</h5>
+                            <ResponsiveContainer width="100%" height={180}>
+                              <PieChart><Pie data={tokenPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value">
+                                {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
+                              </Pie><RechartsTooltip formatter={(v: number) => formatNumber(v)} /></PieChart>
+                            </ResponsiveContainer>
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                              {tokenPieData.map((entry, i) => (
+                                <div key={entry.name} className="flex items-center gap-1.5 text-xs text-gray-600">
+                                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{backgroundColor: TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]}}/>
+                                  {entry.name}: {formatNumber(entry.value)}
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
+                      {/* Row 2: Skill 排行 | Tool 排行 */}
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* Skill 排行 */}
+                        {selectedSession.skillRanking?.length > 0 && (
+                          <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <h5 className="text-sm font-medium text-gray-700 mb-2">🎯 Skill 排行</h5>
+                            <ResponsiveContainer width="100%" height={selectedSession.skillRanking.length * 32 + 20}>
+                              <BarChart data={selectedSession.skillRanking.slice(0, 5)} layout="vertical" margin={{left:80,right:20}}>
+                                <XAxis type="number" tickFormatter={v => formatNumber(v)} />
+                                <YAxis type="category" dataKey="skillName" width={80} tick={{fontSize:12}} />
+                                <RechartsTooltip contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }} formatter={(v: number) => formatNumber(v)} />
+                                <Bar dataKey="count" radius={[0,4,4,0]} barSize={16}>
+                                  {selectedSession.skillRanking.slice(0, 5).map((_, i) => (
+                                    <Cell key={`skill-${i}`} fill={['#8b5cf6','#6366f1','#a78bfa','#c4b5fd','#7c3aed'][i % 5]} />
+                                  ))}
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                        {/* Tool 排行 */}
+                        {toolBarData.length > 0 && (
+                          <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <h5 className="text-sm font-medium text-gray-700 mb-2">🔧 Tool 排行</h5>
+                            <ResponsiveContainer width="100%" height={toolBarData.length * 32 + 20}>
+                              <BarChart data={toolBarData} layout="vertical" margin={{left:80,right:20}}>
+                                <XAxis type="number" tickFormatter={v => formatNumber(v)} />
+                                <YAxis type="category" dataKey="name" width={80} tick={{fontSize:12}} />
+                                <RechartsTooltip contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }} formatter={(v: number) => formatNumber(v)} />
+                                <Bar dataKey="count" fill="#3B82F6" radius={[0,4,4,0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                      </div>
                       {sessionShare && (
                         <div className="border-t border-gray-200 pt-4 mt-4">
                           <h5 className="text-sm font-medium text-gray-700 mb-2">🔗 分享信息</h5>
@@ -944,6 +960,21 @@ const listRef = useRef<HTMLDivElement>(null)
       />
     </div>
   )
+}
+
+// ── Helpers ────────────────────────────────────────────────────────
+function parseModelJson(modelStr: string | undefined): { modelId: string; providerId: string } {
+  if (!modelStr) return { modelId: '-', providerId: '-' }
+  if (modelStr.startsWith('{')) {
+    try {
+      const p = JSON.parse(modelStr)
+      return {
+        modelId: p.id || p.name || modelStr,
+        providerId: p.providerID || '-',
+      }
+    } catch { /* fall through */ }
+  }
+  return { modelId: modelStr, providerId: '-' }
 }
 
 export default Sessions

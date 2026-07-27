@@ -102,7 +102,7 @@ export interface SessionDTO {
 export interface SessionDetailDTO extends SessionDTO {
   tokenStats: TokenStats;
   toolRanking: ToolRanking[];
-  skillList: string[];
+  skillRanking: SkillUsage[];
 }
 
 export interface SessionMoveFilter { sessionIds: string[]; directory: string; }

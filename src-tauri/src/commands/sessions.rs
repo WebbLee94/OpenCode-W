@@ -20,7 +20,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::db::{self, DbState};
 use crate::models::dto::{
-    IpcResult, SessionDTO, SessionDetailDTO, SessionShareDTO, TokenStats, ToolRanking,
+    IpcResult, SessionDTO, SessionDetailDTO, SessionShareDTO, SkillUsage, TokenStats, ToolRanking,
 };
 
 // ─── Output / helper types ────────────────────────────────────────────────
@@ -480,38 +480,41 @@ pub async fn sessions_detail(app: AppHandle, value: String) -> IpcResult<Option<
             }
         }
 
-        // Skill list
+        // Skill ranking
         let mut stmt = match conn.prepare(
-            "SELECT DISTINCT json_extract(data, '$.state.input.name') as skillName \
+            "SELECT json_extract(data, '$.state.input.name') as skillName, COUNT(*) as count \
              FROM part \
              WHERE session_id = ? AND json_extract(data, '$.type') = 'tool' \
                AND json_extract(data, '$.tool') = 'skill' \
-               AND json_extract(data, '$.state.input.name') IS NOT NULL",
+               AND json_extract(data, '$.state.input.name') IS NOT NULL \
+             GROUP BY skillName ORDER BY count DESC",
         ) {
             Ok(s) => s,
             Err(e) => return IpcResult::err(e.to_string()),
         };
         let skill_rows = match stmt.query_map(rusqlite::params![&session_id], |r| {
-            r.get::<_, Option<String>>(0)
+            Ok(SkillUsage {
+                skill_name: r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                count: r.get(1)?,
+            })
         }) {
             Ok(r) => r,
             Err(e) => return IpcResult::err(e.to_string()),
         };
-        let mut skill_list = Vec::new();
+        let mut skill_ranking = Vec::new();
         for r in skill_rows {
             match r {
-                Ok(Some(s)) => skill_list.push(s),
-                Ok(None) => {}
+                Ok(s) => skill_ranking.push(s),
                 Err(e) => return IpcResult::err(e.to_string()),
             }
         }
-
-        let detail = SessionDetailDTO {
-            session,
-            token_stats,
-            tool_ranking,
-            skill_list,
-        };
+ 
+         let detail = SessionDetailDTO {
+             session,
+             token_stats,
+             tool_ranking,
+             skill_ranking,
+         };
 
         IpcResult::ok(Some(detail))
     })
