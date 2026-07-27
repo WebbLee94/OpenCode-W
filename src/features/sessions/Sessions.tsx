@@ -558,6 +558,7 @@ const listRef = useRef<HTMLDivElement>(null)
                                 <BarChart data={toolBarData} layout="vertical" margin={{left:80,right:20}}>
                                   <XAxis type="number" tickFormatter={v => formatNumber(v)} />
                                   <YAxis type="category" dataKey="name" width={80} tick={{fontSize:12}} />
+                                  <RechartsTooltip contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }} formatter={(v: number) => formatNumber(v)} />
                                   <Bar dataKey="count" fill="#3B82F6" radius={[0,4,4,0]} />
                                 </BarChart>
                               </ResponsiveContainer>
