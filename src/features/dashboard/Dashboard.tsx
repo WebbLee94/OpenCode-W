@@ -1281,7 +1281,8 @@ function Dashboard() {
                       <YAxis
                         type="category"
                         dataKey="name"
-                        width={100}
+                        width={110}
+                        interval={0}
                         tick={{ fontSize: 11 }}
                         stroke="#9ca3af"
                       />
@@ -1319,7 +1320,8 @@ function Dashboard() {
                       <YAxis
                         type="category"
                         dataKey="name"
-                        width={120}
+                        width={140}
+                        interval={0}
                         tick={{ fontSize: 11 }}
                         stroke="#9ca3af"
                       />
@@ -1345,40 +1347,48 @@ function Dashboard() {
             {modelRanking.length > 0 ? (
               <div>
                 <p className="text-xs text-gray-400 font-medium mb-2">🤖 模型 & Provider 统计</p>
-                <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
                   {(() => {
-                    const sorted = modelRanking
+                    const modelChartData = modelRanking
                       .slice()
                       .sort((a, b) => b.sessionCount - a.sessionCount)
                       .slice(0, 10)
-                    const max = Math.max(...sorted.map(m => m.sessionCount), 1)
-                    return sorted.map((m, idx) => {
-                      let modelLabel = m.model
-                      let providerLabel = ''
-                      if (m.model?.startsWith('{')) {
-                        try {
-                          const p = JSON.parse(m.model)
-                          modelLabel = p.id || p.name || m.model
-                          providerLabel = p.providerID || ''
-                        } catch { /* keep raw */ }
-                      }
-                      const pct = (m.sessionCount / max) * 100
-                      return (
-                        <div key={`${providerLabel}-${modelLabel}-${idx}`} className="flex items-center gap-2 text-sm min-w-0">
-                          <span className="w-6 text-right text-gray-400 text-xs shrink-0">{idx + 1}</span>
-                          <span className="w-64 truncate text-gray-700 shrink-0" title={`${providerLabel ? providerLabel + ' / ' : ''}${modelLabel}`}>
-                            {providerLabel && <span className="text-gray-500">{providerLabel}</span>}
-                            {providerLabel && ' / '}
-                            <span className="font-mono">{modelLabel}</span>
-                          </span>
-                          <div className="flex-1 h-5 bg-gray-100 rounded relative overflow-hidden min-w-0">
-                            <div className="h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded" style={{ width: `${pct}%` }} />
-                          </div>
-                          <span className="w-20 text-right text-gray-600 text-xs font-mono shrink-0">{m.sessionCount.toLocaleString()} 会话</span>
-                          <span className="w-24 text-right text-gray-500 text-xs font-mono shrink-0">${m.totalCost.toFixed(2)}</span>
-                        </div>
-                      )
-                    })
+                      .map(m => {
+                        let label = m.model
+                        if (m.model?.startsWith('{')) {
+                          try {
+                            const p = JSON.parse(m.model)
+                            const id = p.id || p.name || m.model
+                            const pid = p.providerID || ''
+                            label = pid ? `${pid} / ${id}` : id
+                          } catch { /* keep raw */ }
+                        }
+                        return { name: label, count: m.sessionCount }
+                      })
+                    return (
+                      <ResponsiveContainer width="100%" height={modelChartData.length * 36 + 20}>
+                        <BarChart data={modelChartData} layout="vertical" margin={{ left: 0, right: 20, top: 0, bottom: 0 }}>
+                          <XAxis type="number" tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                          <YAxis
+                            type="category"
+                            dataKey="name"
+                            width={180}
+                            interval={0}
+                            tick={{ fontSize: 11 }}
+                            stroke="#9ca3af"
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              fontSize: '12px',
+                              borderRadius: '8px',
+                              border: '1px solid #e5e7eb',
+                            }}
+                            formatter={(v: number) => `${v.toLocaleString()} 会话`}
+                          />
+                          <Bar dataKey="count" fill={TOOL_BAR_COLOR} radius={[0, 4, 4, 0]} barSize={16} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )
                   })()}
                 </div>
                 {providerStats.length > 0 && (
