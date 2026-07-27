@@ -156,7 +156,7 @@ pub struct SessionDetailDTO {
     pub session: SessionDTO,
     pub token_stats: TokenStats,
     pub tool_ranking: Vec<ToolRanking>,
-    pub skill_list: Vec<String>,
+    pub skill_ranking: Vec<SkillUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
