@@ -28,7 +28,7 @@ export function formatLargeNumber(num: number | undefined | null): string {
   const sizes = ['', 'K', 'M', 'B', 'T', 'E']
   const i = Math.min(Math.floor(Math.log(Math.abs(num)) / Math.log(k)), sizes.length - 1)
   const value = num / Math.pow(k, i)
-  return `${value.toFixed(2)}${sizes[i]}`
+  return `${value.toFixed(2)} ${sizes[i]}`
 }
 
 /**

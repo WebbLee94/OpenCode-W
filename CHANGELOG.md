@@ -7,24 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.2] - 2026-07-27
 
-> **交互优化与数据展示升级**：统计图表名称交替显示修复、悬浮弹窗补齐、设置页加载闪烁消除、Token 消耗精度提升（含 cache + 大数格式化）、会话详情基础 Tab 改造（模型拆分/技能排行/2×2 布局）。
+> **交互优化与数据展示升级**：统计图表名称交替显示修复、悬浮弹窗补齐、设置页加载闪烁消除、Token 消耗精度提升（含 cache + 大数格式化）、会话详情基础 Tab 改造（模型拆分/技能排行/2×2 布局）、Token 明细横向布局与缓存复用率展示。
 
 ### ✨ Added｜新增功能
 
 - **Token 消耗统计含 cache_read/write**：`total_tokens` 计算新增 `tokens_cache_read` + `tokens_cache_write`，会话列表 Token 显示改为 `formatLargeNumber` 大数格式化（K/M/B/T/E 1000 进制）。涉及 Rust DTO、SQL 查询、TS 类型同步更新。
-- **会话详情基础 Tab 改造**：模型字段拆分为「厂商」/「模型」两列；技能列表改为排行柱状图（Top 5，与 Dashboard 一致的紫色系配色）；布局改为 2×2 grid（基础信息 + Token 饼图 / Skill 排行 + Tool 排行）。
+- **会话详情基础 Tab 改造**：模型字段拆分为「厂商」/「模型」两列；技能列表改为排行柱状图（Top 8，与 Dashboard 一致的紫色系配色）；布局改为 2×2 grid（基础信息 + Token 饼图 / Skill 排行 + Tool 排行）。
+- **Token 明细横向布局**：会话详情 Token 饼图改为左侧饼图 + 右侧指标列表的横向布局，与 Dashboard 概览 Tab 风格一致；文案统一为中文（输入Token/输出Token/推理Token/缓存读Token/缓存写Token）；新增「缓存复用率」字段展示。
 
 ### 🐛 Fixed｜问题修复
 
 - **修复 Dashboard 统计 Tab 柱状图名称交替显示**：技能使用分布与工具使用排行 YAxis 添加 `interval={0}`，增大 YAxis 宽度防止文本截断。
 - **修复渲染进程数据展示缺失**：Dashboard 模型 & Provider 统计改为 Recharts 横向柱状图并添加悬浮弹窗；会话详情 Tool 排行添加悬浮弹窗。
 - **修复设置页数据源加载闪烁**：DataSourceSection 添加模块级缓存，第二次进入设置页时状态即时显示，消除「未连接→已连接」的闪烁。
+- **修复会话详情 Skill/Tool 排行高度不一致**：Skill 排行与 Tool 排行的图表容器统一使用固定高度，确保两列对齐；Skill 排行数据处理与 Tool 排行保持对称。
 
 ### 🛠 Internal｜内部变更
 
 - **Rust 后端**：`SessionDTO` / `SessionDetailDTO` 新增 `tokens_cache_read`/`tokens_cache_write` 字段；`skill_list` → `skill_ranking: Vec<SkillUsage>`；所有 SQL 总 token 公式加入 cache 列。
 - **共享类型**：`shared/types.ts` `SessionDTO` 新增 `tokens_cache_read`/`tokens_cache_write`；`SessionDetailDTO.skillList` → `skillRanking: SkillUsage[]`。
-- **格式化工具**：`src/lib/format.ts` 新增 `formatLargeNumber()` 函数（1000 进制 K/M/B/T/E，2 位小数）。
+- **格式化工具**：`src/lib/format.ts` 新增 `formatLargeNumber()` 函数（1000 进制 K/M/B/T/E，2 位小数）；大数字格式化结果中添加单位和数值间的空格，提升可读性。
+- **构建配置**：调整 Tauri 依赖配置并完善 Vite 开发服务器设置；新增 `@types/node` 依赖。
 
 ## [1.3.1] - 2026-07-08
 
