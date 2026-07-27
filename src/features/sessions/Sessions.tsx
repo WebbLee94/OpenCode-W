@@ -388,18 +388,27 @@ const listRef = useRef<HTMLDivElement>(null)
 
   const tokenPieData = selectedSession
     ? [
-        { name: 'Input', value: selectedSession.tokenStats.inputTokens },
-        { name: 'Output', value: selectedSession.tokenStats.outputTokens },
-        { name: 'Reasoning', value: selectedSession.tokenStats.reasoningTokens },
-        { name: 'Cache Read', value: selectedSession.tokenStats.cacheRead },
-        { name: 'Cache Write', value: selectedSession.tokenStats.cacheWrite },
+        { name: '输入Token', value: selectedSession.tokenStats.inputTokens },
+        { name: '输出Token', value: selectedSession.tokenStats.outputTokens },
+        { name: '推理Token', value: selectedSession.tokenStats.reasoningTokens },
+        { name: '缓存读Token', value: selectedSession.tokenStats.cacheRead },
+        { name: '缓存写Token', value: selectedSession.tokenStats.cacheWrite },
       ].filter((d) => d.value > 0)
+    : []
+
+  // ─── Skill ranking bar chart data ────────────────────────────────────────
+
+  const skillBarData = selectedSession
+    ? selectedSession.skillRanking.slice(0, 8).map((s) => ({
+        skillName: s.skillName,
+        count: s.count,
+      }))
     : []
 
   // ─── Tool ranking bar chart data ─────────────────────────────────────────
 
   const toolBarData = selectedSession
-    ? selectedSession.toolRanking.slice(0, 5).map((t) => ({
+    ? selectedSession.toolRanking.slice(0, 8).map((t) => ({
         name: t.toolName.length > 20 ? t.toolName.slice(0, 20) + '...' : t.toolName,
         count: t.count,
       }))
@@ -542,18 +551,37 @@ const listRef = useRef<HTMLDivElement>(null)
                         {tokenPieData.length > 0 && (
                           <div className="bg-white border border-gray-200 rounded-lg p-4">
                             <h5 className="text-sm font-medium text-gray-700 mb-2">💰 Token 明细</h5>
-                            <ResponsiveContainer width="100%" height={180}>
-                              <PieChart><Pie data={tokenPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value">
-                                {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
-                              </Pie><RechartsTooltip formatter={(v: number) => formatNumber(v)} /></PieChart>
-                            </ResponsiveContainer>
-                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                              {tokenPieData.map((entry, i) => (
-                                <div key={entry.name} className="flex items-center gap-1.5 text-xs text-gray-600">
-                                  <span className="inline-block h-2.5 w-2.5 rounded-full" style={{backgroundColor: TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]}}/>
-                                  {entry.name}: {formatNumber(entry.value)}
+                            <div className="flex items-center gap-6">
+                              <div className="w-40 h-40 flex-shrink-0">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart>
+                                    <Pie data={tokenPieData} cx="50%" cy="50%" innerRadius={35} outerRadius={65} paddingAngle={2} dataKey="value" stroke="none">
+                                      {tokenPieData.map((_, i) => <Cell key={i} fill={TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length]} />)}
+                                    </Pie>
+                                    <RechartsTooltip formatter={(v: number) => formatNumber(v)} contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+                                  </PieChart>
+                                </ResponsiveContainer>
+                              </div>
+                              <div className="flex-1 space-y-3 min-w-0">
+                                {tokenPieData.map((entry, i) => (
+                                  <div key={entry.name} className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: TOKEN_PIE_COLORS[i % TOKEN_PIE_COLORS.length] }} />
+                                      <span className="text-xs text-gray-500">{entry.name}</span>
+                                    </div>
+                                    <span className="text-xs font-medium text-gray-800">{formatNumber(entry.value)}</span>
+                                  </div>
+                                ))}
+                                <div className="border-t border-gray-100 pt-2 mt-2">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#f59e0b' }} />
+                                      <span className="text-xs text-gray-500">缓存复用率</span>
+                                    </div>
+                                    <span className="text-xs font-medium text-gray-800">{(selectedSession.tokenStats.cacheReuseRate ?? 0).toFixed(1)}%</span>
+                                  </div>
                                 </div>
-                              ))}
+                              </div>
                             </div>
                           </div>
                         )}
@@ -561,16 +589,16 @@ const listRef = useRef<HTMLDivElement>(null)
                       {/* Row 2: Skill 排行 | Tool 排行 */}
                       <div className="grid grid-cols-2 gap-4">
                         {/* Skill 排行 */}
-                        {selectedSession.skillRanking?.length > 0 && (
+                        {skillBarData.length > 0 && (
                           <div className="bg-white border border-gray-200 rounded-lg p-4">
                             <h5 className="text-sm font-medium text-gray-700 mb-2">🎯 Skill 排行</h5>
-                            <ResponsiveContainer width="100%" height={selectedSession.skillRanking.length * 32 + 20}>
-                              <BarChart data={selectedSession.skillRanking.slice(0, 5)} layout="vertical" margin={{left:80,right:20}}>
+                            <ResponsiveContainer width="100%" height={215}>
+                              <BarChart data={skillBarData} layout="vertical" margin={{left:80,right:20}}>
                                 <XAxis type="number" tickFormatter={v => formatNumber(v)} />
                                 <YAxis type="category" dataKey="skillName" width={80} tick={{fontSize:12}} />
                                 <RechartsTooltip contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }} formatter={(v: number) => formatNumber(v)} />
                                 <Bar dataKey="count" radius={[0,4,4,0]} barSize={16}>
-                                  {selectedSession.skillRanking.slice(0, 5).map((_, i) => (
+                                  {skillBarData.map((_, i) => (
                                     <Cell key={`skill-${i}`} fill={['#8b5cf6','#6366f1','#a78bfa','#c4b5fd','#7c3aed'][i % 5]} />
                                   ))}
                                 </Bar>
@@ -582,12 +610,12 @@ const listRef = useRef<HTMLDivElement>(null)
                         {toolBarData.length > 0 && (
                           <div className="bg-white border border-gray-200 rounded-lg p-4">
                             <h5 className="text-sm font-medium text-gray-700 mb-2">🔧 Tool 排行</h5>
-                            <ResponsiveContainer width="100%" height={toolBarData.length * 32 + 20}>
+                            <ResponsiveContainer width="100%" height={215}>
                               <BarChart data={toolBarData} layout="vertical" margin={{left:80,right:20}}>
                                 <XAxis type="number" tickFormatter={v => formatNumber(v)} />
                                 <YAxis type="category" dataKey="name" width={80} tick={{fontSize:12}} />
                                 <RechartsTooltip contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }} formatter={(v: number) => formatNumber(v)} />
-                                <Bar dataKey="count" fill="#3B82F6" radius={[0,4,4,0]} />
+                                <Bar dataKey="count" fill="#3B82F6" radius={[0,4,4,0]} barSize={16} />
                               </BarChart>
                             </ResponsiveContainer>
                           </div>
