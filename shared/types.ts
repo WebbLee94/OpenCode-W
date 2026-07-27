@@ -93,6 +93,8 @@ export interface SessionDTO {
   tokens_input: number;
   tokens_output: number;
   tokens_reasoning: number;
+  tokens_cache_read: number;
+  tokens_cache_write: number;
   time_created: number;    // ms timestamp
   time_updated: number;    // ms timestamp
   cost?: number;

@@ -231,6 +231,8 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<SessionDTO> {
         tokens_input: row.get("tokens_input").unwrap_or(0),
         tokens_output: row.get("tokens_output").unwrap_or(0),
         tokens_reasoning: row.get("tokens_reasoning").unwrap_or(0),
+        tokens_cache_read: row.get("tokens_cache_read").unwrap_or(0),
+        tokens_cache_write: row.get("tokens_cache_write").unwrap_or(0),
         time_created: read_time_col(row, "time_created"),
         time_updated: read_time_col(row, "time_updated"),
         cost: row.get::<_, Option<f64>>("cost")?,

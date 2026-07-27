@@ -141,6 +141,8 @@ pub struct SessionDTO {
     pub tokens_input: i64,
     pub tokens_output: i64,
     pub tokens_reasoning: i64,
+    pub tokens_cache_read: i64,
+    pub tokens_cache_write: i64,
     pub time_created: i64,
     pub time_updated: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
