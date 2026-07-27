@@ -65,6 +65,7 @@ pub struct SessionMoveResult {
 ///   id, title, directory, model, agent, project_id,
 ///   total_tokens,
 ///   tokens_input, tokens_output, tokens_reasoning,
+///   tokens_cache_read, tokens_cache_write,
 ///   time_created, time_updated, cost
 ///
 /// msg_count, data_size, child_count are set to 0 here and populated
@@ -85,6 +86,8 @@ fn map_session_row(row: &Row) -> rusqlite::Result<SessionDTO> {
         tokens_input: row.get("tokens_input")?,
         tokens_output: row.get("tokens_output")?,
         tokens_reasoning: row.get("tokens_reasoning")?,
+        tokens_cache_read: row.get("tokens_cache_read")?,
+        tokens_cache_write: row.get("tokens_cache_write")?,
         time_created,
         time_updated,
         cost: row.get("cost")?,
@@ -255,9 +258,9 @@ pub async fn sessions_list(
              COALESCE(s.tokens_cache_read, 0) as tokens_cache_read, \
              COALESCE(s.tokens_cache_write, 0) as tokens_cache_write, \
              s.cost, s.time_created, s.time_updated, \
-             (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0)) as total_tokens \
-             FROM session s \
-             {} ORDER BY {} {} LIMIT ? OFFSET ?",
+             (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0) + COALESCE(s.tokens_cache_read, 0) + COALESCE(s.tokens_cache_write, 0)) as total_tokens \
+              FROM session s \
+              {} ORDER BY {} {} LIMIT ? OFFSET ?",
             where_clause, order_expr, safe_sort_order
         );
 
@@ -393,13 +396,13 @@ pub async fn sessions_detail(app: AppHandle, value: String) -> IpcResult<Option<
                    COALESCE(s.tokens_cache_write, 0) as tokens_cache_write, \
                    s.cost, s.time_created, s.time_updated, \
                    COALESCE(msg_cnt.cnt, 0) as msg_count, \
-                   (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0)) as total_tokens, \
-                   COALESCE(part_size.total, 0) as data_size, \
-                   0 as childCount \
-                   FROM session s \
-                   LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id \
-                   LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id \
-                   WHERE s.id = ?";
+                   (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0) + COALESCE(s.tokens_cache_read, 0) + COALESCE(s.tokens_cache_write, 0)) as total_tokens, \
+                    COALESCE(part_size.total, 0) as data_size, \
+                    0 as childCount \
+                    FROM session s \
+                    LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id \
+                    LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id \
+                    WHERE s.id = ?";
         let session = match conn.query_row(sql, rusqlite::params![&session_id], map_session_row) {
             Ok(s) => s,
             Err(rusqlite::Error::QueryReturnedNoRows) => return IpcResult::ok(None),
@@ -717,13 +720,13 @@ pub async fn sessions_children(app: AppHandle, value: String) -> IpcResult<Vec<S
                    COALESCE(s.tokens_cache_write, 0) as tokens_cache_write, \
                    s.cost, s.time_created, s.time_updated, \
                    COALESCE(msg_cnt.cnt, 0) as msg_count, \
-                   (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0)) as total_tokens, \
-                   COALESCE(part_size.total, 0) as data_size, \
-                   0 as childCount \
-                   FROM session s \
-                   LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id \
-                   LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id \
-                   WHERE s.parent_id = ? \
+                   (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0) + COALESCE(s.tokens_cache_read, 0) + COALESCE(s.tokens_cache_write, 0)) as total_tokens, \
+                    COALESCE(part_size.total, 0) as data_size, \
+                    0 as childCount \
+                    FROM session s \
+                    LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id \
+                    LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id \
+                    WHERE s.parent_id = ? \
                    ORDER BY s.time_created ASC";
         let mut stmt = match conn.prepare(sql) {
             Ok(s) => s,

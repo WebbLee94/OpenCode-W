@@ -4,7 +4,7 @@ import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShare
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe, openExternal } from '../../lib/ipc'
 import { open as showDialog } from '@tauri-apps/plugin-dialog'
-import { formatBytes, formatNumber, formatRelativeTime, truncateText } from '../../lib/format'
+import { formatBytes, formatNumber, formatLargeNumber, formatRelativeTime, truncateText } from '../../lib/format'
 import { useToast } from '../../hooks/useToast'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import {
@@ -901,7 +901,7 @@ const listRef = useRef<HTMLDivElement>(null)
                   <td className="px-4 py-3 text-right text-gray-600">{((session as unknown as { childCount?: number }).childCount ?? 0).toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-gray-600">{formatBytes(session.data_size)}</td>
                   <td className="px-4 py-3 text-right text-gray-600">
-                    {formatNumber(session.tokens_input + session.tokens_output)}
+                    {formatLargeNumber(session.total_tokens)}
                   </td>
                   <td className="px-4 py-3 text-right text-gray-600">{formatRelativeTime(session.time_updated)}</td>
                   <td className="max-w-[200px] truncate pl-4 py-3 text-gray-500" title={session.directory || session.project_id || '-'}>

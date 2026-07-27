@@ -19,6 +19,19 @@ export function formatNumber(num: number | undefined | null): string {
 }
 
 /**
+ * Format a large number with K/M/B/T/E suffixes (1000-base, 2 decimal places).
+ * Examples: 1234 → "1.23K", 1234567 → "1.23M", 0 → "0"
+ */
+export function formatLargeNumber(num: number | undefined | null): string {
+  if (num == null || isNaN(num) || num === 0) return '0'
+  const k = 1000
+  const sizes = ['', 'K', 'M', 'B', 'T', 'E']
+  const i = Math.min(Math.floor(Math.log(Math.abs(num)) / Math.log(k)), sizes.length - 1)
+  const value = num / Math.pow(k, i)
+  return `${value.toFixed(2)}${sizes[i]}`
+}
+
+/**
  * Format a timestamp (ms) into a relative time string
  */
 export function formatRelativeTime(timestamp: number): string {
