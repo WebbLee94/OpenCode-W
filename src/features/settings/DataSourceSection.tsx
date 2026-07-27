@@ -7,9 +7,12 @@ import { invokeSafe, isTauri } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 import { Database, FolderSync, Loader2 } from 'lucide-react'
 
+/** 模块级缓存，消除切换 Tab 时 dbConnected 从 false 闪烁为 true 的问题 */
+let dsCache: { connected: boolean; path: string } | null = null
+
 export function DataSourceSection() {
-  const [dbConnected, setDbConnected] = useState(false)
-  const [dbPath, setDbPath] = useState('')
+  const [dbConnected, setDbConnected] = useState(dsCache?.connected ?? false)
+  const [dbPath, setDbPath] = useState(dsCache?.path ?? '')
   const [switching, setSwitching] = useState(false)
 
   const refreshStatus = useCallback(async () => {
@@ -20,9 +23,11 @@ export function DataSourceSection() {
     }
     try {
       const health = await invokeSafe<{ ok: boolean; currentPath: string | null }>(IPC_CHANNELS.DATABASE_HEALTH)
+      dsCache = { connected: health.ok, path: health.currentPath || '' }
       setDbConnected(health.ok)
       setDbPath(health.currentPath || '')
     } catch {
+      dsCache = { connected: false, path: '' }
       setDbConnected(false)
       setDbPath('')
     }
