@@ -40,7 +40,7 @@ W = **W**orkshop（工坊），也是作者 **W**ebb 的印记。
 
 ## ✨ 功能特性
 
-![Dashboard](docs/images/preview.gif)
+![Dashboard](assets/images/preview.gif)
 
 - 📊 **仪表盘** — 会话资产、Token 消耗、成本水位、工具排行，Dashboard 一眼看清 AI 编程全貌
 - 💬 **会话浏览** — 父子会话完整工艺链，从需求到交付每一步都在这里，支持键盘导航
@@ -123,13 +123,8 @@ OpenCode-W/
 │       ├── ipc.ts      # Tauri invoke 封装
 │       └── format.ts   # 格式化工具
 ├── shared/             # 共享类型和常量
-├── docs/               # 设计文档（8 维度分类）
 └── test-data/          # 测试数据和夹具生成
 ```
-
-## 📚 文档
-
-完整文档请参阅 [文档中心](docs/README.md)，按 8 维度分类组织所有设计文档。
 
 ## 💡 常见问题
 

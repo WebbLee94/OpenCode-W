@@ -3,8 +3,6 @@ import { defineConfig, devices } from '@playwright/test'
 /**
  * Playwright 配置
  *
- * 用途见 docs/06-开发贡献/03-测试策略.md
- *
  * 策略：
  * - 仅启用 chromium（复用 ~/Library/Caches/ms-playwright/chromium-1208 缓存）
  * - webServer 自动拉起 vite dev，测试结束自动关闭
