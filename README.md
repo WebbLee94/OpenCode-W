@@ -123,13 +123,8 @@ OpenCode-W/
 │       ├── ipc.ts      # Tauri invoke 封装
 │       └── format.ts   # 格式化工具
 ├── shared/             # 共享类型和常量
-├── docs/               # 设计文档（8 维度分类）
 └── test-data/          # 测试数据和夹具生成
 ```
-
-## 📚 文档
-
-完整文档请参阅 [文档中心](docs/README.md)，按 8 维度分类组织所有设计文档。
 
 ## 💡 常见问题
 
