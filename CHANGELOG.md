@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### v1.3.3 (TBD)
+
+#### 缓存指标优化
+- 🔄 缓存复用率 → 缓存命中率：公式修正为 cacheRead / (cacheRead + input)，恒 ≤ 100%，消除超过 100% 的困惑
+- 📈 Token 趋势图 Tooltip 新增缓存命中率行，各时间段一目了然
+
+#### 数据源状态优化
+- ⚡ DataSourceContext：统一管理 connected + dbPath 全局状态
+- 🐛 消除首次进入设置页"未连接 → 已连接"闪烁 + 窗口抖动
+- 🗑 移除 DataSourceSection 模块级 dsCache，改由 Context 共享
+
 ## [1.3.2] - 2026-07-27
 
 > **交互优化与数据展示升级**：统计图表名称交替显示修复、悬浮弹窗补齐、设置页加载闪烁消除、Token 消耗精度提升（含 cache + 大数格式化）、会话详情基础 Tab 改造（模型拆分/技能排行/2×2 布局）、Token 明细横向布局与缓存复用率展示。
