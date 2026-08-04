@@ -307,9 +307,9 @@ pub async fn dashboard_tokens(
             let output_i = output_tokens as i64;
             let reasoning_i = reasoning_tokens as i64;
             let cache_read_i = cache_read as i64;
-            let total = input_i + output_i + reasoning_i;
-            let reuse_rate = if total > 0 {
-                (cache_read / total as f64) * 100.0
+            let total_attempts = cache_read + input_tokens;
+            let hit_rate = if total_attempts > 0.0 {
+                (cache_read / total_attempts) * 100.0
             } else {
                 0.0
             };
@@ -321,7 +321,7 @@ pub async fn dashboard_tokens(
                 cache_read: cache_read_i,
                 cache_write: cache_write as i64,
                 estimated_cost,
-                cache_reuse_rate: (reuse_rate * 100.0).round() / 100.0,
+                cache_hit_rate: (hit_rate * 100.0).round() / 100.0,
             })
         },
     ) {
@@ -333,7 +333,7 @@ pub async fn dashboard_tokens(
             cache_read: 0,
             cache_write: 0,
             estimated_cost: 0.0,
-            cache_reuse_rate: 0.0,
+            cache_hit_rate: 0.0,
         },
         Err(e) => return IpcResult::err(e.to_string()),
     };

@@ -576,9 +576,9 @@ const listRef = useRef<HTMLDivElement>(null)
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                       <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#f59e0b' }} />
-                                      <span className="text-xs text-gray-500">缓存复用率</span>
+                <span className="text-xs text-gray-500">缓存命中率</span>
                                     </div>
-                                    <span className="text-xs font-medium text-gray-800">{(selectedSession.tokenStats.cacheReuseRate ?? 0).toFixed(1)}%</span>
+                <span className="text-xs font-medium text-gray-800">{(selectedSession.tokenStats.cacheHitRate ?? 0).toFixed(1)}%</span>
                                   </div>
                                 </div>
                               </div>
