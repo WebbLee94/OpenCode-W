@@ -437,9 +437,9 @@ pub async fn sessions_detail(app: AppHandle, value: String) -> IpcResult<Option<
         };
         let (input_tokens, output_tokens, reasoning_tokens, cache_read, cache_write, estimated_cost) =
             token_stats_row;
-        let total_tokens = input_tokens + output_tokens + reasoning_tokens;
-        let cache_reuse_rate = if total_tokens > 0 {
-            let rate = (cache_read as f64 / total_tokens as f64) * 100.0;
+        let total_attempts = (cache_read + input_tokens) as f64;
+        let cache_hit_rate = if total_attempts > 0.0 {
+            let rate = (cache_read as f64 / total_attempts) * 100.0;
             (rate * 100.0).round() / 100.0
         } else {
             0.0
@@ -452,7 +452,7 @@ pub async fn sessions_detail(app: AppHandle, value: String) -> IpcResult<Option<
             cache_read,
             cache_write,
             estimated_cost,
-            cache_reuse_rate,
+            cache_hit_rate,
         };
 
         // Tool ranking

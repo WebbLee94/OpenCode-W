@@ -25,7 +25,7 @@ export interface TokenStats {
   cacheRead: number;
   cacheWrite: number;
   estimatedCost: number;
-  cacheReuseRate: number;    // percentage
+  cacheHitRate: number;    // percentage, 0-100, cacheRead / (cacheRead + inputTokens) * 100
 }
 
 // Tool ranking

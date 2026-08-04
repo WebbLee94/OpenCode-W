@@ -53,7 +53,7 @@ pub struct TokenStats {
     pub cache_read: i64,
     pub cache_write: i64,
     pub estimated_cost: f64,
-    pub cache_reuse_rate: f64,
+    pub cache_hit_rate: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

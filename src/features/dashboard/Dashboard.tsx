@@ -927,8 +927,8 @@ function Dashboard() {
                       />
                       <div className="border-t border-gray-100 pt-2 mt-2">
                         <TokenMetricRow
-                          label="缓存复用率"
-                          value={`${(tokenStats.cacheReuseRate ?? 0).toFixed(1)}%`}
+                           label="缓存命中率"
+                           value={`${(tokenStats.cacheHitRate ?? 0).toFixed(1)}%`}
                           color="bg-amber-500"
                         />
                       </div>
@@ -1058,10 +1058,28 @@ function Dashboard() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                       <XAxis dataKey="period" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
                       <YAxis tick={{ fontSize: 10 }} />
-                      <Tooltip
-                        contentStyle={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb' }}
-                        formatter={(value: number) => formatNumber(value)}
-                      />
+                       <Tooltip
+                         content={({ active, payload }) => {
+                           if (!active || !payload || !payload.length) return null
+                           const data = payload[0].payload as TokenGroupDataPoint
+                           const totalAttempts = data.cacheRead + data.inputTokens
+                           const hitRate = totalAttempts > 0
+                             ? (data.cacheRead / totalAttempts * 100).toFixed(1)
+                             : '—'
+                           return (
+                             <div style={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fff', padding: '8px 12px' }}>
+                               {payload.map((entry, i) => (
+                                 <div key={i} style={{ color: entry.color, marginBottom: 2 }}>
+                                   {entry.name}: {formatNumber(entry.value as number)}
+                                 </div>
+                               ))}
+                               <div style={{ color: '#6b7280', marginTop: 4, paddingTop: 4, borderTop: '1px solid #f0f0f0' }}>
+                                 缓存命中率: {hitRate}%
+                               </div>
+                             </div>
+                           )
+                         }}
+                       />
                       <Line type="monotone" dataKey="inputTokens" name="输入" stroke="#3B82F6" strokeWidth={2} dot={false} />
                       <Line type="monotone" dataKey="outputTokens" name="输出" stroke="#10B981" strokeWidth={2} dot={false} />
                       <Line type="monotone" dataKey="reasoningTokens" name="推理" stroke="#8B5CF6" strokeWidth={2} dot={false} />
