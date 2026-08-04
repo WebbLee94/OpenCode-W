@@ -1,10 +1,8 @@
 import { NavLink } from 'react-router'
 import logoSvg from '/brand/logo.svg'
-import { useState, useEffect, useCallback } from 'react'
-import { invokeSafe, isTauri } from '@/lib/ipc'
-import { IPC_CHANNELS } from '@shared/ipc-channels'
 import SidebarGroup from './SidebarGroup'
 import { UpdateBadge } from '@/features/update/UpdateBadge'
+import { useDataSource } from '@/features/datasource/useDataSource'
 import {
   LayoutDashboard, MessageSquare, Trash2, HardDrive, Settings as SettingsIcon,
   type LucideIcon,
@@ -39,28 +37,7 @@ const navGroups: { label: string; items: NavItemDef[] }[] = [
 ]
 
 export function Sidebar() {
-  const [dbConnected, setDbConnected] = useState(false)
-
-  const checkConnection = useCallback(async () => {
-    if (!isTauri()) {
-      setDbConnected(false)
-      return
-    }
-    try {
-      const health = await invokeSafe<{ ok: boolean }>(IPC_CHANNELS.DATABASE_HEALTH)
-      setDbConnected(health.ok)
-    } catch {
-      setDbConnected(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    checkConnection()
-    // 当窗口重新获得焦点时刷新连接状态（解决启动时序竞争问题）
-    const onFocus = () => checkConnection()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [checkConnection])
+  const { connected: dbConnected } = useDataSource()
 
   return (
     <nav className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0 overflow-visible">

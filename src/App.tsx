@@ -9,6 +9,7 @@ import { ChevronRight } from 'lucide-react'
 import { ToastProvider } from './components/ToastProvider'
 import { Sidebar } from './components/Sidebar'
 import { UpdateProvider } from './features/update/UpdateContext'
+import { DataSourceProvider } from './features/datasource/DataSourceContext'
 import { UpdateDialog } from './features/update/UpdateDialog'
 
 function Breadcrumb() {
@@ -80,19 +81,21 @@ function App() {
   return (
     <ToastProvider>
       <UpdateProvider>
-        <HashRouter>
-          <Routes>
-            <Route element={<Layout />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/sessions" element={<Sessions />} />
-              <Route path="/sessions/:sessionId/messages" element={<Messages />} />
-              <Route path="/cleanup" element={<Cleanup />} />
-              <Route path="/backup" element={<Backup />} />
-              <Route path="/settings" element={<Settings />} />
-            </Route>
-          </Routes>
-        </HashRouter>
-        <UpdateDialog />
+        <DataSourceProvider>
+          <HashRouter>
+            <Routes>
+              <Route element={<Layout />}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/sessions" element={<Sessions />} />
+                <Route path="/sessions/:sessionId/messages" element={<Messages />} />
+                <Route path="/cleanup" element={<Cleanup />} />
+                <Route path="/backup" element={<Backup />} />
+                <Route path="/settings" element={<Settings />} />
+              </Route>
+            </Routes>
+          </HashRouter>
+          <UpdateDialog />
+        </DataSourceProvider>
       </UpdateProvider>
     </ToastProvider>
   )
