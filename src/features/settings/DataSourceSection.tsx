@@ -2,44 +2,15 @@
  * 设置页 - 数据源区块
  * 显示当前数据库连接状态 + 切换数据源按钮
  */
-import { useState, useEffect, useCallback } from 'react'
-import { invokeSafe, isTauri } from '@/lib/ipc'
+import { useState } from 'react'
+import { invokeSafe } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
+import { useDataSource } from '@/features/datasource/useDataSource'
 import { Database, FolderSync, Loader2 } from 'lucide-react'
 
-/** 模块级缓存，消除切换 Tab 时 dbConnected 从 false 闪烁为 true 的问题 */
-let dsCache: { connected: boolean; path: string } | null = null
-
 export function DataSourceSection() {
-  const [dbConnected, setDbConnected] = useState(dsCache?.connected ?? false)
-  const [dbPath, setDbPath] = useState(dsCache?.path ?? '')
+  const { connected: dbConnected, dbPath } = useDataSource()
   const [switching, setSwitching] = useState(false)
-
-  const refreshStatus = useCallback(async () => {
-    if (!isTauri()) {
-      setDbConnected(false)
-      setDbPath('')
-      return
-    }
-    try {
-      const health = await invokeSafe<{ ok: boolean; currentPath: string | null }>(IPC_CHANNELS.DATABASE_HEALTH)
-      dsCache = { connected: health.ok, path: health.currentPath || '' }
-      setDbConnected(health.ok)
-      setDbPath(health.currentPath || '')
-    } catch {
-      dsCache = { connected: false, path: '' }
-      setDbConnected(false)
-      setDbPath('')
-    }
-  }, [])
-
-  useEffect(() => {
-    refreshStatus()
-    // 当窗口重新获得焦点时刷新状态（解决启动时序竞争问题）
-    const onFocus = () => refreshStatus()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [refreshStatus])
 
   const handleSwitch = async () => {
     try {

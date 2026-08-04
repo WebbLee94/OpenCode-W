@@ -6,6 +6,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { Sidebar } from './Sidebar'
 import { UpdateContext } from '@/features/update/UpdateContext'
+import { DataSourceContext } from '@/features/datasource/DataSourceContext'
 import type { UseUpdateStatus } from '@/features/update/useUpdateStatus'
 
 vi.mock('@/lib/ipc', () => ({
@@ -29,9 +30,11 @@ function renderWithContext(state: UseUpdateStatus['state']) {
   }
   return render(
     <UpdateContext.Provider value={mock}>
-      <MemoryRouter>
-        <Sidebar />
-      </MemoryRouter>
+      <DataSourceContext.Provider value={{ connected: false, dbPath: '' }}>
+        <MemoryRouter>
+          <Sidebar />
+        </MemoryRouter>
+      </DataSourceContext.Provider>
     </UpdateContext.Provider>
   )
 }
