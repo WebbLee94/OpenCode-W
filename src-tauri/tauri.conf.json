@@ -55,9 +55,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU2RTI4QkQ1N0VBQ0YxNzEKUldSeDhheCsxWXZpVmhlTTcrL3VoMTF0MmZja3g1anRJcUdxMndMdXc2SmdGMXVkalkxaFNTU1oK",
       "endpoints": [
-        "https://github.com/WebbLee94/OpenCode-W/releases/latest/download/latest-mac.yml",
-        "https://github.com/WebbLee94/OpenCode-W/releases/latest/download/latest.yml",
-        "https://github.com/WebbLee94/OpenCode-W/releases/latest/download/latest-linux.yml"
+        "https://github.com/WebbLee94/OpenCode-W/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"
