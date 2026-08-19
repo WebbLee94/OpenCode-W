@@ -90,7 +90,6 @@ struct SessionMeta {
     directory: String,
     project_id: String,
     created: i64,
-    updated: i64,
 }
 
 #[derive(Debug)]
@@ -138,17 +137,34 @@ fn dedup_cached(conn: &Connection, window: Option<(i64, i64)>) -> Result<DedupSe
     }
     let value = dedup_impl(conn, window)?;
     if let Ok(mut guard) = cache().lock() {
-        guard.insert(key, CacheEntry { created_at: Instant::now(), value: value.clone() });
+        guard.insert(
+            key,
+            CacheEntry {
+                created_at: Instant::now(),
+                value: value.clone(),
+            },
+        );
     }
     Ok(value)
 }
 
 fn dedup_impl(conn: &Connection, branch_window: Option<(i64, i64)>) -> Result<DedupSet, String> {
-    let mut budget = Budget { candidates: 0, rows: 0, digests: 0, exhausted: false };
-    let metas = load_metas(conn)?;
+    let mut budget = Budget {
+        candidates: 0,
+        rows: 0,
+        digests: 0,
+        exhausted: false,
+    };
     let mut result = DedupSet::default();
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, directory, project_id, time_created FROM session ORDER BY time_created, id",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut branches = stmt.query([]).map_err(|e| e.to_string())?;
 
-    for branch in &metas {
+    while let Some(row) = branches.next().map_err(|e| e.to_string())? {
+        let branch = session_meta(row)?;
         if let Some((start, end)) = branch_window {
             if branch.created < start || branch.created > end {
                 continue;
@@ -157,39 +173,41 @@ fn dedup_impl(conn: &Connection, branch_window: Option<(i64, i64)>) -> Result<De
         if branch.directory.is_empty() || branch.project_id.is_empty() {
             continue;
         }
-        let candidates = metas
-            .iter()
-            .filter(|c| {
-                c.id != branch.id
-                    && c.directory == branch.directory
-                    && c.project_id == branch.project_id
-                    && c.updated < branch.created
-            })
-            .map(|c| c.id.clone())
-            .collect::<Vec<_>>();
-        if candidates.is_empty() {
-            continue;
-        }
-        let Some(branch_tx) = load_transcript(conn, &branch.id, &mut budget)? else {
-            return Ok(if budget.exhausted { DedupSet { exhausted: true, ..DedupSet::default() } } else { DedupSet::default() });
+        let source_id = match only_eligible_candidate(conn, &branch, &mut budget)? {
+            CandidateDiscovery::None => continue,
+            CandidateDiscovery::One(id) => id,
+            CandidateDiscovery::Multiple => {
+                return Ok(if budget.exhausted {
+                    DedupSet {
+                        exhausted: true,
+                        ..DedupSet::default()
+                    }
+                } else {
+                    DedupSet::default()
+                });
+            }
         };
-        let mut prefixes = Vec::new();
-        for source_id in candidates {
-            if !budget.spend_candidate() {
-                return Ok(DedupSet { exhausted: true, ..DedupSet::default() });
-            }
-            let Some(source) = load_transcript(conn, &source_id, &mut budget)? else {
-                return Ok(if budget.exhausted { DedupSet { exhausted: true, ..DedupSet::default() } } else { DedupSet::default() });
-            };
-            if let Some(prefix) = shared_prefix(&source, &branch_tx) {
-                prefixes.push(prefix);
-            }
-        }
-        if prefixes.len() > 1 {
-            return Ok(DedupSet::default());
-        }
-        if prefixes.len() == 1 {
-            let prefix = prefixes[0];
+        let Some(branch_tx) = load_transcript(conn, &branch.id, &mut budget)? else {
+            return Ok(if budget.exhausted {
+                DedupSet {
+                    exhausted: true,
+                    ..DedupSet::default()
+                }
+            } else {
+                DedupSet::default()
+            });
+        };
+        let Some(source) = load_transcript(conn, &source_id, &mut budget)? else {
+            return Ok(if budget.exhausted {
+                DedupSet {
+                    exhausted: true,
+                    ..DedupSet::default()
+                }
+            } else {
+                DedupSet::default()
+            });
+        };
+        if let Some(prefix) = shared_prefix(&source, &branch_tx) {
             for message in branch_tx.messages.iter().take(prefix) {
                 result.hidden_messages.insert(message.id.clone());
                 result.hidden_parts.extend(message.part_ids.iter().cloned());
@@ -202,22 +220,62 @@ fn dedup_impl(conn: &Connection, branch_window: Option<(i64, i64)>) -> Result<De
     Ok(result)
 }
 
-fn load_metas(conn: &Connection) -> Result<Vec<SessionMeta>, String> {
+fn session_meta(row: &rusqlite::Row<'_>) -> Result<SessionMeta, String> {
+    Ok(SessionMeta {
+        id: row.get(0).map_err(|e| e.to_string())?,
+        directory: row
+            .get::<_, Option<String>>(1)
+            .map_err(|e| e.to_string())?
+            .unwrap_or_default(),
+        project_id: row
+            .get::<_, Option<String>>(2)
+            .map_err(|e| e.to_string())?
+            .unwrap_or_default(),
+        created: row.get(3).map_err(|e| e.to_string())?,
+    })
+}
+
+enum CandidateDiscovery {
+    None,
+    One(String),
+    Multiple,
+}
+
+fn only_eligible_candidate(
+    conn: &Connection,
+    branch: &SessionMeta,
+    budget: &mut Budget,
+) -> Result<CandidateDiscovery, String> {
     let mut stmt = conn
-        .prepare("SELECT id, directory, project_id, time_created, time_updated FROM session ORDER BY time_created, id")
+        .prepare(
+            "SELECT id FROM session
+             WHERE id != ?1 AND directory = ?2 AND project_id = ?3 AND time_updated < ?4
+             ORDER BY time_created, id
+             LIMIT 2",
+        )
         .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(SessionMeta {
-                id: row.get(0)?,
-                directory: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                project_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                created: row.get(3)?,
-                updated: row.get(4)?,
-            })
-        })
+    let mut candidates = stmt
+        .query(rusqlite::params![
+            branch.id,
+            branch.directory,
+            branch.project_id,
+            branch.created
+        ])
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    let Some(candidate) = candidates.next().map_err(|e| e.to_string())? else {
+        return Ok(CandidateDiscovery::None);
+    };
+    if !budget.spend_candidate() {
+        return Ok(CandidateDiscovery::Multiple);
+    }
+    let candidate_id: String = candidate.get(0).map_err(|e| e.to_string())?;
+    if candidates.next().map_err(|e| e.to_string())?.is_some() {
+        if !budget.spend_candidate() {
+            budget.exhausted = true;
+        }
+        return Ok(CandidateDiscovery::Multiple);
+    }
+    Ok(CandidateDiscovery::One(candidate_id))
 }
 
 fn load_transcript(
@@ -236,9 +294,7 @@ fn load_transcript(
     let mut stmt = conn
         .prepare("SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created, id")
         .map_err(|e| e.to_string())?;
-    let mut rows = stmt
-        .query([session_id])
-        .map_err(|e| e.to_string())?;
+    let mut rows = stmt.query([session_id]).map_err(|e| e.to_string())?;
 
     let mut messages = Vec::new();
     while let Some(row) = rows.next().map_err(|e| e.to_string())? {
@@ -283,10 +339,21 @@ fn load_transcript(
             return Ok(None);
         }
         let digest = digest_json(&Value::Array(vec![
-            Value::String(role.clone()), data,
-            Value::Array(part_digests.into_iter().map(|d| Value::String(hex::encode(d))).collect()),
+            Value::String(role.clone()),
+            data,
+            Value::Array(
+                part_digests
+                    .into_iter()
+                    .map(|d| Value::String(hex::encode(d)))
+                    .collect(),
+            ),
         ]));
-        messages.push(Message { id: message_id, role, digest, part_ids });
+        messages.push(Message {
+            id: message_id,
+            role,
+            digest,
+            part_ids,
+        });
     }
     Ok(Some(Transcript { messages }))
 }
@@ -357,7 +424,12 @@ mod tests {
     fn insert_message(conn: &Connection, id: &str, session: &str, role: &str, time: i64) {
         conn.execute(
             "INSERT INTO message VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![id, session, serde_json::json!({"role": role}).to_string(), time],
+            rusqlite::params![
+                id,
+                session,
+                serde_json::json!({"role": role}).to_string(),
+                time
+            ],
         )
         .unwrap();
     }
@@ -382,9 +454,27 @@ mod tests {
         for session in ["source", "branch"] {
             insert_message(conn, &format!("{session}-m1"), session, "user", 1);
             insert_message(conn, &format!("{session}-m2"), session, "assistant", 2);
-            insert_part(conn, &format!("{session}-p1"), session, &format!("{session}-m1"), 1);
-            insert_part(conn, &format!("{session}-p2"), session, &format!("{session}-m2"), 2);
-            insert_part(conn, &format!("{session}-p3"), session, &format!("{session}-m2"), 3);
+            insert_part(
+                conn,
+                &format!("{session}-p1"),
+                session,
+                &format!("{session}-m1"),
+                1,
+            );
+            insert_part(
+                conn,
+                &format!("{session}-p2"),
+                session,
+                &format!("{session}-m2"),
+                2,
+            );
+            insert_part(
+                conn,
+                &format!("{session}-p3"),
+                session,
+                &format!("{session}-m2"),
+                3,
+            );
         }
     }
 
@@ -392,7 +482,10 @@ mod tests {
         let path = std::env::temp_dir().join(format!(
             "opencode-fork-stats-{}-{}.db",
             std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
         ));
         (Connection::open(&path).unwrap(), path)
     }
@@ -434,11 +527,20 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         schema(&conn);
         fork_pair(&conn);
-        conn.execute("UPDATE part SET data = '{' WHERE id = 'branch-p1'", []).unwrap();
+        conn.execute("UPDATE part SET data = '{' WHERE id = 'branch-p1'", [])
+            .unwrap();
         assert_eq!(dedup(&conn).unwrap(), DedupSet::default());
 
-        conn.execute("UPDATE part SET data = ? WHERE id = 'branch-p1'", [serde_json::json!({"type": "text", "n": 1}).to_string()]).unwrap();
-        conn.execute("UPDATE part SET message_id = 'missing' WHERE id = 'branch-p1'", []).unwrap();
+        conn.execute(
+            "UPDATE part SET data = ? WHERE id = 'branch-p1'",
+            [serde_json::json!({"type": "text", "n": 1}).to_string()],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE part SET message_id = 'missing' WHERE id = 'branch-p1'",
+            [],
+        )
+        .unwrap();
         assert_eq!(dedup(&conn).unwrap(), DedupSet::default());
     }
 
@@ -449,7 +551,13 @@ mod tests {
         fork_pair(&conn);
         insert_session(&conn, "source-two", 2, 11);
         for (message, role, time) in [("m1", "user", 1), ("m2", "assistant", 2)] {
-            insert_message(&conn, &format!("source-two-{message}"), "source-two", role, time);
+            insert_message(
+                &conn,
+                &format!("source-two-{message}"),
+                "source-two",
+                role,
+                time,
+            );
         }
         insert_part(&conn, "source-two-p1", "source-two", "source-two-m1", 1);
         insert_part(&conn, "source-two-p2", "source-two", "source-two-m2", 2);
@@ -458,13 +566,71 @@ mod tests {
     }
 
     #[test]
+    fn a_matching_and_a_nonmatching_candidate_fail_closed() {
+        let conn = Connection::open_in_memory().unwrap();
+        schema(&conn);
+        fork_pair(&conn);
+        insert_session(&conn, "source-two", 2, 11);
+        insert_message(&conn, "source-two-m1", "source-two", "user", 1);
+        insert_part(&conn, "source-two-p1", "source-two", "source-two-m1", 1);
+
+        assert_eq!(dedup(&conn).unwrap(), DedupSet::default());
+    }
+
+    #[test]
+    fn cross_session_part_evidence_fails_closed() {
+        let conn = Connection::open_in_memory().unwrap();
+        schema(&conn);
+        fork_pair(&conn);
+        conn.execute(
+            "UPDATE part SET session_id = 'source' WHERE id = 'branch-p1'",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(dedup(&conn).unwrap(), DedupSet::default());
+    }
+
+    #[test]
+    fn max_digests_exhaustion_fails_closed() {
+        let conn = Connection::open_in_memory().unwrap();
+        schema(&conn);
+        insert_session(&conn, "session", 1, 1);
+        insert_message(&conn, "message", "session", "user", 1);
+        insert_part(&conn, "part", "session", "message", 1);
+        let mut budget = Budget {
+            candidates: 0,
+            rows: 0,
+            digests: MAX_DIGESTS,
+            exhausted: false,
+        };
+
+        assert!(load_transcript(&conn, "session", &mut budget)
+            .unwrap()
+            .is_none());
+        assert!(budget.exhausted);
+    }
+
+    #[test]
     fn exhausted_budget_returns_no_partial_attribution() {
         let conn = Connection::open_in_memory().unwrap();
         schema(&conn);
         fork_pair(&conn);
         for index in 0..MAX_ROWS {
-            insert_message(&conn, &format!("extra-{index}"), "branch", "assistant", 100 + index as i64);
-            insert_part(&conn, &format!("extra-part-{index}"), "branch", &format!("extra-{index}"), 100 + index as i64);
+            insert_message(
+                &conn,
+                &format!("extra-{index}"),
+                "branch",
+                "assistant",
+                100 + index as i64,
+            );
+            insert_part(
+                &conn,
+                &format!("extra-part-{index}"),
+                "branch",
+                &format!("extra-{index}"),
+                100 + index as i64,
+            );
         }
         let result = dedup(&conn).unwrap();
         assert!(result.exhausted);
@@ -481,7 +647,8 @@ mod tests {
         fork_pair(&conn);
         invalidate_cache();
         let first = dedup(&conn).unwrap();
-        conn.execute("DELETE FROM part WHERE id = 'branch-p1'", []).unwrap();
+        conn.execute("DELETE FROM part WHERE id = 'branch-p1'", [])
+            .unwrap();
         assert_eq!(dedup(&conn).unwrap(), first);
         invalidate_cache();
         assert_eq!(dedup(&conn).unwrap(), DedupSet::default());
@@ -496,11 +663,19 @@ mod tests {
         schema(&conn);
         fork_pair(&conn);
         let first = dedup(&conn).unwrap();
-        conn.execute("DELETE FROM part WHERE id = 'branch-p1'", []).unwrap();
-        let cache_path = std::path::Path::new(conn.path().unwrap()).canonicalize().unwrap().to_string_lossy().into_owned();
+        conn.execute("DELETE FROM part WHERE id = 'branch-p1'", [])
+            .unwrap();
+        let cache_path = std::path::Path::new(conn.path().unwrap())
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         let cache_generation = generation().load(std::sync::atomic::Ordering::Acquire);
         if let Ok(mut entry) = cache().lock() {
-            entry.get_mut(&(cache_path, None, cache_generation)).unwrap().created_at = Instant::now() - Duration::from_secs(6);
+            entry
+                .get_mut(&(cache_path, None, cache_generation))
+                .unwrap()
+                .created_at = Instant::now() - Duration::from_secs(6);
         }
         assert_ne!(dedup(&conn).unwrap(), first);
         drop(conn);
@@ -512,8 +687,11 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         schema(&conn);
         fork_pair(&conn);
-        conn.execute("UPDATE session SET time_updated = 30 WHERE id = 'source'", [])
-            .unwrap();
+        conn.execute(
+            "UPDATE session SET time_updated = 30 WHERE id = 'source'",
+            [],
+        )
+        .unwrap();
 
         let result = dedup(&conn).unwrap();
 
