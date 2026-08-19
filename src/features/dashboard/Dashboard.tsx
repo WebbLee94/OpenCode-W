@@ -49,7 +49,7 @@ import {
 import StatCard from '@/components/StatCard'
 import PageHeader from '@/components/PageHeader'
 import TooltipHint from '@/components/TooltipHint'
-import { formatBytes, formatNumber, sumTokenTotal } from '@/lib/format'
+import { formatBytes, formatNumber, formatLargeNumber, sumTokenTotal } from '@/lib/format'
 
 // ── Color palette ──────────────────────────────────────────────────
 const TOKEN_COLORS = ['#3b82f6', '#10b981', '#8b5cf6']
@@ -1388,7 +1388,7 @@ function Dashboard() {
                             label = pid ? `${pid} / ${id}` : id
                           } catch { /* keep raw */ }
                         }
-                        return { name: label, count: m.sessionCount }
+                        return { name: label, count: m.sessionCount, tokens: m.tokenCount }
                       })
                     return (
                       <ResponsiveContainer width="100%" height={modelChartData.length * 36 + 20}>
@@ -1408,7 +1408,17 @@ function Dashboard() {
                               borderRadius: '8px',
                               border: '1px solid #e5e7eb',
                             }}
-                            formatter={(v: number) => `${v.toLocaleString()} 会话`}
+                            content={({ active, payload }) => {
+                              if (!active || !payload || !payload.length) return null
+                              const data = payload[0].payload as { name: string; count: number; tokens?: number }
+                              return (
+                                <div style={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fff', padding: '8px 12px' }}>
+                                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{data.name}</div>
+                                  <div style={{ marginBottom: 2 }}>Token 总计: {formatLargeNumber(data.tokens ?? 0)}</div>
+                                  <div style={{ color: '#6b7280' }}>会话数: {formatNumber(data.count)}</div>
+                                </div>
+                              )
+                            }}
                           />
                           <Bar dataKey="count" fill={TOOL_BAR_COLOR} radius={[0, 4, 4, 0]} barSize={16} />
                         </BarChart>
@@ -1420,7 +1430,7 @@ function Dashboard() {
                   <div className="flex flex-wrap gap-2 mt-3">
                     {providerStats.map(p => (
                       <span key={p.provider} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                        {p.provider}: {p.sessionCount.toLocaleString()} 会话 · ${p.totalCost.toFixed(2)}
+                        {p.provider}: {formatLargeNumber(p.tokenCount)} tokens · {p.sessionCount.toLocaleString()} 会话 · ${p.totalCost.toFixed(2)}
                       </span>
                     ))}
                   </div>
