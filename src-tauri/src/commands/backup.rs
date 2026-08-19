@@ -36,12 +36,18 @@ fn parse_backup_timestamp(filename: &str) -> Option<String> {
     let date_part = &raw[..t_idx]; // "2024-01-15"
     let time_part = &raw[t_idx + 1..]; // "10-30-00-000"
     let segments: Vec<&str> = time_part.split('-').collect();
-    if segments.len() < 3 {
+    if !(segments.len() == 3 || segments.len() == 4) {
         return None;
     }
     let time = segments[..3].join(":"); // "10:30:00"
     let ms = segments.get(3).copied().unwrap_or("000"); // "000"
-    Some(format!("{}T{}.{}Z", date_part, time, ms))
+    if ms.len() != 3 || !ms.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let timestamp = format!("{}T{}.{}Z", date_part, time, ms);
+    DateTime::parse_from_rfc3339(&timestamp)
+        .ok()
+        .map(|parsed| parsed.with_timezone(&Utc).to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
 }
 
 fn backup_timestamp_metadata(now: DateTime<Utc>) -> (String, String) {
@@ -53,9 +59,11 @@ fn backup_timestamp_metadata(now: DateTime<Utc>) -> (String, String) {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use chrono::{DateTime, TimeZone, Utc};
 
-    use super::{backup_timestamp_metadata, parse_backup_timestamp};
+    use super::{backup_timestamp_metadata, list_backups_in_dir, parse_backup_timestamp};
 
     #[test]
     fn parse_backup_timestamp_returns_an_explicit_utc_timestamp() {
@@ -73,6 +81,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_backup_timestamp_rejects_invalid_and_surplus_segments() {
+        assert_eq!(parse_backup_timestamp("opencode-backup-2024-02-30T10-30-00.db"), None);
+        assert_eq!(parse_backup_timestamp("opencode-backup-2024-01-15T25-30-00.db"), None);
+        assert_eq!(parse_backup_timestamp("opencode-backup-2024-01-15T10-30-00-123-extra.db"), None);
+        assert_eq!(parse_backup_timestamp("opencode-backup-2024-01-15T10-30.db"), None);
+    }
+
+    #[test]
     fn backup_metadata_derives_filename_and_dto_time_from_one_instant() {
         let now = Utc.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap();
         let (timestamp, created_at) = backup_timestamp_metadata(now);
@@ -84,14 +100,38 @@ mod tests {
             DateTime::parse_from_rfc3339(&created_at).unwrap()
         );
     }
+
+    #[test]
+    fn list_backups_normalizes_legacy_timestamps_and_falls_back_to_mtime_before_sorting() {
+        let dir = std::env::temp_dir().join(format!(
+            "opencode-w-backup-list-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap()
+        ));
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join("opencode-backup-2024-01-15T10-30-00.db"), []).unwrap();
+        fs::write(dir.join("opencode-backup-2024-01-15T10-30-00-250.db"), []).unwrap();
+        let fallback = dir.join("not-a-backup.db");
+        fs::write(&fallback, []).unwrap();
+        let modified = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_705_406_400);
+        fs::File::open(&fallback).unwrap().set_times(fs::FileTimes::new().set_modified(modified)).unwrap();
+
+        let backups = list_backups_in_dir(&dir).unwrap();
+
+        assert_eq!(backups[0].file_name, "not-a-backup.db");
+        assert_eq!(backups[0].created_at, "2024-01-16T12:00:00+00:00");
+        assert_eq!(backups[1].created_at, "2024-01-15T10:30:00.250Z");
+        assert_eq!(backups[2].created_at, "2024-01-15T10:30:00.000Z");
+
+        fs::remove_dir_all(dir).unwrap();
+    }
 }
 
 /// List all .db backup files in the backup directory, sorted by createdAt desc.
-fn list_backups() -> Result<Vec<BackupDTO>, String> {
-    let dir = get_backup_dir()?;
+fn list_backups_in_dir(dir: &Path) -> Result<Vec<BackupDTO>, String> {
     let mut backups: Vec<BackupDTO> = Vec::new();
 
-    let entries = fs::read_dir(&dir).map_err(|e| e.to_string())?;
+    let entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
     for entry in entries.flatten() {
         let path = entry.path();
         let filename = match path.file_name().and_then(|n| n.to_str()) {
@@ -131,6 +171,11 @@ fn list_backups() -> Result<Vec<BackupDTO>, String> {
     // Sort by createdAt descending (newest first)
     backups.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     Ok(backups)
+}
+
+fn list_backups() -> Result<Vec<BackupDTO>, String> {
+    let dir = get_backup_dir()?;
+    list_backups_in_dir(&dir)
 }
 
 /// Security check: ensure a resolved path is within the backup directory.
