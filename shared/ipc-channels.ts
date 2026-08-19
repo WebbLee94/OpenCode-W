@@ -42,6 +42,7 @@ export const IPC_CHANNELS = {
 
   // Shell
   SHELL_OPEN_EXTERNAL: 'shell:openExternal',
+  SHELL_REVEAL_DATABASE_DIRECTORY: 'shell:revealDatabaseDirectory',
 
   // Backup
   BACKUP_CREATE: 'backup:create',
