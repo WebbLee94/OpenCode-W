@@ -41,7 +41,49 @@ fn parse_backup_timestamp(filename: &str) -> Option<String> {
     }
     let time = segments[..3].join(":"); // "10:30:00"
     let ms = segments.get(3).copied().unwrap_or("000"); // "000"
-    Some(format!("{}T{}.{}", date_part, time, ms))
+    Some(format!("{}T{}.{}Z", date_part, time, ms))
+}
+
+fn backup_timestamp_metadata(now: DateTime<Utc>) -> (String, String) {
+    (
+        now.format("%Y-%m-%dT%H-%M-%S-%3f").to_string(),
+        now.to_rfc3339(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{DateTime, TimeZone, Utc};
+
+    use super::{backup_timestamp_metadata, parse_backup_timestamp};
+
+    #[test]
+    fn parse_backup_timestamp_returns_an_explicit_utc_timestamp() {
+        assert_eq!(
+            parse_backup_timestamp("opencode-backup-2024-01-15T10-30-00-000.db"),
+            Some("2024-01-15T10:30:00.000Z".into())
+        );
+        assert_eq!(
+            parse_backup_timestamp("opencode-backup-2024-01-15T10-30-00.db"),
+            Some("2024-01-15T10:30:00.000Z".into())
+        );
+        assert_eq!(parse_backup_timestamp("backup-2024-01-15T10-30-00.db"), None);
+        assert_eq!(parse_backup_timestamp("opencode-backup-2024-01-15 10-30-00.db"), None);
+        assert_eq!(parse_backup_timestamp("opencode-backup-2024-01-15T10-30-00.txt"), None);
+    }
+
+    #[test]
+    fn backup_metadata_derives_filename_and_dto_time_from_one_instant() {
+        let now = Utc.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap();
+        let (timestamp, created_at) = backup_timestamp_metadata(now);
+        let parsed_filename = parse_backup_timestamp(&format!("opencode-backup-{}.db", timestamp))
+            .unwrap();
+
+        assert_eq!(
+            DateTime::parse_from_rfc3339(&parsed_filename).unwrap(),
+            DateTime::parse_from_rfc3339(&created_at).unwrap()
+        );
+    }
 }
 
 /// List all .db backup files in the backup directory, sorted by createdAt desc.
@@ -121,7 +163,8 @@ pub async fn backup_create(app: AppHandle) -> IpcResult<BackupDTO> {
         };
 
         // Generate timestamp-based filename: opencode-backup-2024-01-15T10-30-00-000.db
-        let timestamp = Utc::now().format("%Y-%m-%dT%H-%M-%S-%3f").to_string();
+        let now = Utc::now();
+        let (timestamp, created_at) = backup_timestamp_metadata(now);
         let file_name = format!("opencode-backup-{}.db", timestamp);
         let backup_path = backup_dir.join(&file_name);
 
@@ -152,7 +195,7 @@ pub async fn backup_create(app: AppHandle) -> IpcResult<BackupDTO> {
             file_name,
             file_path: backup_path_str,
             file_size,
-            created_at: Utc::now().to_rfc3339(),
+            created_at,
             compressed: false,
         })
     })
@@ -177,8 +220,8 @@ pub async fn backup_list() -> IpcResult<Vec<BackupDTO>> {
 /// 前端 ipc.ts 将单字符串参数包装为 `{ value: arg }`，因此 Rust 端使用 `value: Option<String>` 接收。
 #[tauri::command]
 pub async fn backup_restore(app: AppHandle, value: Option<String>) -> IpcResult<String> {
-    let db = app.state::<DbState>().clone_inner();
-    let previous_path = app.state::<DbState>().path();
+    let db = app.state::<DbState>().inner().clone();
+    let previous_path = db.path();
     tauri::async_runtime::spawn_blocking(move || {
         let path = value;
         let backup_dir = match get_backup_dir() {

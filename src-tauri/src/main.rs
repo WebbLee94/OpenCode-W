@@ -91,7 +91,7 @@ pub fn run() {
                 let default_db = home.join(".local").join("share").join("opencode").join("opencode.db");
                 if default_db.exists() {
                     if let Some(path_str) = default_db.to_str() {
-                        match db::open(&db_state.0, path_str) {
+                        match db::open(&db_state, path_str) {
                             Ok(p) => {
                                 log::info!("Auto-opened default database: {}", p);
                                 opened = true;
@@ -109,7 +109,7 @@ pub fn run() {
                 let test_db = cwd.join("test-data").join("test.db");
                 if test_db.exists() {
                     if let Some(path_str) = test_db.to_str() {
-                        match db::open(&db_state.0, path_str) {
+                        match db::open(&db_state, path_str) {
                             Ok(p) => {
                                 log::info!("Auto-opened test database: {}", p);
                             }

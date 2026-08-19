@@ -27,7 +27,7 @@ pub fn database_open(db: State<DbState>, value: String) -> IpcResult<String> {
     }
 
     let path_str = validated.to_string_lossy().to_string();
-    match db::open(&db.0, &path_str) {
+    match db::open(&db, &path_str) {
         Ok(abs_path) => IpcResult::ok(abs_path),
         Err(e) => IpcResult::err(e),
     }

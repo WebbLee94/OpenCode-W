@@ -36,11 +36,15 @@ pub fn get_db(
 /// Wraps `Arc<Mutex<Option<r2d2::Pool>>>` to support interior mutability
 /// for open/close while allowing parallel reads via `get_pool()`.
 /// The Mutex is held only briefly (to clone the pool), not during SQL execution.
-pub struct DbState(pub Arc<Mutex<Option<Pool<SqliteConnectionManager>>>>);
+#[derive(Clone)]
+pub struct DbState(
+    pub Arc<Mutex<Option<Pool<SqliteConnectionManager>>>>,
+    Arc<Mutex<Option<String>>>,
+);
 
 impl DbState {
     pub fn new() -> Self {
-        DbState(Arc::new(Mutex::new(None)))
+        DbState(Arc::new(Mutex::new(None)), Arc::new(Mutex::new(None)))
     }
 
     /// Clone the Arc for move into spawn_blocking closures.
@@ -53,13 +57,20 @@ impl DbState {
     }
 
     pub fn path(&self) -> Option<String> {
-        self.0.lock().ok().and_then(|g| {
-            g.as_ref().and_then(|pool| {
-                pool.get()
-                    .ok()
-                    .and_then(|conn| conn.path().map(|p| p.to_string()))
-            })
-        })
+        self.1.lock().ok().and_then(|path| path.clone())
+    }
+
+    /// Store the validated path so path-only operations never lease a connection.
+    fn set_path(&self, path: String) {
+        if let Ok(mut current) = self.1.lock() {
+            *current = Some(path);
+        }
+    }
+
+    fn clear_path(&self) {
+        if let Ok(mut current) = self.1.lock() {
+            *current = None;
+        }
     }
 }
 
@@ -79,7 +90,7 @@ pub fn get_pool(
 
 /// Open a database file and create a connection pool (4 connections, WAL mode).
 pub fn open(
-    state: &Mutex<Option<Pool<SqliteConnectionManager>>>,
+    state: &DbState,
     db_path: &str,
 ) -> Result<String, String> {
     if !Path::new(db_path).exists() {
@@ -106,17 +117,21 @@ pub fn open(
         .build(manager)
         .map_err(|e| e.to_string())?;
 
-    let mut lock = state.lock().map_err(|e| e.to_string())?;
+    let mut lock = state.0.lock().map_err(|e| e.to_string())?;
     *lock = Some(pool);
+    drop(lock);
+    state.set_path(abs_path_str.clone());
     Ok(abs_path_str)
 }
 
 /// Close the current database pool.
 pub fn close(
-    state: &Mutex<Option<Pool<SqliteConnectionManager>>>,
+    state: &DbState,
 ) -> Result<(), String> {
-    let mut lock = state.lock().map_err(|e| e.to_string())?;
+    let mut lock = state.0.lock().map_err(|e| e.to_string())?;
     *lock = None;
+    drop(lock);
+    state.clear_path();
     Ok(())
 }
 
