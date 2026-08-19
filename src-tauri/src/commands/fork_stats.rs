@@ -2,10 +2,38 @@ use rusqlite::Connection;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 pub const MAX_CANDIDATES: usize = 256;
 pub const MAX_ROWS: usize = 50_000;
 pub const MAX_DIGESTS: usize = 50_000;
+
+#[derive(Clone)]
+struct CacheEntry {
+    created_at: Instant,
+    value: DedupSet,
+}
+
+type CacheKey = (String, Option<(i64, i64)>, u64);
+type DedupCache = BTreeMap<CacheKey, CacheEntry>;
+
+fn cache() -> &'static Mutex<DedupCache> {
+    static CACHE: OnceLock<Mutex<DedupCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+fn generation() -> &'static std::sync::atomic::AtomicU64 {
+    static GENERATION: OnceLock<std::sync::atomic::AtomicU64> = OnceLock::new();
+    GENERATION.get_or_init(|| std::sync::atomic::AtomicU64::new(0))
+}
+
+pub fn invalidate_cache() {
+    generation().fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    if let Ok(mut entry) = cache().lock() {
+        entry.clear();
+    }
+}
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct DedupSet {
@@ -34,6 +62,7 @@ struct Budget {
     candidates: usize,
     rows: usize,
     digests: usize,
+    exhausted: bool,
 }
 
 impl Budget {
@@ -44,12 +73,14 @@ impl Budget {
 
     fn spend_row(&mut self) -> bool {
         self.rows += 1;
-        self.rows <= MAX_ROWS
+        self.exhausted = self.rows > MAX_ROWS;
+        !self.exhausted
     }
 
     fn spend_digest(&mut self) -> bool {
         self.digests += 1;
-        self.digests <= MAX_DIGESTS
+        self.exhausted = self.digests > MAX_DIGESTS;
+        !self.exhausted
     }
 }
 
@@ -78,18 +109,42 @@ struct Transcript {
 /// Returns the branch IDs to hide from logical statistics without mutating the database.
 /// Evidence reads are not date-filtered; an exhausted request hides nothing.
 pub fn dedup(conn: &Connection) -> Result<DedupSet, String> {
-    dedup_impl(conn, None)
+    dedup_cached(conn, None)
 }
 
 /// Date-window variant: only branch sessions created inside the window are evaluated,
 /// so large databases do not exhaust the per-request budget on narrow date filters.
 /// Candidate/source evidence remains unrestricted.
 pub fn dedup_for_window(conn: &Connection, start_ms: i64, end_ms: i64) -> Result<DedupSet, String> {
-    dedup_impl(conn, Some((start_ms, end_ms)))
+    dedup_cached(conn, Some((start_ms, end_ms)))
+}
+
+fn dedup_cached(conn: &Connection, window: Option<(i64, i64)>) -> Result<DedupSet, String> {
+    let Some(path) = conn
+        .path()
+        .and_then(|path| std::path::Path::new(path).canonicalize().ok())
+        .map(|path| path.to_string_lossy().into_owned())
+    else {
+        return dedup_impl(conn, window);
+    };
+    let current_generation = generation().load(std::sync::atomic::Ordering::Acquire);
+    let key = (path.clone(), window, current_generation);
+    if let Ok(guard) = cache().lock() {
+        if let Some(entry) = guard.get(&key) {
+            if entry.created_at.elapsed() <= Duration::from_secs(5) {
+                return Ok(entry.value.clone());
+            }
+        }
+    }
+    let value = dedup_impl(conn, window)?;
+    if let Ok(mut guard) = cache().lock() {
+        guard.insert(key, CacheEntry { created_at: Instant::now(), value: value.clone() });
+    }
+    Ok(value)
 }
 
 fn dedup_impl(conn: &Connection, branch_window: Option<(i64, i64)>) -> Result<DedupSet, String> {
-    let mut budget = Budget { candidates: 0, rows: 0, digests: 0 };
+    let mut budget = Budget { candidates: 0, rows: 0, digests: 0, exhausted: false };
     let metas = load_metas(conn)?;
     let mut result = DedupSet::default();
 
@@ -116,7 +171,7 @@ fn dedup_impl(conn: &Connection, branch_window: Option<(i64, i64)>) -> Result<De
             continue;
         }
         let Some(branch_tx) = load_transcript(conn, &branch.id, &mut budget)? else {
-            return Ok(DedupSet::default());
+            return Ok(if budget.exhausted { DedupSet { exhausted: true, ..DedupSet::default() } } else { DedupSet::default() });
         };
         let mut prefixes = Vec::new();
         for source_id in candidates {
@@ -124,11 +179,14 @@ fn dedup_impl(conn: &Connection, branch_window: Option<(i64, i64)>) -> Result<De
                 return Ok(DedupSet { exhausted: true, ..DedupSet::default() });
             }
             let Some(source) = load_transcript(conn, &source_id, &mut budget)? else {
-                return Ok(DedupSet::default());
+                return Ok(if budget.exhausted { DedupSet { exhausted: true, ..DedupSet::default() } } else { DedupSet::default() });
             };
             if let Some(prefix) = shared_prefix(&source, &branch_tx) {
                 prefixes.push(prefix);
             }
+        }
+        if prefixes.len() > 1 {
+            return Ok(DedupSet::default());
         }
         if prefixes.len() == 1 {
             let prefix = prefixes[0];
@@ -167,23 +225,32 @@ fn load_transcript(
     session_id: &str,
     budget: &mut Budget,
 ) -> Result<Option<Transcript>, String> {
+    let invalid_part_reference: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM part p LEFT JOIN message m ON m.id = p.message_id WHERE p.session_id = ? AND (m.id IS NULL OR m.session_id != p.session_id))",
+        [session_id],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    if invalid_part_reference {
+        return Ok(None);
+    }
     let mut stmt = conn
         .prepare("SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created, id")
         .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([session_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
+    let mut rows = stmt
+        .query([session_id])
         .map_err(|e| e.to_string())?;
 
-    let mut messages = Vec::with_capacity(rows.len());
-    for (message_id, raw) in rows {
+    let mut messages = Vec::new();
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
         if !budget.spend_row() {
             return Ok(None);
         }
-        let data: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+        let message_id: String = row.get(0).map_err(|e| e.to_string())?;
+        let raw: String = row.get(1).map_err(|e| e.to_string())?;
+        let data: Value = match serde_json::from_str(&raw) {
+            Ok(data) => data,
+            Err(_) => return Ok(None),
+        };
         let role = match data.get("role").and_then(Value::as_str) {
             Some(role) => role.to_string(),
             None => return Ok(None),
@@ -192,43 +259,32 @@ fn load_transcript(
         let mut part_stmt = conn
             .prepare("SELECT id, session_id, data FROM part WHERE message_id = ? ORDER BY time_created, id")
             .map_err(|e| e.to_string())?;
-        let parts = part_stmt
-            .query_map([&message_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
-            })
-            .map_err(|e| e.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
-
-        if parts.is_empty() {
-            return Ok(None);
-        }
-        let mut part_ids = Vec::with_capacity(parts.len());
-        let mut part_digests = Vec::with_capacity(parts.len());
-        for (part_id, part_session_id, part_raw) in parts {
-            if part_session_id != session_id || !budget.spend_row() || !budget.spend_digest() {
+        let mut parts = part_stmt.query([&message_id]).map_err(|e| e.to_string())?;
+        let mut part_ids = Vec::new();
+        let mut part_digests = Vec::new();
+        while let Some(part) = parts.next().map_err(|e| e.to_string())? {
+            if !budget.spend_row() || !budget.spend_digest() {
                 return Ok(None);
             }
-            let part_data: Value = serde_json::from_str(&part_raw).map_err(|e| e.to_string())?;
+            let part_id: String = part.get(0).map_err(|e| e.to_string())?;
+            let part_session_id: String = part.get(1).map_err(|e| e.to_string())?;
+            let part_raw: String = part.get(2).map_err(|e| e.to_string())?;
+            if part_session_id != session_id {
+                return Ok(None);
+            }
+            let part_data: Value = match serde_json::from_str(&part_raw) {
+                Ok(data) => data,
+                Err(_) => return Ok(None),
+            };
             part_ids.push(part_id);
             part_digests.push(digest_json(&part_data));
         }
-        if !budget.spend_digest() {
+        if part_ids.is_empty() || !budget.spend_digest() {
             return Ok(None);
         }
         let digest = digest_json(&Value::Array(vec![
-            Value::String(role.clone()),
-            data,
-            Value::Array(
-                part_digests
-                    .into_iter()
-                    .map(|d| Value::String(hex::encode(d)))
-                    .collect(),
-            ),
+            Value::String(role.clone()), data,
+            Value::Array(part_digests.into_iter().map(|d| Value::String(hex::encode(d))).collect()),
         ]));
         messages.push(Message { id: message_id, role, digest, part_ids });
     }
@@ -274,6 +330,12 @@ fn canonical(value: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::OnceLock;
+
+    fn cache_test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     fn schema(conn: &Connection) {
         conn.execute_batch(
@@ -326,6 +388,15 @@ mod tests {
         }
     }
 
+    fn file_connection() -> (Connection, std::path::PathBuf) {
+        let path = std::env::temp_dir().join(format!(
+            "opencode-fork-stats-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+        ));
+        (Connection::open(&path).unwrap(), path)
+    }
+
     #[test]
     fn hides_an_exact_fork_clone_branch() {
         let conn = Connection::open_in_memory().unwrap();
@@ -356,6 +427,84 @@ mod tests {
         assert!(result.hidden_messages.contains("branch-m2"));
         assert!(!result.hidden_messages.contains("branch-m3"));
         assert!(!result.hidden_parts.contains("branch-p4"));
+    }
+
+    #[test]
+    fn malformed_or_orphan_evidence_fails_closed() {
+        let conn = Connection::open_in_memory().unwrap();
+        schema(&conn);
+        fork_pair(&conn);
+        conn.execute("UPDATE part SET data = '{' WHERE id = 'branch-p1'", []).unwrap();
+        assert_eq!(dedup(&conn).unwrap(), DedupSet::default());
+
+        conn.execute("UPDATE part SET data = ? WHERE id = 'branch-p1'", [serde_json::json!({"type": "text", "n": 1}).to_string()]).unwrap();
+        conn.execute("UPDATE part SET message_id = 'missing' WHERE id = 'branch-p1'", []).unwrap();
+        assert_eq!(dedup(&conn).unwrap(), DedupSet::default());
+    }
+
+    #[test]
+    fn multiple_candidates_fail_closed() {
+        let conn = Connection::open_in_memory().unwrap();
+        schema(&conn);
+        fork_pair(&conn);
+        insert_session(&conn, "source-two", 2, 11);
+        for (message, role, time) in [("m1", "user", 1), ("m2", "assistant", 2)] {
+            insert_message(&conn, &format!("source-two-{message}"), "source-two", role, time);
+        }
+        insert_part(&conn, "source-two-p1", "source-two", "source-two-m1", 1);
+        insert_part(&conn, "source-two-p2", "source-two", "source-two-m2", 2);
+        insert_part(&conn, "source-two-p3", "source-two", "source-two-m2", 3);
+        assert_eq!(dedup(&conn).unwrap(), DedupSet::default());
+    }
+
+    #[test]
+    fn exhausted_budget_returns_no_partial_attribution() {
+        let conn = Connection::open_in_memory().unwrap();
+        schema(&conn);
+        fork_pair(&conn);
+        for index in 0..MAX_ROWS {
+            insert_message(&conn, &format!("extra-{index}"), "branch", "assistant", 100 + index as i64);
+            insert_part(&conn, &format!("extra-part-{index}"), "branch", &format!("extra-{index}"), 100 + index as i64);
+        }
+        let result = dedup(&conn).unwrap();
+        assert!(result.exhausted);
+        assert!(result.hidden_sessions.is_empty());
+        assert!(result.hidden_messages.is_empty());
+        assert!(result.hidden_parts.is_empty());
+    }
+
+    #[test]
+    fn cache_returns_a_snapshot_until_invalidated() {
+        let _lock = cache_test_lock().lock().unwrap();
+        let (conn, path) = file_connection();
+        schema(&conn);
+        fork_pair(&conn);
+        invalidate_cache();
+        let first = dedup(&conn).unwrap();
+        conn.execute("DELETE FROM part WHERE id = 'branch-p1'", []).unwrap();
+        assert_eq!(dedup(&conn).unwrap(), first);
+        invalidate_cache();
+        assert_eq!(dedup(&conn).unwrap(), DedupSet::default());
+        drop(conn);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn cache_entry_expires_after_five_seconds() {
+        let _lock = cache_test_lock().lock().unwrap();
+        let (conn, path) = file_connection();
+        schema(&conn);
+        fork_pair(&conn);
+        let first = dedup(&conn).unwrap();
+        conn.execute("DELETE FROM part WHERE id = 'branch-p1'", []).unwrap();
+        let cache_path = std::path::Path::new(conn.path().unwrap()).canonicalize().unwrap().to_string_lossy().into_owned();
+        let cache_generation = generation().load(std::sync::atomic::Ordering::Acquire);
+        if let Ok(mut entry) = cache().lock() {
+            entry.get_mut(&(cache_path, None, cache_generation)).unwrap().created_at = Instant::now() - Duration::from_secs(6);
+        }
+        assert_ne!(dedup(&conn).unwrap(), first);
+        drop(conn);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
