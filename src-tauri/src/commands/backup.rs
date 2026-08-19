@@ -45,9 +45,11 @@ fn parse_backup_timestamp(filename: &str) -> Option<String> {
         return None;
     }
     let timestamp = format!("{}T{}.{}Z", date_part, time, ms);
-    DateTime::parse_from_rfc3339(&timestamp)
-        .ok()
-        .map(|parsed| parsed.with_timezone(&Utc).to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+    DateTime::parse_from_rfc3339(&timestamp).ok().map(|parsed| {
+        parsed
+            .with_timezone(&Utc)
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+    })
 }
 
 fn backup_timestamp_metadata(now: DateTime<Utc>) -> (String, String) {
@@ -60,10 +62,28 @@ fn backup_timestamp_metadata(now: DateTime<Utc>) -> (String, String) {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::Path;
 
     use chrono::{DateTime, TimeZone, Utc};
+    use rusqlite::Connection;
 
-    use super::{backup_timestamp_metadata, list_backups_in_dir, parse_backup_timestamp};
+    use super::{
+        backup_timestamp_metadata, list_backups_in_dir, parse_backup_timestamp,
+        restore_backup_in_dir,
+    };
+    use crate::db::{self, DbState};
+    use crate::security;
+
+    fn remove_database_files(path: &Path) {
+        for suffix in ["", "-wal", "-shm"] {
+            let candidate = if suffix.is_empty() {
+                path.to_path_buf()
+            } else {
+                Path::new(&format!("{}{}", path.display(), suffix)).to_path_buf()
+            };
+            let _ = fs::remove_file(candidate);
+        }
+    }
 
     #[test]
     fn parse_backup_timestamp_returns_an_explicit_utc_timestamp() {
@@ -75,25 +95,46 @@ mod tests {
             parse_backup_timestamp("opencode-backup-2024-01-15T10-30-00.db"),
             Some("2024-01-15T10:30:00.000Z".into())
         );
-        assert_eq!(parse_backup_timestamp("backup-2024-01-15T10-30-00.db"), None);
-        assert_eq!(parse_backup_timestamp("opencode-backup-2024-01-15 10-30-00.db"), None);
-        assert_eq!(parse_backup_timestamp("opencode-backup-2024-01-15T10-30-00.txt"), None);
+        assert_eq!(
+            parse_backup_timestamp("backup-2024-01-15T10-30-00.db"),
+            None
+        );
+        assert_eq!(
+            parse_backup_timestamp("opencode-backup-2024-01-15 10-30-00.db"),
+            None
+        );
+        assert_eq!(
+            parse_backup_timestamp("opencode-backup-2024-01-15T10-30-00.txt"),
+            None
+        );
     }
 
     #[test]
     fn parse_backup_timestamp_rejects_invalid_and_surplus_segments() {
-        assert_eq!(parse_backup_timestamp("opencode-backup-2024-02-30T10-30-00.db"), None);
-        assert_eq!(parse_backup_timestamp("opencode-backup-2024-01-15T25-30-00.db"), None);
-        assert_eq!(parse_backup_timestamp("opencode-backup-2024-01-15T10-30-00-123-extra.db"), None);
-        assert_eq!(parse_backup_timestamp("opencode-backup-2024-01-15T10-30.db"), None);
+        assert_eq!(
+            parse_backup_timestamp("opencode-backup-2024-02-30T10-30-00.db"),
+            None
+        );
+        assert_eq!(
+            parse_backup_timestamp("opencode-backup-2024-01-15T25-30-00.db"),
+            None
+        );
+        assert_eq!(
+            parse_backup_timestamp("opencode-backup-2024-01-15T10-30-00-123-extra.db"),
+            None
+        );
+        assert_eq!(
+            parse_backup_timestamp("opencode-backup-2024-01-15T10-30.db"),
+            None
+        );
     }
 
     #[test]
     fn backup_metadata_derives_filename_and_dto_time_from_one_instant() {
         let now = Utc.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap();
         let (timestamp, created_at) = backup_timestamp_metadata(now);
-        let parsed_filename = parse_backup_timestamp(&format!("opencode-backup-{}.db", timestamp))
-            .unwrap();
+        let parsed_filename =
+            parse_backup_timestamp(&format!("opencode-backup-{}.db", timestamp)).unwrap();
 
         assert_eq!(
             DateTime::parse_from_rfc3339(&parsed_filename).unwrap(),
@@ -113,8 +154,12 @@ mod tests {
         fs::write(dir.join("opencode-backup-2024-01-15T10-30-00-250.db"), []).unwrap();
         let fallback = dir.join("not-a-backup.db");
         fs::write(&fallback, []).unwrap();
-        let modified = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_705_406_400);
-        fs::File::open(&fallback).unwrap().set_times(fs::FileTimes::new().set_modified(modified)).unwrap();
+        let modified =
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_705_406_400);
+        fs::File::open(&fallback)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
 
         let backups = list_backups_in_dir(&dir).unwrap();
 
@@ -124,6 +169,81 @@ mod tests {
         assert_eq!(backups[2].created_at, "2024-01-15T10:30:00.000Z");
 
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn restore_lifecycle_opens_trusted_backup_snapshot_and_rejects_outside_input() {
+        let root = std::env::temp_dir().join(format!(
+            "opencode-w-backup-restore-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap()
+        ));
+        let backup_dir = root.join("backups");
+        fs::create_dir_all(&backup_dir).unwrap();
+        let original = root.join("original.db");
+        let backup = backup_dir.join("opencode-backup-2024-01-15T10-30-00-000.db");
+        let outside = root.join("outside.db");
+
+        {
+            let connection = Connection::open(&original).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE marker (value TEXT); INSERT INTO marker VALUES ('original');",
+                )
+                .unwrap();
+        }
+        {
+            let connection = Connection::open(&backup).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE marker (value TEXT); INSERT INTO marker VALUES ('backup');",
+                )
+                .unwrap();
+        }
+        Connection::open(&outside).unwrap();
+
+        let state = DbState::new();
+        db::open(&state, &original.to_string_lossy()).unwrap();
+
+        let restored = restore_backup_in_dir(
+            &state,
+            state.path(),
+            Some(backup.to_string_lossy().to_string()),
+            &backup_dir,
+        )
+        .unwrap();
+
+        assert_eq!(state.path(), Some(restored.clone()));
+        assert_eq!(
+            db::get_db(&state.0)
+                .unwrap()
+                .query_row("SELECT value FROM marker", [], |row| row
+                    .get::<_, String>(0))
+                .unwrap(),
+            "backup"
+        );
+        assert_eq!(
+            security::resolve_server_snapshot_path_in_backup_root(&restored, &backup_dir).unwrap(),
+            backup.canonicalize().unwrap()
+        );
+        assert!(restore_backup_in_dir(
+            &state,
+            state.path(),
+            Some(outside.to_string_lossy().to_string()),
+            &backup_dir,
+        )
+        .is_err());
+
+        db::close(&state).unwrap();
+        for entry in fs::read_dir(&backup_dir).unwrap().flatten() {
+            if entry.file_name().to_string_lossy().starts_with("safety-") {
+                remove_database_files(&entry.path());
+            }
+        }
+        remove_database_files(&original);
+        remove_database_files(&backup);
+        remove_database_files(&outside);
+        fs::remove_dir_all(root).unwrap();
     }
 }
 
@@ -187,6 +307,55 @@ fn ensure_path_in_backup_dir(resolved_path: &Path, backup_dir: &Path) -> Result<
         return Err("Invalid backup file path".into());
     }
     Ok(())
+}
+
+fn restore_backup_in_dir(
+    db: &DbState,
+    previous_path: Option<String>,
+    requested_path: Option<String>,
+    backup_dir: &Path,
+) -> Result<String, String> {
+    let backup_dir = backup_dir
+        .canonicalize()
+        .map_err(|e| format!("无法解析备份目录: {}", e))?;
+    let backup_path = if let Some(path) = requested_path {
+        let resolved = Path::new(&path)
+            .canonicalize()
+            .map_err(|_| String::from("Backup file not found"))?;
+        ensure_path_in_backup_dir(&resolved, &backup_dir)?;
+        resolved
+    } else {
+        list_backups_in_dir(&backup_dir)?
+            .first()
+            .map(|backup| PathBuf::from(&backup.file_path))
+            .ok_or_else(|| String::from("No backup files found"))?
+    };
+
+    if !backup_path.is_file() {
+        return Err("Backup file not found".into());
+    }
+
+    if let Some(previous_path) = &previous_path {
+        if Path::new(previous_path).is_file() {
+            let safety_path = backup_dir.join(format!(
+                "safety-{}.db",
+                Utc::now().format("%Y-%m-%dT%H-%M-%S-%3f")
+            ));
+            let _ = fs::copy(previous_path, safety_path);
+        }
+    }
+
+    db::close(db)?;
+    let backup_path = backup_path.to_string_lossy().to_string();
+    match db::open(db, &backup_path) {
+        Ok(snapshot) => Ok(snapshot),
+        Err(error) => {
+            if let Some(previous_path) = previous_path {
+                let _ = db::open(db, &previous_path);
+            }
+            Err(error)
+        }
+    }
 }
 
 // ─── Commands ──────────────────────────────────────────────────────────────
@@ -268,62 +437,14 @@ pub async fn backup_restore(app: AppHandle, value: Option<String>) -> IpcResult<
     let db = app.state::<DbState>().inner().clone();
     let previous_path = db.path();
     tauri::async_runtime::spawn_blocking(move || {
-        let path = value;
         let backup_dir = match get_backup_dir() {
             Ok(d) => d,
             Err(e) => return IpcResult::err(e),
         };
 
-        let backup_path = if let Some(p) = path {
-            // Security: ensure the provided path is within the backup directory
-            let resolved = match Path::new(&p).canonicalize() {
-                Ok(rp) => rp,
-                Err(_) => return IpcResult::err("Backup file not found"),
-            };
-            if let Err(e) = ensure_path_in_backup_dir(&resolved, &backup_dir) {
-                return IpcResult::err(e);
-            }
-            resolved.to_string_lossy().to_string()
-        } else {
-            // Fall back to the latest backup
-            let backups = match list_backups() {
-                Ok(b) => b,
-                Err(e) => return IpcResult::err(e),
-            };
-            match backups.first() {
-                Some(b) => b.file_path.clone(),
-                None => return IpcResult::err("No backup files found"),
-            }
-        };
-
-        if !Path::new(&backup_path).exists() {
-            return IpcResult::err("Backup file not found");
-        }
-
-        // Create a safety backup before restore (best-effort)
-        if let Some(ref prev) = previous_path {
-            if Path::new(prev).exists() {
-                let safety_ts = Utc::now().format("%Y-%m-%dT%H-%M-%S-%3f").to_string();
-                let safety_path = backup_dir.join(format!("safety-{}.db", safety_ts));
-                let _ = fs::copy(prev, &safety_path);
-            }
-        }
-
-        // Close current database
-        if let Err(e) = db::close(&db) {
-            return IpcResult::err(e);
-        }
-
-        // Open the backup as the new database
-        match db::open(&db, &backup_path) {
-            Ok(p) => IpcResult::ok(p),
-            Err(e) => {
-                // Rollback: try to reopen the previous database
-                if let Some(ref prev) = previous_path {
-                    let _ = db::open(&db, prev);
-                }
-                IpcResult::err(e)
-            }
+        match restore_backup_in_dir(&db, previous_path, value, &backup_dir) {
+            Ok(path) => IpcResult::ok(path),
+            Err(error) => IpcResult::err(error),
         }
     })
     .await

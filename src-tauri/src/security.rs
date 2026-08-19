@@ -13,10 +13,7 @@ pub fn validate_db_path(path_str: &str) -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("无法获取家目录路径")?;
     let cwd = std::env::current_dir().unwrap_or_default();
 
-    let allowed_roots = [
-        home.join(".local/share/opencode"),
-        cwd.join("test-data"),
-    ];
+    let allowed_roots = [home.join(".local/share/opencode"), cwd.join("test-data")];
 
     let path = Path::new(path_str);
     let abs = if path.is_absolute() {
@@ -30,9 +27,7 @@ pub fn validate_db_path(path_str: &str) -> Result<PathBuf, String> {
         .canonicalize()
         .map_err(|e| format!("路径无法解析: {}", e))?;
 
-    let inside = allowed_roots
-        .iter()
-        .any(|root| canonical.starts_with(root));
+    let inside = allowed_roots.iter().any(|root| canonical.starts_with(root));
 
     if !inside {
         return Err("不允许打开该目录下的数据库文件".into());
@@ -53,7 +48,15 @@ pub fn resolve_server_snapshot_path(path_str: &str) -> Result<PathBuf, String> {
     }
 
     let home = dirs::home_dir().ok_or("无法获取家目录路径")?;
-    let backup_root = home.join(".opencode-w").join("backups").canonicalize()
+    resolve_server_snapshot_path_in_backup_root(path_str, &home.join(".opencode-w").join("backups"))
+}
+
+pub fn resolve_server_snapshot_path_in_backup_root(
+    path_str: &str,
+    backup_root: &Path,
+) -> Result<PathBuf, String> {
+    let backup_root = backup_root
+        .canonicalize()
         .map_err(|e| format!("备份目录无法解析: {}", e))?;
     let snapshot = Path::new(path_str)
         .canonicalize()
@@ -78,7 +81,8 @@ pub fn validate_db_extension(path: &Path) -> Result<(), String> {
     match ext.as_str() {
         "db" | "sqlite" | "sqlite3" => Ok(()),
         _ => {
-            let filename = path.file_name()
+            let filename = path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown");
             Err(format!(
