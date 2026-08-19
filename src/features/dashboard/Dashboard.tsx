@@ -206,24 +206,12 @@ function Dashboard() {
   // ── Load fast data (overview + tokens + health) ─────────────────────
   const loadFastData = useCallback(async (tr: TimeRange | undefined, gb: GroupBy) => {
     setFastLoading(true)
-    const [stats, groupData, health] = await Promise.all([
+    const [stats, tokens, groupData, health] = await Promise.all([
       invokeSafe<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW, tr),
+      invokeSafe<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS, tr),
       invokeSafe<TokenGroupDataPoint[]>(IPC_CHANNELS.DASHBOARD_TOKENS, { ...(tr || {}), groupBy: gb }),
       invokeSafe<{ ok: boolean; pageCount: number; freelistPages: number; walSize: number }>(IPC_CHANNELS.DATABASE_HEALTH),
     ])
-    const totals = (groupData ?? []).reduce((sum, item) => ({
-      inputTokens: sum.inputTokens + item.inputTokens,
-      outputTokens: sum.outputTokens + item.outputTokens,
-      reasoningTokens: sum.reasoningTokens + item.reasoningTokens,
-      cacheRead: sum.cacheRead + item.cacheRead,
-      cacheWrite: sum.cacheWrite + item.cacheWrite,
-      estimatedCost: sum.estimatedCost + item.estimatedCost,
-    }), { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheRead: 0, cacheWrite: 0, estimatedCost: 0 })
-    const attempts = totals.cacheRead + totals.inputTokens
-    const tokens: TokenStats = {
-      ...totals,
-      cacheHitRate: attempts > 0 ? Math.round((totals.cacheRead / attempts) * 10000) / 100 : 0,
-    }
     setDbStats(stats)
     setTokenStats(tokens)
     setTokenGroupData(groupData)
@@ -271,7 +259,9 @@ function Dashboard() {
     setTrendsLoading(true)
     const [sessionTr, costTr, msgTr] = await Promise.all([
       invokeSafe<SessionTrendItem[]>(IPC_CHANNELS.DASHBOARD_SESSION_TREND, tr, rootOnly).catch(() => [] as SessionTrendItem[]),
-      invokeSafe<CostTrendItem[]>(IPC_CHANNELS.DASHBOARD_COST_TREND, tr).catch(() => [] as CostTrendItem[]),
+      groupBy === 'day'
+        ? Promise.resolve(tokenGroupData.map(({ period, estimatedCost }) => ({ date: period, value: estimatedCost, totalCost: estimatedCost })))
+        : invokeSafe<CostTrendItem[]>(IPC_CHANNELS.DASHBOARD_COST_TREND, tr).catch(() => [] as CostTrendItem[]),
       invokeSafe<MessageTrendItem[]>(IPC_CHANNELS.DASHBOARD_MESSAGE_TREND, tr).catch(() => [] as MessageTrendItem[]),
     ])
     setSessionTrend(sessionTr ?? [])
@@ -284,7 +274,7 @@ function Dashboard() {
       costTrend: costTr ?? [],
       messageTrend: msgTr ?? [],
     }
-  }, [rootOnly])
+  }, [rootOnly, groupBy, tokenGroupData])
 
   // ── Load overview data only (懒加载策略) ─────────────────────────
   // 首次加载 / 切换数据库 / VACUUM/Checkpoint 后只加载 overview tab 所需数据
@@ -668,11 +658,16 @@ function Dashboard() {
       return
     }
     let cancelled = false
-    Promise.all([
-      invokeSafe<SessionTrendItem[]>(IPC_CHANNELS.DASHBOARD_SESSION_TREND, prevTR, rootOnly).catch(() => [] as SessionTrendItem[]),
-      invokeSafe<CostTrendItem[]>(IPC_CHANNELS.DASHBOARD_COST_TREND, prevTR).catch(() => [] as CostTrendItem[]),
-      invokeSafe<MessageTrendItem[]>(IPC_CHANNELS.DASHBOARD_MESSAGE_TREND, prevTR).catch(() => [] as MessageTrendItem[]),
-    ]).then(([s, c, m]) => {
+    const sessionPromise = showSessionCompare
+      ? invokeSafe<SessionTrendItem[]>(IPC_CHANNELS.DASHBOARD_SESSION_TREND, prevTR, rootOnly).catch(() => [] as SessionTrendItem[])
+      : Promise.resolve([] as SessionTrendItem[])
+    const costPromise = showCostCompare
+      ? invokeSafe<CostTrendItem[]>(IPC_CHANNELS.DASHBOARD_COST_TREND, prevTR).catch(() => [] as CostTrendItem[])
+      : Promise.resolve([] as CostTrendItem[])
+    const messagePromise = showMessageCompare
+      ? invokeSafe<MessageTrendItem[]>(IPC_CHANNELS.DASHBOARD_MESSAGE_TREND, prevTR).catch(() => [] as MessageTrendItem[])
+      : Promise.resolve([] as MessageTrendItem[])
+    Promise.all([sessionPromise, costPromise, messagePromise]).then(([s, c, m]) => {
       if (cancelled) return
       setPrevSessionTrend(s ?? [])
       setPrevCostTrend(c ?? [])
@@ -681,7 +676,7 @@ function Dashboard() {
     return () => {
       cancelled = true
     }
-  }, [anyNewCompareOn, dashboardTab, timeRange, rootOnly])
+  }, [anyNewCompareOn, dashboardTab, timeRange, rootOnly, showSessionCompare, showCostCompare, showMessageCompare])
 
   // ── Not connected view ───────────────────────────────────────────
   if (!connected && !loading) {

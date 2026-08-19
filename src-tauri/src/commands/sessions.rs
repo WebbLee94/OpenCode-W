@@ -302,74 +302,47 @@ pub async fn sessions_list(
             let id_placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
             let id_list = id_placeholders.join(",");
 
-            // childCount: how many children each session has
-            let child_sql = format!(
-                "SELECT parent_id, COUNT(*) FROM session WHERE parent_id IN ({}) GROUP BY parent_id",
-                id_list
+            // One bounded statement preserves every aggregate while avoiding three round trips.
+            // At most 200 rows per page keeps the repeated IN lists below SQLite's default limit.
+            let aggregate_sql = format!(
+                "SELECT 'child', parent_id, COUNT(*) FROM session WHERE parent_id IN ({}) GROUP BY parent_id \
+                 UNION ALL SELECT 'message', session_id, COUNT(*) FROM message WHERE session_id IN ({}) AND id NOT IN (SELECT value FROM json_each(?)) GROUP BY session_id \
+                 UNION ALL SELECT 'part', session_id, COALESCE(SUM(LENGTH(data)), 0) FROM part WHERE session_id IN ({}) AND id NOT IN (SELECT value FROM json_each(?)) GROUP BY session_id",
+                id_list, id_list, id_list
             );
-            let child_map: HashMap<String, i64> = {
-                let mut stmt = match conn.prepare(&child_sql) {
-                    Ok(s) => s,
-                    Err(e) => return IpcResult::err(e.to_string()),
-                };
-                let id_params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
-                let rows = match stmt.query_map(id_params.as_slice(), |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-                }) {
-                    Ok(r) => r,
-                    Err(e) => return IpcResult::err(e.to_string()),
-                };
-                rows.filter_map(|r| r.ok()).collect()
+            let mut aggregate_params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
+            aggregate_params.extend(ids.iter().map(|id| id as &dyn ToSql));
+            aggregate_params.push(&message_json);
+            aggregate_params.extend(ids.iter().map(|id| id as &dyn ToSql));
+            aggregate_params.push(&part_json);
+            let mut child_map = HashMap::new();
+            let mut msg_map = HashMap::new();
+            let mut part_map = HashMap::new();
+            let mut stmt = match conn.prepare(&aggregate_sql) {
+                Ok(s) => s,
+                Err(e) => return IpcResult::err(e.to_string()),
             };
+            let rows = match stmt.query_map(aggregate_params.as_slice(), |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+            }) {
+                Ok(r) => r,
+                Err(e) => return IpcResult::err(e.to_string()),
+            };
+            for row in rows {
+                let (kind, session_id, value) = match row {
+                    Ok(row) => row,
+                    Err(e) => return IpcResult::err(e.to_string()),
+                };
+                match kind.as_str() {
+                    "child" => { child_map.insert(session_id, value); }
+                    "message" => { msg_map.insert(session_id, value); }
+                    "part" => { part_map.insert(session_id, value); }
+                    _ => unreachable!("aggregate query only emits known kinds"),
+                }
+            }
             for dto in data.iter_mut() {
                 dto.child_count = child_map.get(&dto.id).copied();
-            }
-
-            // msg_count: messages per session (via IN clause, not full table scan)
-            let msg_sql = format!(
-                "SELECT session_id, COUNT(*) FROM message WHERE session_id IN ({}) AND id NOT IN (SELECT value FROM json_each(?)) GROUP BY session_id",
-                id_list
-            );
-            let msg_map: HashMap<String, i64> = {
-                let mut stmt = match conn.prepare(&msg_sql) {
-                    Ok(s) => s,
-                    Err(e) => return IpcResult::err(e.to_string()),
-                };
-                let mut id_params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
-                id_params.push(&message_json);
-                let rows = match stmt.query_map(id_params.as_slice(), |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-                }) {
-                    Ok(r) => r,
-                    Err(e) => return IpcResult::err(e.to_string()),
-                };
-                rows.filter_map(|r| r.ok()).collect()
-            };
-            for dto in data.iter_mut() {
                 dto.msg_count = msg_map.get(&dto.id).copied().unwrap_or(0);
-            }
-
-            // data_size: total part data per session (via IN clause)
-            let part_sql = format!(
-                "SELECT session_id, COALESCE(SUM(LENGTH(data)), 0) FROM part WHERE session_id IN ({}) AND id NOT IN (SELECT value FROM json_each(?)) GROUP BY session_id",
-                id_list
-            );
-            let part_map: HashMap<String, i64> = {
-                let mut stmt = match conn.prepare(&part_sql) {
-                    Ok(s) => s,
-                    Err(e) => return IpcResult::err(e.to_string()),
-                };
-                let mut id_params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
-                id_params.push(&part_json);
-                let rows = match stmt.query_map(id_params.as_slice(), |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-                }) {
-                    Ok(r) => r,
-                    Err(e) => return IpcResult::err(e.to_string()),
-                };
-                rows.filter_map(|r| r.ok()).collect()
-            };
-            for dto in data.iter_mut() {
                 dto.data_size = part_map.get(&dto.id).copied().unwrap_or(0);
             }
         }
