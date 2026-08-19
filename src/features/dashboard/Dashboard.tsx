@@ -255,12 +255,13 @@ function Dashboard() {
 
   // ── Load trends data (session + cost + message trends) ───────────
   // 仅在切换到"趋势"tab 时按需加载
-  const loadTrendsData = useCallback(async (tr: TimeRange | undefined) => {
+  const loadTrendsData = useCallback(async (tr: TimeRange | undefined, freshGroupData?: TokenGroupDataPoint[]) => {
     setTrendsLoading(true)
+    const groupSource = freshGroupData ?? tokenGroupData
     const [sessionTr, costTr, msgTr] = await Promise.all([
       invokeSafe<SessionTrendItem[]>(IPC_CHANNELS.DASHBOARD_SESSION_TREND, tr, rootOnly).catch(() => [] as SessionTrendItem[]),
-      groupBy === 'day'
-        ? Promise.resolve(tokenGroupData.map(({ period, estimatedCost }) => ({ date: period, value: estimatedCost, totalCost: estimatedCost })))
+      groupBy === 'day' && groupSource.length > 0
+        ? Promise.resolve(groupSource.map(({ period, estimatedCost }) => ({ date: period, value: estimatedCost, totalCost: estimatedCost })))
         : invokeSafe<CostTrendItem[]>(IPC_CHANNELS.DASHBOARD_COST_TREND, tr).catch(() => [] as CostTrendItem[]),
       invokeSafe<MessageTrendItem[]>(IPC_CHANNELS.DASHBOARD_MESSAGE_TREND, tr).catch(() => [] as MessageTrendItem[]),
     ])
@@ -353,7 +354,7 @@ function Dashboard() {
         statsResult = await loadSlowData(timeRange)
         setTrendsLoaded(false)
       } else if (dashboardTab === 'trends') {
-        trendsResult = await loadTrendsData(timeRange)
+        trendsResult = await loadTrendsData(timeRange, fastResult.groupData)
         setStatsLoaded(false)
       } else {
         // overview tab：重置 stats / trends loaded 状态，切换时再加载
@@ -580,7 +581,7 @@ function Dashboard() {
       if (dashboardTab === 'stats') {
         statsResult = await loadSlowData(tr)
       } else if (dashboardTab === 'trends') {
-        trendsResult = await loadTrendsData(tr)
+        trendsResult = await loadTrendsData(tr, fastResult.groupData)
       } else {
         setSlowLoading(false)
         setTrendsLoading(false)
