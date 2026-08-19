@@ -46,14 +46,14 @@ describe('Dashboard health hot path', () => {
 
     render(<MemoryRouter><Dashboard /></MemoryRouter>)
 
-    await waitFor(() => expect(invokeSafe).toHaveBeenCalledWith(IPC_CHANNELS.DATABASE_HEALTH))
+    await waitFor(() => expect(invokeSafe.mock.calls.filter(([channel]) => channel === IPC_CHANNELS.DATABASE_HEALTH)).toHaveLength(2))
     fireEvent.click(screen.getByRole('button', { name: /统计/ }))
     await waitFor(() => expect(invokeSafe).toHaveBeenCalledWith(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, expect.anything()))
-    expect(invokeSafe).toHaveBeenCalledWith(IPC_CHANNELS.DATABASE_HEALTH)
+    expect(invokeSafe.mock.calls.filter(([channel]) => channel === IPC_CHANNELS.DATABASE_HEALTH)).toHaveLength(2)
     fireEvent.click(screen.getByRole('button', { name: /趋势/ }))
     await waitFor(() => expect(invokeSafe).toHaveBeenCalledWith(IPC_CHANNELS.DASHBOARD_SESSION_TREND, expect.anything(), false))
-    expect(invokeSafe).toHaveBeenCalledWith(IPC_CHANNELS.DATABASE_HEALTH)
+    expect(invokeSafe.mock.calls.filter(([channel]) => channel === IPC_CHANNELS.DATABASE_HEALTH)).toHaveLength(2)
 
-    expect(invokeSafe).not.toHaveBeenCalledWith(IPC_CHANNELS.DATABASE_INTEGRITY_CHECK)
+    expect(invokeSafe.mock.calls.some(([channel]) => channel === IPC_CHANNELS.DATABASE_INTEGRITY_CHECK)).toBe(false)
   })
 })
