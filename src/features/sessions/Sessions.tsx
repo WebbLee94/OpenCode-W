@@ -4,7 +4,7 @@ import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShare
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe, openExternal } from '../../lib/ipc'
 import { open as showDialog } from '@tauri-apps/plugin-dialog'
-import { formatBytes, formatNumber, formatLargeNumber, formatRelativeTime, truncateText } from '../../lib/format'
+import { formatBytes, formatNumber, formatLargeNumber, formatRelativeTime, sumTokenTotal, truncateText } from '../../lib/format'
 import { useToast } from '../../hooks/useToast'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import {
@@ -563,6 +563,10 @@ const listRef = useRef<HTMLDivElement>(null)
                                 </ResponsiveContainer>
                               </div>
                               <div className="flex-1 space-y-3 min-w-0">
+                                <div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-1">
+                                  <span className="text-xs font-semibold text-gray-700">Token 总计</span>
+                                  <span className="text-sm font-semibold text-gray-900">{formatNumber(sumTokenTotal(selectedSession.tokenStats))}</span>
+                                </div>
                                 {tokenPieData.map((entry, i) => (
                                   <div key={entry.name} className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
