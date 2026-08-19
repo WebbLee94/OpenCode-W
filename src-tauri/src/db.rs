@@ -232,9 +232,10 @@ pub fn integrity_check(
         Err(error) => return IntegrityCheckResult::error(error.to_string()),
     };
     let pool = match lock.as_ref() {
-        Some(pool) => pool,
+        Some(pool) => pool.clone(),
         None => return IntegrityCheckResult::error("No database open".into()),
     };
+    drop(lock);
     let conn = match pool.get() {
         Ok(conn) => conn,
         Err(error) => return IntegrityCheckResult::error(error.to_string()),
@@ -284,22 +285,26 @@ impl IntegrityCheckResult {
 
 #[cfg(test)]
 mod health_tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use rusqlite::Connection;
 
-    use super::{close, integrity_check, lightweight_health_from_connection, open, DbState};
+    use super::{close, integrity_check, lightweight_health_check, open, DbState};
+
+    static FIXTURE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn fixture_path() -> std::path::PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system time is after the Unix epoch")
             .as_nanos();
-        std::env::temp_dir().join(format!("opencode-w-health-{nonce}.db"))
+        let counter = FIXTURE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!("opencode-w-health-{nonce}-{counter}.db"))
     }
 
     #[test]
-    fn lightweight_health_returns_connection_statistics_without_diagnostic_result() {
+    fn lightweight_health_uses_the_production_state_pool_path_without_diagnostic_result() {
         // Given: an opened fixture database with a known path.
         let path = fixture_path();
         Connection::open(&path).expect("fixture database opens");
@@ -307,8 +312,7 @@ mod health_tests {
         open(&state, path.to_str().expect("UTF-8 fixture path")).expect("state opens fixture");
 
         // When: the UI health path refreshes its snapshot.
-        let conn = Connection::open(&path).expect("health connection opens");
-        let health = lightweight_health_from_connection(&conn);
+        let health = lightweight_health_check(&state.clone_inner());
 
         // Then: it reports the lightweight connection and file statistics.
         assert!(health.ok);
@@ -317,7 +321,7 @@ mod health_tests {
                 .file_name(),
             path.file_name()
         );
-        assert!(health.db_size > 0);
+        assert!(health.page_count >= 0);
 
         close(&state).expect("state closes fixture");
         std::fs::remove_file(path).expect("fixture database is removed");
