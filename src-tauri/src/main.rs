@@ -56,6 +56,7 @@ pub fn run() {
             commands::dialog_open_directory,
             // shell
             commands::shell_open_external,
+            commands::shell_reveal_database_directory,
             // backup
             commands::backup_create,
             commands::backup_list,

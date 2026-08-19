@@ -17,6 +17,17 @@ export interface DatabaseStats {
   walSize: number;             // bytes
 }
 
+// Database health info returned by database:health
+export interface HealthInfo {
+  ok: boolean;
+  pageCount: number;
+  freelistPages: number;
+  walSize: number;             // bytes
+  dbSize: number;              // bytes
+  currentPath: string | null;
+  error?: string | null;
+}
+
 // Token statistics
 export interface TokenStats {
   inputTokens: number;

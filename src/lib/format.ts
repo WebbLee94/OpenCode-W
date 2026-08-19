@@ -72,6 +72,20 @@ export function formatDateTime(timestamp: number): string {
 }
 
 /**
+ * 将用户 home 目录前缀替换为 ~，用于路径展示脱敏。
+ * 例：/Users/webb/.local/share/opencode/opencode.db → ~/.local/share/opencode/opencode.db
+ * 仅替换前缀；非 home 前缀路径原样返回。
+ */
+export function tildifyPath(path: string, home: string): string {
+  if (!path || !home) return path
+  const normalizedHome = home.replace(/\/+$/, '')
+  if (!normalizedHome) return path
+  if (path === normalizedHome) return '~'
+  if (path.startsWith(normalizedHome + '/')) return '~' + path.slice(normalizedHome.length)
+  return path
+}
+
+/**
  * Truncate text to a maximum length with ellipsis
  */
 export function truncateText(text: string, maxLength: number): string {

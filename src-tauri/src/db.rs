@@ -132,6 +132,7 @@ pub fn health_check(
                 page_count: 0,
                 freelist_pages: 0,
                 wal_size: 0,
+                db_size: 0,
                 current_path: None,
                 error: Some(e.to_string()),
             };
@@ -145,6 +146,7 @@ pub fn health_check(
                 page_count: 0,
                 freelist_pages: 0,
                 wal_size: 0,
+                db_size: 0,
                 current_path: None,
                 error: Some("No database open".into()),
             };
@@ -158,6 +160,7 @@ pub fn health_check(
                 page_count: 0,
                 freelist_pages: 0,
                 wal_size: 0,
+                db_size: 0,
                 current_path: None,
                 error: Some(e.to_string()),
             };
@@ -185,11 +188,18 @@ pub fn health_check(
         })
         .unwrap_or(0);
 
+    // Database file size
+    let db_size = current_path
+        .as_ref()
+        .and_then(|p| std::fs::metadata(p).ok().map(|m| m.len() as i64))
+        .unwrap_or(0);
+
     HealthInfo {
         ok: integrity == "ok",
         page_count,
         freelist_pages: freelist_count,
         wal_size,
+        db_size,
         current_path: current_path.clone(),
         error: None,
     }
@@ -202,6 +212,7 @@ pub struct HealthInfo {
     pub page_count: i64,
     pub freelist_pages: i64,
     pub wal_size: i64,
+    pub db_size: i64,
     pub current_path: Option<String>,
     pub error: Option<String>,
 }

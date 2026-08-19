@@ -5,10 +5,12 @@
 import { createContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { invokeSafe, isTauri } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
+import type { HealthInfo } from '@shared/types'
 
 export interface DataSourceState {
   connected: boolean
   dbPath: string
+  dbSize: number
 }
 
 export const DataSourceContext = createContext<DataSourceState | null>(null)
@@ -20,20 +22,24 @@ interface DataSourceProviderProps {
 export function DataSourceProvider({ children }: DataSourceProviderProps) {
   const [connected, setConnected] = useState(false)
   const [dbPath, setDbPath] = useState('')
+  const [dbSize, setDbSize] = useState(0)
 
   const refresh = useCallback(async () => {
     if (!isTauri()) {
       setConnected(false)
       setDbPath('')
+      setDbSize(0)
       return
     }
     try {
-      const health = await invokeSafe<{ ok: boolean; currentPath: string | null }>(IPC_CHANNELS.DATABASE_HEALTH)
+      const health = await invokeSafe<HealthInfo>(IPC_CHANNELS.DATABASE_HEALTH)
       setConnected(health.ok)
       setDbPath(health.currentPath || '')
+      setDbSize(health.dbSize ?? 0)
     } catch {
       setConnected(false)
       setDbPath('')
+      setDbSize(0)
     }
   }, [])
 
@@ -45,7 +51,7 @@ export function DataSourceProvider({ children }: DataSourceProviderProps) {
   }, [refresh])
 
   return (
-    <DataSourceContext.Provider value={{ connected, dbPath }}>
+    <DataSourceContext.Provider value={{ connected, dbPath, dbSize }}>
       {children}
     </DataSourceContext.Provider>
   )
