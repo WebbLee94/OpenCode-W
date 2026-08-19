@@ -12,6 +12,7 @@ export const IPC_CHANNELS = {
   DASHBOARD_SESSION_TREND: 'dashboard:sessionTrend',
   DASHBOARD_COST_TREND: 'dashboard:costTrend',
   DASHBOARD_MESSAGE_TREND: 'dashboard:messageTrend',
+  DASHBOARD_REFRESH_ATTRIBUTION: 'dashboard:refreshAttribution',
 
   // Sessions
   SESSIONS_LIST: 'sessions:list',
@@ -35,6 +36,7 @@ export const IPC_CHANNELS = {
   DATABASE_CHECKPOINT: 'database:checkpoint',
   DATABASE_OPEN: 'database:open',
   DATABASE_HEALTH: 'database:health',
+  DATABASE_INTEGRITY_CHECK: 'database:integrityCheck',
 
   // Dialog
   DIALOG_OPEN_FILE: 'dialog:openFile',
@@ -42,6 +44,7 @@ export const IPC_CHANNELS = {
 
   // Shell
   SHELL_OPEN_EXTERNAL: 'shell:openExternal',
+  SHELL_REVEAL_DATABASE_DIRECTORY: 'shell:revealDatabaseDirectory',
 
   // Backup
   BACKUP_CREATE: 'backup:create',

@@ -30,7 +30,7 @@ function renderWithContext(state: UseUpdateStatus['state']) {
   }
   return render(
     <UpdateContext.Provider value={mock}>
-      <DataSourceContext.Provider value={{ connected: false, dbPath: '' }}>
+      <DataSourceContext.Provider value={{ connected: false, dbPath: '', dbSize: 0 }}>
         <MemoryRouter>
           <Sidebar />
         </MemoryRouter>

@@ -3,7 +3,7 @@
  * 目的：保证 build 后关键工具函数不回归
  */
 import { describe, it, expect } from 'vitest'
-import { formatBytes, formatNumber, truncateText } from './format'
+import { formatBytes, formatNumber, sumTokenTotal, tildifyPath, truncateText } from './format'
 
 describe('formatBytes', () => {
   it('returns "0 B" for zero', () => {
@@ -56,5 +56,30 @@ describe('Module exports', () => {
     expect(typeof formatBytes).toBe('function')
     expect(typeof formatNumber).toBe('function')
     expect(typeof truncateText).toBe('function')
+  })
+})
+
+describe('sumTokenTotal', () => {
+  it('sums the five token components', () => {
+    expect(sumTokenTotal({ inputTokens: 1, outputTokens: 2, reasoningTokens: 3, cacheRead: 4, cacheWrite: 5 })).toBe(15)
+  })
+
+  it('returns zero when every component is zero', () => {
+    expect(sumTokenTotal({ inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheRead: 0, cacheWrite: 0 })).toBe(0)
+  })
+})
+
+describe('tildifyPath', () => {
+  it('replaces home prefix with ~', () => {
+    expect(tildifyPath('/Users/webb/.local/share/opencode/opencode.db', '/Users/webb')).toBe('~/.local/share/opencode/opencode.db')
+  })
+
+  it('returns path unchanged when it is not under home', () => {
+    expect(tildifyPath('/opt/data/opencode.db', '/Users/webb')).toBe('/opt/data/opencode.db')
+  })
+
+  it('returns empty for empty inputs', () => {
+    expect(tildifyPath('', '/Users/webb')).toBe('')
+    expect(tildifyPath('/Users/webb/db.sqlite', '')).toBe('/Users/webb/db.sqlite')
   })
 })

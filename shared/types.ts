@@ -17,6 +17,23 @@ export interface DatabaseStats {
   walSize: number;             // bytes
 }
 
+// Database health info returned by database:health
+export interface HealthInfo {
+  ok: boolean;
+  pageCount: number;
+  freelistPages: number;
+  walSize: number;             // bytes
+  dbSize: number;              // bytes
+  currentPath: string | null;
+  error?: string | null;
+}
+
+export interface IntegrityCheckResult {
+  ok: boolean;
+  result: string | null;
+  error?: string | null;
+}
+
 // Token statistics
 export interface TokenStats {
   inputTokens: number;
@@ -341,14 +358,12 @@ export interface SessionShareDTO {
 
 export interface ModelRankingItem {
   model: string
-  sessionCount: number
   tokenCount: number
   totalCost: number
 }
 
 export interface ProviderStatsItem {
   provider: string
-  sessionCount: number
   tokenCount: number
   totalCost: number
 }

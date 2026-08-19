@@ -1,16 +1,28 @@
 /**
  * 设置页 - 数据源区块
- * 显示当前数据库连接状态 + 切换数据源按钮
+ * 显示当前数据库连接状态 + 路径脱敏 + 文件大小 + 打开所在目录 + 切换数据源按钮
  */
-import { useState } from 'react'
-import { invokeSafe } from '@/lib/ipc'
+import { useState, useEffect } from 'react'
+import { homeDir } from '@tauri-apps/api/path'
+import { invokeSafe, isTauri } from '@/lib/ipc'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 import { useDataSource } from '@/features/datasource/useDataSource'
-import { Database, FolderSync, Loader2 } from 'lucide-react'
+import { formatBytes, tildifyPath } from '@/lib/format'
+import { Database, FolderOpen, FolderSync, Loader2 } from 'lucide-react'
 
 export function DataSourceSection() {
-  const { connected: dbConnected, dbPath } = useDataSource()
+  const { connected: dbConnected, dbPath, dbSize } = useDataSource()
   const [switching, setSwitching] = useState(false)
+  const [revealing, setRevealing] = useState(false)
+  const [revealError, setRevealError] = useState('')
+  const [homePath, setHomePath] = useState('')
+
+  useEffect(() => {
+    if (!isTauri()) return
+    homeDir()
+      .then(setHomePath)
+      .catch(() => setHomePath(''))
+  }, [])
 
   const handleSwitch = async () => {
     try {
@@ -30,6 +42,19 @@ export function DataSourceSection() {
     }
   }
 
+  const handleReveal = async () => {
+    try {
+      setRevealing(true)
+      setRevealError('')
+      await invokeSafe<boolean>(IPC_CHANNELS.SHELL_REVEAL_DATABASE_DIRECTORY)
+    } catch (err) {
+      console.error('打开所在目录失败:', err)
+      setRevealError('打开所在目录失败，请稍后重试。')
+    } finally {
+      setRevealing(false)
+    }
+  }
+
   return (
     <section className="bg-white rounded-lg border border-gray-200 p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -45,7 +70,25 @@ export function DataSourceSection() {
         {dbConnected && dbPath && (
           <div className="flex items-start gap-2">
             <span className="text-gray-500 shrink-0">数据库：</span>
-            <span className="text-gray-700 font-mono text-xs break-all">{dbPath}</span>
+            <div className="flex-1 min-w-0 group flex items-center gap-2">
+              <span className="text-gray-700 font-mono text-xs break-all">{tildifyPath(dbPath, homePath)}</span>
+              <button
+                onClick={handleReveal}
+                disabled={revealing}
+                title="打开所在目录"
+                aria-label="打开所在目录"
+                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 shrink-0"
+              >
+                {revealing ? <Loader2 size={14} className="animate-spin" /> : <FolderOpen size={14} />}
+              </button>
+            </div>
+            {revealError && <p role="alert" className="text-xs text-red-600">{revealError}</p>}
+          </div>
+        )}
+        {dbConnected && (
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500 shrink-0">大小：</span>
+            <span className="text-gray-700 font-medium">{formatBytes(dbSize)}</span>
           </div>
         )}
         <button

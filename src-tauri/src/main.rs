@@ -18,6 +18,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // health
             commands::database_health,
+            commands::database_integrity_check,
             // analytics (dashboard)
             commands::dashboard_overview,
             commands::dashboard_tokens,
@@ -28,6 +29,7 @@ pub fn run() {
             commands::dashboard_session_trend,
             commands::dashboard_cost_trend,
             commands::dashboard_message_trend,
+            commands::dashboard_refresh_attribution,
             // sessions
             commands::sessions_list,
             commands::sessions_detail,
@@ -56,6 +58,7 @@ pub fn run() {
             commands::dialog_open_directory,
             // shell
             commands::shell_open_external,
+            commands::shell_reveal_database_directory,
             // backup
             commands::backup_create,
             commands::backup_list,
@@ -90,7 +93,7 @@ pub fn run() {
                 let default_db = home.join(".local").join("share").join("opencode").join("opencode.db");
                 if default_db.exists() {
                     if let Some(path_str) = default_db.to_str() {
-                        match db::open(&db_state.0, path_str) {
+                        match db::open(&db_state, path_str) {
                             Ok(p) => {
                                 log::info!("Auto-opened default database: {}", p);
                                 opened = true;
@@ -108,7 +111,7 @@ pub fn run() {
                 let test_db = cwd.join("test-data").join("test.db");
                 if test_db.exists() {
                     if let Some(path_str) = test_db.to_str() {
-                        match db::open(&db_state.0, path_str) {
+                        match db::open(&db_state, path_str) {
                             Ok(p) => {
                                 log::info!("Auto-opened test database: {}", p);
                             }

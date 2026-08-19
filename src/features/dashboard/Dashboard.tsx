@@ -12,6 +12,7 @@ import type {
   SessionTrendItem,
   CostTrendItem,
   MessageTrendItem,
+  IntegrityCheckResult,
 } from '@shared/types'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 import { invokeSafe } from '@/lib/ipc'
@@ -49,7 +50,7 @@ import {
 import StatCard from '@/components/StatCard'
 import PageHeader from '@/components/PageHeader'
 import TooltipHint from '@/components/TooltipHint'
-import { formatBytes, formatNumber } from '@/lib/format'
+import { formatBytes, formatNumber, formatLargeNumber, sumTokenTotal } from '@/lib/format'
 
 // ── Color palette ──────────────────────────────────────────────────
 const TOKEN_COLORS = ['#3b82f6', '#10b981', '#8b5cf6']
@@ -207,8 +208,8 @@ function Dashboard() {
     setFastLoading(true)
     const [stats, tokens, groupData, health] = await Promise.all([
       invokeSafe<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW, tr),
-      invokeSafe<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS, tr),         // no groupBy → TokenStats
-      invokeSafe<TokenGroupDataPoint[]>(IPC_CHANNELS.DASHBOARD_TOKENS, { ...(tr || {}), groupBy: gb }),  // with groupBy → grouped data
+      invokeSafe<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS, tr),
+      invokeSafe<TokenGroupDataPoint[]>(IPC_CHANNELS.DASHBOARD_TOKENS, { ...(tr || {}), groupBy: gb }),
       invokeSafe<{ ok: boolean; pageCount: number; freelistPages: number; walSize: number }>(IPC_CHANNELS.DATABASE_HEALTH),
     ])
     setDbStats(stats)
@@ -254,11 +255,14 @@ function Dashboard() {
 
   // ── Load trends data (session + cost + message trends) ───────────
   // 仅在切换到"趋势"tab 时按需加载
-  const loadTrendsData = useCallback(async (tr: TimeRange | undefined) => {
+  const loadTrendsData = useCallback(async (tr: TimeRange | undefined, freshGroupData?: TokenGroupDataPoint[]) => {
     setTrendsLoading(true)
+    const groupSource = freshGroupData ?? tokenGroupData
     const [sessionTr, costTr, msgTr] = await Promise.all([
       invokeSafe<SessionTrendItem[]>(IPC_CHANNELS.DASHBOARD_SESSION_TREND, tr, rootOnly).catch(() => [] as SessionTrendItem[]),
-      invokeSafe<CostTrendItem[]>(IPC_CHANNELS.DASHBOARD_COST_TREND, tr).catch(() => [] as CostTrendItem[]),
+      groupBy === 'day' && groupSource.length > 0
+        ? Promise.resolve(groupSource.map(({ period, estimatedCost }) => ({ date: period, value: estimatedCost, totalCost: estimatedCost })))
+        : invokeSafe<CostTrendItem[]>(IPC_CHANNELS.DASHBOARD_COST_TREND, tr).catch(() => [] as CostTrendItem[]),
       invokeSafe<MessageTrendItem[]>(IPC_CHANNELS.DASHBOARD_MESSAGE_TREND, tr).catch(() => [] as MessageTrendItem[]),
     ])
     setSessionTrend(sessionTr ?? [])
@@ -271,7 +275,7 @@ function Dashboard() {
       costTrend: costTr ?? [],
       messageTrend: msgTr ?? [],
     }
-  }, [rootOnly])
+  }, [rootOnly, groupBy, tokenGroupData])
 
   // ── Load overview data only (懒加载策略) ─────────────────────────
   // 首次加载 / 切换数据库 / VACUUM/Checkpoint 后只加载 overview tab 所需数据
@@ -338,6 +342,7 @@ function Dashboard() {
     setRefreshing(true)
     setError(null)
     try {
+      await invokeSafe<void>(IPC_CHANNELS.DASHBOARD_REFRESH_ATTRIBUTION)
       // 始终刷新 overview（fast data）
       const fastResult = await loadFastData(timeRange, groupBy)
 
@@ -349,7 +354,7 @@ function Dashboard() {
         statsResult = await loadSlowData(timeRange)
         setTrendsLoaded(false)
       } else if (dashboardTab === 'trends') {
-        trendsResult = await loadTrendsData(timeRange)
+        trendsResult = await loadTrendsData(timeRange, fastResult.groupData)
         setStatsLoaded(false)
       } else {
         // overview tab：重置 stats / trends loaded 状态，切换时再加载
@@ -492,6 +497,21 @@ function Dashboard() {
     }
   }, [loadAllData])
 
+  const handleIntegrityCheck = useCallback(async () => {
+    setActionLoading('integrityCheck')
+    try {
+      const result = await invokeSafe<IntegrityCheckResult>(IPC_CHANNELS.DATABASE_INTEGRITY_CHECK)
+      const message = result.ok ? '完整性检查通过' : result.error || result.result || '完整性检查失败'
+      setToast({ message, type: result.ok ? 'success' : 'error' })
+      setTimeout(() => setToast(null), 3000)
+    } catch (err) {
+      setToast({ message: `完整性检查失败: ${(err as Error).message}`, type: 'error' })
+      setTimeout(() => setToast(null), 3000)
+    } finally {
+      setActionLoading(null)
+    }
+  }, [])
+
   // ── Trend data with comparison ──────────────────────────────────
   // 趋势模块已移除"数据库增长趋势"图（与"会话创建趋势"重复、size 趋势意义不大）
   // 原来这里的 trendData / previousTrendData / mergedTrendData 全部删除
@@ -561,7 +581,7 @@ function Dashboard() {
       if (dashboardTab === 'stats') {
         statsResult = await loadSlowData(tr)
       } else if (dashboardTab === 'trends') {
-        trendsResult = await loadTrendsData(tr)
+        trendsResult = await loadTrendsData(tr, fastResult.groupData)
       } else {
         setSlowLoading(false)
         setTrendsLoading(false)
@@ -639,11 +659,16 @@ function Dashboard() {
       return
     }
     let cancelled = false
-    Promise.all([
-      invokeSafe<SessionTrendItem[]>(IPC_CHANNELS.DASHBOARD_SESSION_TREND, prevTR, rootOnly).catch(() => [] as SessionTrendItem[]),
-      invokeSafe<CostTrendItem[]>(IPC_CHANNELS.DASHBOARD_COST_TREND, prevTR).catch(() => [] as CostTrendItem[]),
-      invokeSafe<MessageTrendItem[]>(IPC_CHANNELS.DASHBOARD_MESSAGE_TREND, prevTR).catch(() => [] as MessageTrendItem[]),
-    ]).then(([s, c, m]) => {
+    const sessionPromise = showSessionCompare
+      ? invokeSafe<SessionTrendItem[]>(IPC_CHANNELS.DASHBOARD_SESSION_TREND, prevTR, rootOnly).catch(() => [] as SessionTrendItem[])
+      : Promise.resolve([] as SessionTrendItem[])
+    const costPromise = showCostCompare
+      ? invokeSafe<CostTrendItem[]>(IPC_CHANNELS.DASHBOARD_COST_TREND, prevTR).catch(() => [] as CostTrendItem[])
+      : Promise.resolve([] as CostTrendItem[])
+    const messagePromise = showMessageCompare
+      ? invokeSafe<MessageTrendItem[]>(IPC_CHANNELS.DASHBOARD_MESSAGE_TREND, prevTR).catch(() => [] as MessageTrendItem[])
+      : Promise.resolve([] as MessageTrendItem[])
+    Promise.all([sessionPromise, costPromise, messagePromise]).then(([s, c, m]) => {
       if (cancelled) return
       setPrevSessionTrend(s ?? [])
       setPrevCostTrend(c ?? [])
@@ -652,7 +677,7 @@ function Dashboard() {
     return () => {
       cancelled = true
     }
-  }, [anyNewCompareOn, dashboardTab, timeRange, rootOnly])
+  }, [anyNewCompareOn, dashboardTab, timeRange, rootOnly, showSessionCompare, showCostCompare, showMessageCompare])
 
   // ── Not connected view ───────────────────────────────────────────
   if (!connected && !loading) {
@@ -900,6 +925,10 @@ function Dashboard() {
                       </ResponsiveContainer>
                     </div>
                     <div className="flex-1 space-y-3 min-w-0">
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-1">
+                        <span className="text-xs font-semibold text-gray-700">Token 总计</span>
+                        <span className="text-sm font-semibold text-gray-900">{formatNumber(sumTokenTotal(tokenStats))}</span>
+                      </div>
                       <TokenMetricRow
                         label="输入Token"
                         value={formatNumber(tokenStats.inputTokens)}
@@ -1008,6 +1037,17 @@ function Dashboard() {
                       </button>
                       <TooltipHint text={'将待写入的变更合并到主数据库\n\n适用场景：备份前执行，或 WAL 文件过大时'} />
                     </div>
+                    <div className="flex items-center">
+                      <button
+                        onClick={handleIntegrityCheck}
+                        disabled={actionLoading !== null}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-sky-600 border border-sky-300 rounded-md hover:bg-sky-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {actionLoading === 'integrityCheck' ? <Loader2 size={14} className="animate-spin" /> : <Heart size={14} />}
+                        {actionLoading === 'integrityCheck' ? '检查中...' : '完整性检查'}
+                      </button>
+                      <TooltipHint text={'执行 SQLite 完整性检查\n\n大型数据库可能需要较长时间，仅在需要诊断时执行'} />
+                    </div>
                   </div>
                 )}
                 {!dbHealth && (
@@ -1073,6 +1113,9 @@ function Dashboard() {
                                    {entry.name}: {formatNumber(entry.value as number)}
                                  </div>
                                ))}
+                               <div style={{ color: '#111827', fontWeight: 600, marginTop: 4, paddingTop: 4, borderTop: '1px solid #f0f0f0' }}>
+                                 Token 总计: {formatNumber(sumTokenTotal(data))}
+                               </div>
                                <div style={{ color: '#6b7280', marginTop: 4, paddingTop: 4, borderTop: '1px solid #f0f0f0' }}>
                                  缓存命中率: {hitRate}%
                                </div>
@@ -1369,7 +1412,7 @@ function Dashboard() {
                   {(() => {
                     const modelChartData = modelRanking
                       .slice()
-                      .sort((a, b) => b.sessionCount - a.sessionCount)
+                      .sort((a, b) => b.tokenCount - a.tokenCount)
                       .slice(0, 10)
                       .map(m => {
                         let label = m.model
@@ -1381,7 +1424,7 @@ function Dashboard() {
                             label = pid ? `${pid} / ${id}` : id
                           } catch { /* keep raw */ }
                         }
-                        return { name: label, count: m.sessionCount }
+                        return { name: label, tokens: m.tokenCount }
                       })
                     return (
                       <ResponsiveContainer width="100%" height={modelChartData.length * 36 + 20}>
@@ -1401,9 +1444,18 @@ function Dashboard() {
                               borderRadius: '8px',
                               border: '1px solid #e5e7eb',
                             }}
-                            formatter={(v: number) => `${v.toLocaleString()} 会话`}
+                            content={({ active, payload }) => {
+                              if (!active || !payload || !payload.length) return null
+                              const data = payload[0].payload as { name: string; tokens: number }
+                              return (
+                                <div style={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fff', padding: '8px 12px' }}>
+                                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{data.name}</div>
+                                  <div>Token 总计: {formatLargeNumber(data.tokens ?? 0)}</div>
+                                </div>
+                              )
+                            }}
                           />
-                          <Bar dataKey="count" fill={TOOL_BAR_COLOR} radius={[0, 4, 4, 0]} barSize={16} />
+                          <Bar dataKey="tokens" fill={TOOL_BAR_COLOR} radius={[0, 4, 4, 0]} barSize={16} />
                         </BarChart>
                       </ResponsiveContainer>
                     )
@@ -1413,7 +1465,7 @@ function Dashboard() {
                   <div className="flex flex-wrap gap-2 mt-3">
                     {providerStats.map(p => (
                       <span key={p.provider} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                        {p.provider}: {p.sessionCount.toLocaleString()} 会话 · ${p.totalCost.toFixed(2)}
+                        {p.provider}: {formatLargeNumber(p.tokenCount)} tokens · ${p.totalCost.toFixed(2)}
                       </span>
                     ))}
                   </div>

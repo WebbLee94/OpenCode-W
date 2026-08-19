@@ -460,6 +460,7 @@ pub async fn cleanup_execute(
         if let Err(e) = conn.execute_batch("COMMIT") {
             return IpcResult::err(e.to_string());
         }
+        crate::commands::fork_stats::invalidate_cache();
 
         // VACUUM to reclaim space (must be outside a transaction)
         let current_path = match conn.path() {

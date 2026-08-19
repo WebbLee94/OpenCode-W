@@ -6,6 +6,7 @@ pub mod backup;
 pub mod cleanup;
 pub mod database;
 pub mod dialog;
+pub mod fork_stats;
 pub mod health;
 pub mod messages;
 pub mod sessions;

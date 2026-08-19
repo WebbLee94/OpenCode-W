@@ -195,7 +195,6 @@ pub struct SessionMoveFilter {
 #[serde(rename_all = "camelCase")]
 pub struct ModelRankingItem {
     pub model: String,
-    pub session_count: i64,
     pub token_count: i64,
     pub total_cost: f64,
 }
@@ -204,7 +203,6 @@ pub struct ModelRankingItem {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderStatsItem {
     pub provider: String,
-    pub session_count: i64,
     pub token_count: i64,
     pub total_cost: f64,
 }

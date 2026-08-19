@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### v1.3.4 - 2026-08-19
+
+#### 🐛 分叉会话统计修复
+- 🔀 fork 会话会物理复制历史 message/part，旧统计会把继承的 Token、成本、消息/Part 数重复计入。新增请求级、预算受限（256 候选 / 5 万 transcript 行 / 5 万 SHA-256 指纹，超限整次回退）的 fork 归因层，统一接入仪表盘概览/Token/成本/消息/工具/技能/模型/Provider/会话趋势与会话列表/详情；源会话始终保留，证据读取不受报表日期范围限制
+- 🗂 会话列表排除纯克隆 fork 会话，msg_count/data_size 改为逻辑值；会话详情 Token/Tool/Skill 统计排除继承 part
+
+#### ⚡ 大型数据库性能优化
+- 🚀 会话详情/子会话不再使用全表 GROUP BY 子查询聚合消息数与数据量，改为按会话范围的标量子查询（7GB 数据库打开详情不再全表扫描）
+- 📄 messages_list / messages_list_by_parent 分页上限收敛为 clamp(1, 200)，避免无界读取
+- ⏱ fork 归因新增日期窗口变体，窄日期视图只评估窗口内分支，避免大库触发预算回退导致去重失效
+
+#### ✨ Token 展示升级
+- 🔢 仪表盘概览 Token 统计、Token 趋势 Tooltip、会话详情 Token 明细三处新增「Token 总计」（输入+输出+推理+缓存读+缓存写），共享纯函数 `sumTokenTotal`；缓存命中率为比率，不作为第六项计入
+
+#### 🖥 模型/Provider 统计语义修正
+- 💬 模型排名悬浮提示改为总 Token 为主、会话数为辅；Provider 标签同步加入总 Token，顺序为「Token 总计 · 会话数 · 成本」，不再展示无实际价值的单一会话数
+
+#### 🛠 数据源体验增强
+- 📏 设置页数据源显示数据库文件大小（自动 B/KB/MB/GB/TB）
+- 🔒 数据库路径展示时把 home 前缀替换为 `~` 脱敏（`tildifyPath`），实际保存与校验仍用绝对路径
+- 📂 路径行 hover/键盘 focus 显示「打开所在目录」按钮；新增 `shell_reveal_database_directory` 命令，服务端读取当前库路径并复用 `validate_db_path` 白名单校验后打开父目录，不接受任意路径
+
+#### 🚀 版本更新修复
+- 📦 将旧版多平台 updater yml 升级清单替换为 Tauri v2 标准 `latest.json`，修正应用长期不能自动更新的问题
+- ⚙️ 新增 `scripts/generate-latest-json.mjs` 生成标准更新清单；CI 工作流不再上传 yml 产物，改为生成并上传 JSON 清单
+- 🔧 调整 `src-tauri/tauri.conf.json` 更新端点指向 `latest.json`，更新版本号与配置同步
+
 ### v1.3.3 - 2026-08-04
 
 #### 缓存指标优化

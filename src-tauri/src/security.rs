@@ -13,10 +13,7 @@ pub fn validate_db_path(path_str: &str) -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("无法获取家目录路径")?;
     let cwd = std::env::current_dir().unwrap_or_default();
 
-    let allowed_roots = [
-        home.join(".local/share/opencode"),
-        cwd.join("test-data"),
-    ];
+    let allowed_roots = [home.join(".local/share/opencode"), cwd.join("test-data")];
 
     let path = Path::new(path_str);
     let abs = if path.is_absolute() {
@@ -30,15 +27,46 @@ pub fn validate_db_path(path_str: &str) -> Result<PathBuf, String> {
         .canonicalize()
         .map_err(|e| format!("路径无法解析: {}", e))?;
 
-    let inside = allowed_roots
-        .iter()
-        .any(|root| canonical.starts_with(root));
+    let inside = allowed_roots.iter().any(|root| canonical.starts_with(root));
 
     if !inside {
         return Err("不允许打开该目录下的数据库文件".into());
     }
 
     Ok(canonical)
+}
+
+/// Resolve the canonical database snapshot currently held by the server.
+///
+/// Renderer-supplied paths must continue to use `validate_db_path`. This is
+/// deliberately narrower: shell reveal receives its path from `DbState`, which
+/// is populated only by `db::open`, and therefore may also reveal a direct file
+/// inside OpenCode-W's own canonical backup directory after a restore.
+pub fn resolve_server_snapshot_path(path_str: &str) -> Result<PathBuf, String> {
+    if let Ok(path) = validate_db_path(path_str) {
+        return Ok(path);
+    }
+
+    let home = dirs::home_dir().ok_or("无法获取家目录路径")?;
+    resolve_server_snapshot_path_in_backup_root(path_str, &home.join(".opencode-w").join("backups"))
+}
+
+pub fn resolve_server_snapshot_path_in_backup_root(
+    path_str: &str,
+    backup_root: &Path,
+) -> Result<PathBuf, String> {
+    let backup_root = backup_root
+        .canonicalize()
+        .map_err(|e| format!("备份目录无法解析: {}", e))?;
+    let snapshot = Path::new(path_str)
+        .canonicalize()
+        .map_err(|e| format!("路径无法解析: {}", e))?;
+
+    if snapshot.parent() == Some(backup_root.as_path()) {
+        Ok(snapshot)
+    } else {
+        Err("不允许打开该目录下的数据库文件".into())
+    }
 }
 
 /// Validate database file extension.
@@ -53,7 +81,8 @@ pub fn validate_db_extension(path: &Path) -> Result<(), String> {
     match ext.as_str() {
         "db" | "sqlite" | "sqlite3" => Ok(()),
         _ => {
-            let filename = path.file_name()
+            let filename = path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown");
             Err(format!(
