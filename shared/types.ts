@@ -358,14 +358,12 @@ export interface SessionShareDTO {
 
 export interface ModelRankingItem {
   model: string
-  sessionCount: number
   tokenCount: number
   totalCost: number
 }
 
 export interface ProviderStatsItem {
   provider: string
-  sessionCount: number
   tokenCount: number
   totalCost: number
 }

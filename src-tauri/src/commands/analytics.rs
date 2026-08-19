@@ -569,7 +569,6 @@ pub async fn dashboard_model_ranking(
     params.push(Box::new(part_json));
     let sql = format!(
         "SELECT s.model as model,
-                COUNT(DISTINCT p.session_id) as sessionCount,
                 COALESCE(SUM(json_extract(p.data, '$.tokens.total')), 0) as tokenCount,
                 COALESCE(SUM(json_extract(p.data, '$.cost')), 0) as totalCost
          FROM part p
@@ -577,7 +576,7 @@ pub async fn dashboard_model_ranking(
          WHERE json_extract(p.data, '$.type') = 'step-finish'
            AND s.model IS NOT NULL {}{}
          GROUP BY s.model
-         ORDER BY sessionCount DESC
+         ORDER BY tokenCount DESC
          LIMIT 10",
         filter_sql, exclusion_fragment("p")
     );
@@ -589,11 +588,10 @@ pub async fn dashboard_model_ranking(
     let rows = match stmt.query_map(
         rusqlite::params_from_iter(params.iter()),
         |row| {
-            let token_count: f64 = row.get(2)?;
-            let total_cost: f64 = row.get(3)?;
+            let token_count: f64 = row.get(1)?;
+            let total_cost: f64 = row.get(2)?;
             Ok(ModelRankingItem {
                 model: row.get(0)?,
-                session_count: row.get(1)?,
                 token_count: token_count as i64,
                 total_cost,
             })
@@ -639,7 +637,6 @@ pub async fn dashboard_provider_stats(
     params.push(Box::new(part_json));
     let sql = format!(
         "SELECT json_extract(s.model, '$.providerID') as provider,
-                COUNT(DISTINCT p.session_id) as sessionCount,
                 COALESCE(SUM(json_extract(p.data, '$.tokens.total')), 0) as tokenCount,
                 COALESCE(SUM(json_extract(p.data, '$.cost')), 0) as totalCost
          FROM part p
@@ -647,7 +644,7 @@ pub async fn dashboard_provider_stats(
          WHERE json_extract(p.data, '$.type') = 'step-finish'
            AND json_extract(s.model, '$.providerID') IS NOT NULL {}{}
          GROUP BY provider
-         ORDER BY sessionCount DESC",
+         ORDER BY tokenCount DESC",
         filter_sql, exclusion_fragment("p")
     );
 
@@ -659,11 +656,10 @@ pub async fn dashboard_provider_stats(
         rusqlite::params_from_iter(params.iter()),
         |row| {
             let provider: Option<String> = row.get(0)?;
-            let token_count: f64 = row.get(2)?;
-            let total_cost: f64 = row.get(3)?;
+            let token_count: f64 = row.get(1)?;
+            let total_cost: f64 = row.get(2)?;
             Ok(ProviderStatsItem {
                 provider: provider.unwrap_or_else(|| "unknown".to_string()),
-                session_count: row.get(1)?,
                 token_count: token_count as i64,
                 total_cost,
             })

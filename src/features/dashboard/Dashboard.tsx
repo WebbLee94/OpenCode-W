@@ -1412,7 +1412,7 @@ function Dashboard() {
                   {(() => {
                     const modelChartData = modelRanking
                       .slice()
-                      .sort((a, b) => b.sessionCount - a.sessionCount)
+                      .sort((a, b) => b.tokenCount - a.tokenCount)
                       .slice(0, 10)
                       .map(m => {
                         let label = m.model
@@ -1424,7 +1424,7 @@ function Dashboard() {
                             label = pid ? `${pid} / ${id}` : id
                           } catch { /* keep raw */ }
                         }
-                        return { name: label, count: m.sessionCount, tokens: m.tokenCount }
+                        return { name: label, tokens: m.tokenCount }
                       })
                     return (
                       <ResponsiveContainer width="100%" height={modelChartData.length * 36 + 20}>
@@ -1446,17 +1446,16 @@ function Dashboard() {
                             }}
                             content={({ active, payload }) => {
                               if (!active || !payload || !payload.length) return null
-                              const data = payload[0].payload as { name: string; count: number; tokens?: number }
+                              const data = payload[0].payload as { name: string; tokens: number }
                               return (
                                 <div style={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fff', padding: '8px 12px' }}>
                                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{data.name}</div>
-                                  <div style={{ marginBottom: 2 }}>Token 总计: {formatLargeNumber(data.tokens ?? 0)}</div>
-                                  <div style={{ color: '#6b7280' }}>会话数: {formatNumber(data.count)}</div>
+                                  <div>Token 总计: {formatLargeNumber(data.tokens ?? 0)}</div>
                                 </div>
                               )
                             }}
                           />
-                          <Bar dataKey="count" fill={TOOL_BAR_COLOR} radius={[0, 4, 4, 0]} barSize={16} />
+                          <Bar dataKey="tokens" fill={TOOL_BAR_COLOR} radius={[0, 4, 4, 0]} barSize={16} />
                         </BarChart>
                       </ResponsiveContainer>
                     )
@@ -1466,7 +1465,7 @@ function Dashboard() {
                   <div className="flex flex-wrap gap-2 mt-3">
                     {providerStats.map(p => (
                       <span key={p.provider} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                        {p.provider}: {formatLargeNumber(p.tokenCount)} tokens · {p.sessionCount.toLocaleString()} 会话 · ${p.totalCost.toFixed(2)}
+                        {p.provider}: {formatLargeNumber(p.tokenCount)} tokens · ${p.totalCost.toFixed(2)}
                       </span>
                     ))}
                   </div>
