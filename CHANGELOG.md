@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🔒 数据库路径展示时把 home 前缀替换为 `~` 脱敏（`tildifyPath`），实际保存与校验仍用绝对路径
 - 📂 路径行 hover/键盘 focus 显示「打开所在目录」按钮；新增 `shell_reveal_database_directory` 命令，服务端读取当前库路径并复用 `validate_db_path` 白名单校验后打开父目录，不接受任意路径
 
+#### 🚀 版本更新修复
+- 📦 将旧版多平台 updater yml 升级清单替换为 Tauri v2 标准 `latest.json`，修正应用长期不能自动更新的问题
+- ⚙️ 新增 `scripts/generate-latest-json.mjs` 生成标准更新清单；CI 工作流不再上传 yml 产物，改为生成并上传 JSON 清单
+- 🔧 调整 `src-tauri/tauri.conf.json` 更新端点指向 `latest.json`，更新版本号与配置同步
+
 ### v1.3.3 - 2026-08-04
 
 #### 缓存指标优化
