@@ -106,7 +106,7 @@ fn build_date_filter(
 /// Parse "YYYY-MM-DD" date string to epoch milliseconds for the start or end of day in local timezone.
 /// `start_of_day = true` → 00:00:00 local; `start_of_day = false` → 23:59:59 local.
 /// Matches the original SQL `'localtime'` modifier behavior.
-fn date_to_epoch_ms(date_str: &str, start_of_day: bool) -> i64 {
+pub(crate) fn date_to_epoch_ms(date_str: &str, start_of_day: bool) -> i64 {
     if let Ok(parsed) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
         let naive_dt = if start_of_day {
             parsed.and_hms_opt(0, 0, 0).unwrap()
@@ -292,7 +292,6 @@ pub async fn dashboard_tokens(
     params.push(Box::new(part_json));
 
     let _token_start = Instant::now();
-    // Grouped mode: return time-series data points
     if let Some(g) = group_by.as_deref().filter(|g| !g.is_empty()) {
         let fmt = match g {
             "week" => "%Y-W%W",

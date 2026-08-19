@@ -121,12 +121,12 @@ fn build_session_where(
         params.push(Box::new(p.clone()));
     }
     if let Some(sd) = start_date {
-        conditions.push("date(s.time_created / 1000, 'unixepoch') >= ?".to_string());
-        params.push(Box::new(sd.clone()));
+        conditions.push("s.time_created >= ?".to_string());
+        params.push(Box::new(crate::commands::analytics::date_to_epoch_ms(sd, true)));
     }
     if let Some(ed) = end_date {
-        conditions.push("date(s.time_created / 1000, 'unixepoch') <= ?".to_string());
-        params.push(Box::new(ed.clone()));
+        conditions.push("s.time_created <= ?".to_string());
+        params.push(Box::new(crate::commands::analytics::date_to_epoch_ms(ed, false)));
     }
 
     if check_parent_column(conn) {

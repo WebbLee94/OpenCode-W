@@ -206,12 +206,24 @@ function Dashboard() {
   // ── Load fast data (overview + tokens + health) ─────────────────────
   const loadFastData = useCallback(async (tr: TimeRange | undefined, gb: GroupBy) => {
     setFastLoading(true)
-    const [stats, tokens, groupData, health] = await Promise.all([
+    const [stats, groupData, health] = await Promise.all([
       invokeSafe<DatabaseStats>(IPC_CHANNELS.DASHBOARD_OVERVIEW, tr),
-      invokeSafe<TokenStats>(IPC_CHANNELS.DASHBOARD_TOKENS, tr),         // no groupBy → TokenStats
-      invokeSafe<TokenGroupDataPoint[]>(IPC_CHANNELS.DASHBOARD_TOKENS, { ...(tr || {}), groupBy: gb }),  // with groupBy → grouped data
+      invokeSafe<TokenGroupDataPoint[]>(IPC_CHANNELS.DASHBOARD_TOKENS, { ...(tr || {}), groupBy: gb }),
       invokeSafe<{ ok: boolean; pageCount: number; freelistPages: number; walSize: number }>(IPC_CHANNELS.DATABASE_HEALTH),
     ])
+    const totals = (groupData ?? []).reduce((sum, item) => ({
+      inputTokens: sum.inputTokens + item.inputTokens,
+      outputTokens: sum.outputTokens + item.outputTokens,
+      reasoningTokens: sum.reasoningTokens + item.reasoningTokens,
+      cacheRead: sum.cacheRead + item.cacheRead,
+      cacheWrite: sum.cacheWrite + item.cacheWrite,
+      estimatedCost: sum.estimatedCost + item.estimatedCost,
+    }), { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheRead: 0, cacheWrite: 0, estimatedCost: 0 })
+    const attempts = totals.cacheRead + totals.inputTokens
+    const tokens: TokenStats = {
+      ...totals,
+      cacheHitRate: attempts > 0 ? Math.round((totals.cacheRead / attempts) * 10000) / 100 : 0,
+    }
     setDbStats(stats)
     setTokenStats(tokens)
     setTokenGroupData(groupData)
