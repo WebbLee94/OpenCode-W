@@ -23,8 +23,6 @@ pub fn shell_open_external(app: AppHandle, url: String) -> IpcResult<bool> {
 
 /// shell:revealDatabaseDirectory — open the current database's containing folder.
 ///
-/// The path is read server-side from DbState and re-validated with
-/// security::validate_db_path; the renderer cannot supply an arbitrary path.
 #[tauri::command]
 #[allow(deprecated)]
 pub async fn shell_reveal_database_directory(app: AppHandle) -> IpcResult<bool> {
@@ -44,7 +42,7 @@ pub async fn shell_reveal_database_directory(app: AppHandle) -> IpcResult<bool> 
 }
 
 fn reveal_directory_path(current: &str) -> Result<String, String> {
-    let canonical = security::validate_db_path(current)?;
+    let canonical = security::resolve_server_snapshot_path(current)?;
     canonical
         .parent()
         .map(|dir| dir.to_string_lossy().to_string())
@@ -53,7 +51,11 @@ fn reveal_directory_path(current: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::reveal_directory_path;
+    use crate::security;
+    use crate::db::{self, DbState};
 
     #[test]
     fn reveal_directory_path_revalidates_allowed_paths_without_a_pool() {
@@ -67,5 +69,44 @@ mod tests {
         assert!(reveal_directory_path(&allowed.to_string_lossy()).is_ok());
         std::fs::remove_file(allowed).unwrap();
         assert!(reveal_directory_path("/tmp/outside.db").is_err());
+    }
+
+    #[test]
+    fn reveal_directory_path_accepts_a_canonical_backup_snapshot_opened_by_the_server() {
+        let backup_dir = dirs::home_dir()
+            .unwrap()
+            .join(".opencode-w")
+            .join("backups");
+        fs::create_dir_all(&backup_dir).unwrap();
+        let backup = backup_dir.join(format!(
+            "reveal-snapshot-{}-{}.db",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap()
+        ));
+        rusqlite::Connection::open(&backup).unwrap();
+
+        let state = DbState::new();
+        let snapshot = db::open(&state, &backup.to_string_lossy()).unwrap();
+        let expected_dir = backup_dir.canonicalize().unwrap().to_string_lossy().to_string();
+
+        assert_eq!(state.path(), Some(snapshot.clone()));
+        assert_eq!(reveal_directory_path(&snapshot).unwrap(), expected_dir);
+
+        db::close(&state).unwrap();
+        fs::remove_file(backup).unwrap();
+    }
+
+    #[test]
+    fn server_snapshot_resolution_rejects_a_database_outside_the_allowed_roots() {
+        let outside = std::env::temp_dir().join(format!(
+            "opencode-w-outside-snapshot-{}-{}.db",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap()
+        ));
+        fs::write(&outside, []).unwrap();
+
+        assert!(security::resolve_server_snapshot_path(&outside.to_string_lossy()).is_err());
+
+        fs::remove_file(outside).unwrap();
     }
 }

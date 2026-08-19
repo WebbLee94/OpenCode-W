@@ -41,6 +41,31 @@ pub fn validate_db_path(path_str: &str) -> Result<PathBuf, String> {
     Ok(canonical)
 }
 
+/// Resolve the canonical database snapshot currently held by the server.
+///
+/// Renderer-supplied paths must continue to use `validate_db_path`. This is
+/// deliberately narrower: shell reveal receives its path from `DbState`, which
+/// is populated only by `db::open`, and therefore may also reveal a direct file
+/// inside OpenCode-W's own canonical backup directory after a restore.
+pub fn resolve_server_snapshot_path(path_str: &str) -> Result<PathBuf, String> {
+    if let Ok(path) = validate_db_path(path_str) {
+        return Ok(path);
+    }
+
+    let home = dirs::home_dir().ok_or("无法获取家目录路径")?;
+    let backup_root = home.join(".opencode-w").join("backups").canonicalize()
+        .map_err(|e| format!("备份目录无法解析: {}", e))?;
+    let snapshot = Path::new(path_str)
+        .canonicalize()
+        .map_err(|e| format!("路径无法解析: {}", e))?;
+
+    if snapshot.parent() == Some(backup_root.as_path()) {
+        Ok(snapshot)
+    } else {
+        Err("不允许打开该目录下的数据库文件".into())
+    }
+}
+
 /// Validate database file extension.
 /// Only allows: .db, .sqlite, .sqlite3
 pub fn validate_db_extension(path: &Path) -> Result<(), String> {

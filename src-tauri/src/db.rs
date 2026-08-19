@@ -97,7 +97,9 @@ pub fn open(
         return Err(format!("Database file not found: {}", db_path));
     }
 
-    let abs_path = std::path::PathBuf::from(db_path);
+    let abs_path = std::path::PathBuf::from(db_path)
+        .canonicalize()
+        .map_err(|e| format!("Database path could not be resolved: {}", e))?;
     let abs_path_str = abs_path.to_string_lossy().to_string();
 
     let manager = SqliteConnectionManager::file(&abs_path).with_init(|conn| {
