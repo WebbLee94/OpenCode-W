@@ -636,6 +636,7 @@ pub async fn sessions_delete(app: AppHandle, value: String) -> IpcResult<Session
             let _ = conn.execute_batch("ROLLBACK");
             return IpcResult::err("Failed to commit transaction");
         }
+        fork_stats::invalidate_cache();
 
         IpcResult::ok(SessionDeleteResult {
             deleted: sess_changes > 0,

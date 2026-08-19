@@ -123,6 +123,7 @@ pub fn open(
     *lock = Some(pool);
     drop(lock);
     state.set_path(abs_path_str.clone());
+    crate::commands::fork_stats::invalidate_cache();
     Ok(abs_path_str)
 }
 
@@ -134,6 +135,7 @@ pub fn close(
     *lock = None;
     drop(lock);
     state.clear_path();
+    crate::commands::fork_stats::invalidate_cache();
     Ok(())
 }
 
