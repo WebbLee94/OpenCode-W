@@ -156,7 +156,7 @@ pub fn lightweight_health_check(
         }
     };
     let pool = match lock.as_ref() {
-        Some(p) => p,
+        Some(pool) => pool.clone(),
         None => {
             return HealthInfo {
                 ok: false,
@@ -169,6 +169,7 @@ pub fn lightweight_health_check(
             };
         }
     };
+    drop(lock);
     let conn = match pool.get() {
         Ok(c) => c,
         Err(e) => {
