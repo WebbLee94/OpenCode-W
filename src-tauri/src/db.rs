@@ -137,8 +137,8 @@ pub fn close(
     Ok(())
 }
 
-/// Health check — integrity, page count, freelist count, WAL size.
-pub fn health_check(
+/// Lightweight health check for UI refreshes.
+pub fn lightweight_health_check(
     state: &Mutex<Option<Pool<SqliteConnectionManager>>>,
 ) -> HealthInfo {
     let lock = match state.lock() {
@@ -184,9 +184,10 @@ pub fn health_check(
         }
     };
 
-    let integrity: String = conn
-        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
-        .unwrap_or_default();
+    lightweight_health_from_connection(&conn)
+}
+
+fn lightweight_health_from_connection(conn: &Connection) -> HealthInfo {
     let page_count: i64 = conn
         .query_row("PRAGMA page_count", [], |row| row.get(0))
         .unwrap_or(0);
@@ -212,13 +213,42 @@ pub fn health_check(
         .unwrap_or(0);
 
     HealthInfo {
-        ok: integrity == "ok",
+        ok: true,
         page_count,
         freelist_pages: freelist_count,
         wal_size,
         db_size,
         current_path: current_path.clone(),
         error: None,
+    }
+}
+
+/// Run SQLite's full integrity diagnostic on explicit user request.
+pub fn integrity_check(
+    state: &Mutex<Option<Pool<SqliteConnectionManager>>>,
+) -> IntegrityCheckResult {
+    let lock = match state.lock() {
+        Ok(lock) => lock,
+        Err(error) => return IntegrityCheckResult::error(error.to_string()),
+    };
+    let pool = match lock.as_ref() {
+        Some(pool) => pool,
+        None => return IntegrityCheckResult::error("No database open".into()),
+    };
+    let conn = match pool.get() {
+        Ok(conn) => conn,
+        Err(error) => return IntegrityCheckResult::error(error.to_string()),
+    };
+
+    let result = conn
+        .query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0));
+    match result {
+        Ok(result) => IntegrityCheckResult {
+            ok: result == "ok",
+            result: Some(result),
+            error: None,
+        },
+        Err(error) => IntegrityCheckResult::error(error.to_string()),
     }
 }
 
@@ -232,6 +262,85 @@ pub struct HealthInfo {
     pub db_size: i64,
     pub current_path: Option<String>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrityCheckResult {
+    pub ok: bool,
+    pub result: Option<String>,
+    pub error: Option<String>,
+}
+
+impl IntegrityCheckResult {
+    fn error(error: String) -> Self {
+        Self {
+            ok: false,
+            result: None,
+            error: Some(error),
+        }
+    }
+}
+
+#[cfg(test)]
+mod health_tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use rusqlite::Connection;
+
+    use super::{close, integrity_check, lightweight_health_from_connection, open, DbState};
+
+    fn fixture_path() -> std::path::PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is after the Unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("opencode-w-health-{nonce}.db"))
+    }
+
+    #[test]
+    fn lightweight_health_returns_connection_statistics_without_diagnostic_result() {
+        // Given: an opened fixture database with a known path.
+        let path = fixture_path();
+        Connection::open(&path).expect("fixture database opens");
+        let state = DbState::new();
+        open(&state, path.to_str().expect("UTF-8 fixture path")).expect("state opens fixture");
+
+        // When: the UI health path refreshes its snapshot.
+        let conn = Connection::open(&path).expect("health connection opens");
+        let health = lightweight_health_from_connection(&conn);
+
+        // Then: it reports the lightweight connection and file statistics.
+        assert!(health.ok);
+        assert_eq!(
+            std::path::Path::new(health.current_path.as_deref().expect("health has a path"))
+                .file_name(),
+            path.file_name()
+        );
+        assert!(health.db_size > 0);
+
+        close(&state).expect("state closes fixture");
+        std::fs::remove_file(path).expect("fixture database is removed");
+    }
+
+    #[test]
+    fn explicit_integrity_diagnostic_runs_only_when_requested() {
+        // Given: an opened fixture database.
+        let path = fixture_path();
+        Connection::open(&path).expect("fixture database opens");
+        let state = DbState::new();
+        open(&state, path.to_str().expect("UTF-8 fixture path")).expect("state opens fixture");
+
+        // When: the maintenance diagnostic is explicitly requested.
+        let diagnostic = integrity_check(&state.clone_inner());
+
+        // Then: SQLite's integrity result is returned to the caller.
+        assert!(diagnostic.ok);
+        assert_eq!(diagnostic.result.as_deref(), Some("ok"));
+
+        close(&state).expect("state closes fixture");
+        std::fs::remove_file(path).expect("fixture database is removed");
+    }
 }
 
 /// Database statistics (mirrors shared/types.ts DatabaseStats).

@@ -18,6 +18,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // health
             commands::database_health,
+            commands::database_integrity_check,
             // analytics (dashboard)
             commands::dashboard_overview,
             commands::dashboard_tokens,

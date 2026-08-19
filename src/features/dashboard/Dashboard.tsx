@@ -12,6 +12,7 @@ import type {
   SessionTrendItem,
   CostTrendItem,
   MessageTrendItem,
+  IntegrityCheckResult,
 } from '@shared/types'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 import { invokeSafe } from '@/lib/ipc'
@@ -491,6 +492,21 @@ function Dashboard() {
       setActionLoading(null)
     }
   }, [loadAllData])
+
+  const handleIntegrityCheck = useCallback(async () => {
+    setActionLoading('integrityCheck')
+    try {
+      const result = await invokeSafe<IntegrityCheckResult>(IPC_CHANNELS.DATABASE_INTEGRITY_CHECK)
+      const message = result.ok ? '完整性检查通过' : result.error || result.result || '完整性检查失败'
+      setToast({ message, type: result.ok ? 'success' : 'error' })
+      setTimeout(() => setToast(null), 3000)
+    } catch (err) {
+      setToast({ message: `完整性检查失败: ${(err as Error).message}`, type: 'error' })
+      setTimeout(() => setToast(null), 3000)
+    } finally {
+      setActionLoading(null)
+    }
+  }, [])
 
   // ── Trend data with comparison ──────────────────────────────────
   // 趋势模块已移除"数据库增长趋势"图（与"会话创建趋势"重复、size 趋势意义不大）
@@ -1011,6 +1027,17 @@ function Dashboard() {
                         {actionLoading === 'checkpoint' ? '执行中...' : 'WAL Checkpoint'}
                       </button>
                       <TooltipHint text={'将待写入的变更合并到主数据库\n\n适用场景：备份前执行，或 WAL 文件过大时'} />
+                    </div>
+                    <div className="flex items-center">
+                      <button
+                        onClick={handleIntegrityCheck}
+                        disabled={actionLoading !== null}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-sky-600 border border-sky-300 rounded-md hover:bg-sky-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {actionLoading === 'integrityCheck' ? <Loader2 size={14} className="animate-spin" /> : <Heart size={14} />}
+                        {actionLoading === 'integrityCheck' ? '检查中...' : '完整性检查'}
+                      </button>
+                      <TooltipHint text={'执行 SQLite 完整性检查\n\n大型数据库可能需要较长时间，仅在需要诊断时执行'} />
                     </div>
                   </div>
                 )}

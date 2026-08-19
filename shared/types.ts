@@ -28,6 +28,12 @@ export interface HealthInfo {
   error?: string | null;
 }
 
+export interface IntegrityCheckResult {
+  ok: boolean;
+  result: string | null;
+  error?: string | null;
+}
+
 // Token statistics
 export interface TokenStats {
   inputTokens: number;
