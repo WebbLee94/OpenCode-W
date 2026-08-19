@@ -400,9 +400,11 @@ pub async fn sessions_detail(app: AppHandle, value: String) -> IpcResult<Option<
             Err(e) => return IpcResult::err(e),
         };
         let set = fork_stats::dedup(&conn).unwrap_or_default();
+        let message_json = set.message_ids_json();
         let part_json = set.part_ids_json();
 
-        // Get session base info
+        // Get session base info — scalar subqueries scoped to this session replace
+        // full-table GROUP BY joins (the former query aggregated every message/part).
         let sql = "SELECT s.id, s.title, s.directory, s.model, s.agent, s.project_id, \
                    COALESCE(s.tokens_input, 0) as tokens_input, \
                    COALESCE(s.tokens_output, 0) as tokens_output, \
@@ -410,15 +412,17 @@ pub async fn sessions_detail(app: AppHandle, value: String) -> IpcResult<Option<
                    COALESCE(s.tokens_cache_read, 0) as tokens_cache_read, \
                    COALESCE(s.tokens_cache_write, 0) as tokens_cache_write, \
                    s.cost, s.time_created, s.time_updated, \
-                   COALESCE(msg_cnt.cnt, 0) as msg_count, \
+                   (SELECT COUNT(*) FROM message WHERE session_id = ?3 AND id NOT IN (SELECT value FROM json_each(?1))) as msg_count, \
                    (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0) + COALESCE(s.tokens_cache_read, 0) + COALESCE(s.tokens_cache_write, 0)) as total_tokens, \
-                    COALESCE(part_size.total, 0) as data_size, \
-                    0 as childCount \
-                    FROM session s \
-                    LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id \
-                    LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id \
-                    WHERE s.id = ?";
-        let session = match conn.query_row(sql, rusqlite::params![&session_id], map_session_row) {
+                   (SELECT COALESCE(SUM(LENGTH(data)), 0) FROM part WHERE session_id = ?3 AND id NOT IN (SELECT value FROM json_each(?2))) as data_size, \
+                   0 as childCount \
+                   FROM session s \
+                   WHERE s.id = ?3";
+        let session = match conn.query_row(
+            sql,
+            rusqlite::params![&message_json, &part_json, &session_id],
+            map_session_row,
+        ) {
             Ok(s) => s,
             Err(rusqlite::Error::QueryReturnedNoRows) => return IpcResult::ok(None),
             Err(e) => return IpcResult::err(e.to_string()),
@@ -737,14 +741,12 @@ pub async fn sessions_children(app: AppHandle, value: String) -> IpcResult<Vec<S
                    COALESCE(s.tokens_cache_read, 0) as tokens_cache_read, \
                    COALESCE(s.tokens_cache_write, 0) as tokens_cache_write, \
                    s.cost, s.time_created, s.time_updated, \
-                   COALESCE(msg_cnt.cnt, 0) as msg_count, \
+                   (SELECT COUNT(*) FROM message WHERE session_id = s.id) as msg_count, \
                    (COALESCE(s.tokens_input, 0) + COALESCE(s.tokens_output, 0) + COALESCE(s.tokens_reasoning, 0) + COALESCE(s.tokens_cache_read, 0) + COALESCE(s.tokens_cache_write, 0)) as total_tokens, \
-                    COALESCE(part_size.total, 0) as data_size, \
-                    0 as childCount \
-                    FROM session s \
-                    LEFT JOIN (SELECT session_id, COUNT(*) as cnt FROM message GROUP BY session_id) msg_cnt ON s.id = msg_cnt.session_id \
-                    LEFT JOIN (SELECT session_id, SUM(LENGTH(data)) as total FROM part GROUP BY session_id) part_size ON s.id = part_size.session_id \
-                    WHERE s.parent_id = ? \
+                   (SELECT COALESCE(SUM(LENGTH(data)), 0) FROM part WHERE session_id = s.id) as data_size, \
+                   0 as childCount \
+                   FROM session s \
+                   WHERE s.parent_id = ? \
                    ORDER BY s.time_created ASC";
         let mut stmt = match conn.prepare(sql) {
             Ok(s) => s,

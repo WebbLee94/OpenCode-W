@@ -78,11 +78,27 @@ struct Transcript {
 /// Returns the branch IDs to hide from logical statistics without mutating the database.
 /// Evidence reads are not date-filtered; an exhausted request hides nothing.
 pub fn dedup(conn: &Connection) -> Result<DedupSet, String> {
+    dedup_impl(conn, None)
+}
+
+/// Date-window variant: only branch sessions created inside the window are evaluated,
+/// so large databases do not exhaust the per-request budget on narrow date filters.
+/// Candidate/source evidence remains unrestricted.
+pub fn dedup_for_window(conn: &Connection, start_ms: i64, end_ms: i64) -> Result<DedupSet, String> {
+    dedup_impl(conn, Some((start_ms, end_ms)))
+}
+
+fn dedup_impl(conn: &Connection, branch_window: Option<(i64, i64)>) -> Result<DedupSet, String> {
     let mut budget = Budget { candidates: 0, rows: 0, digests: 0 };
     let metas = load_metas(conn)?;
     let mut result = DedupSet::default();
 
     for branch in &metas {
+        if let Some((start, end)) = branch_window {
+            if branch.created < start || branch.created > end {
+                continue;
+            }
+        }
         if branch.directory.is_empty() || branch.project_id.is_empty() {
             continue;
         }
@@ -355,5 +371,20 @@ mod tests {
         assert!(result.hidden_sessions.is_empty());
         assert!(result.hidden_messages.is_empty());
         assert!(result.hidden_parts.is_empty());
+    }
+
+    #[test]
+    fn window_only_evaluates_branches_created_inside_the_range() {
+        let conn = Connection::open_in_memory().unwrap();
+        schema(&conn);
+        fork_pair(&conn);
+
+        let inside = dedup_for_window(&conn, 15, 30).unwrap();
+        assert!(inside.hidden_sessions.contains("branch"));
+        assert_eq!(inside.hidden_parts.len(), 3);
+
+        let outside = dedup_for_window(&conn, 25, 40).unwrap();
+        assert!(outside.hidden_sessions.is_empty());
+        assert!(outside.hidden_parts.is_empty());
     }
 }

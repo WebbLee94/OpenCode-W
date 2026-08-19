@@ -15,8 +15,20 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::ToSql;
 
-fn fork_set(conn: &rusqlite::Connection) -> DedupSet {
-    fork_stats::dedup(conn).unwrap_or_default()
+fn fork_set(
+    conn: &rusqlite::Connection,
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+) -> DedupSet {
+    match (start_date, end_date) {
+        (Some(s), Some(e)) => fork_stats::dedup_for_window(
+            conn,
+            date_to_epoch_ms(s, true),
+            date_to_epoch_ms(e, false),
+        )
+        .unwrap_or_default(),
+        _ => fork_stats::dedup(conn).unwrap_or_default(),
+    }
 }
 
 fn boxed(params: &[i64]) -> Vec<Box<dyn ToSql>> {
@@ -128,7 +140,7 @@ pub async fn dashboard_overview(
             Ok(c) => c,
             Err(e) => return IpcResult::err(e),
         };
-        let set = fork_set(&conn);
+        let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref());
         let session_json = set.session_ids_json();
         let part_json = set.part_ids_json();
         let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
@@ -175,7 +187,7 @@ pub async fn dashboard_overview(
 
     let start_epoch = date_to_epoch_ms(start_date.as_ref().unwrap(), true);
     let end_epoch = date_to_epoch_ms(end_date.as_ref().unwrap(), false);
-    let set = fork_set(&conn);
+    let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref());
     let session_json = set.session_ids_json();
     let part_json = set.part_ids_json();
     let mut params: Vec<Box<dyn ToSql>> = vec![Box::new(start_epoch), Box::new(end_epoch)];
@@ -268,7 +280,7 @@ pub async fn dashboard_tokens(
         start_date.as_deref(),
         end_date.as_deref(),
     );
-    let set = fork_set(&conn);
+    let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref());
     let part_json = set.part_ids_json();
     let mut params = boxed(&filter_params);
     params.push(Box::new(part_json));
@@ -419,7 +431,7 @@ pub async fn dashboard_tool_ranking(
     let _t_tool = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("", start_date.as_deref(), end_date.as_deref());
-    let set = fork_set(&conn);
+    let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref());
     let part_json = set.part_ids_json();
     let mut params = boxed(&filter_params);
     params.push(Box::new(part_json));
@@ -482,7 +494,7 @@ pub async fn dashboard_skill_usage(
     let _t_skill = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("", start_date.as_deref(), end_date.as_deref());
-    let set = fork_set(&conn);
+    let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref());
     let part_json = set.part_ids_json();
     let mut params = boxed(&filter_params);
     params.push(Box::new(part_json));
@@ -546,7 +558,7 @@ pub async fn dashboard_model_ranking(
     let _t_model = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("p", start_date.as_deref(), end_date.as_deref());
-    let set = fork_set(&conn);
+    let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref());
     let part_json = set.part_ids_json();
     let mut params = boxed(&filter_params);
     params.push(Box::new(part_json));
@@ -616,7 +628,7 @@ pub async fn dashboard_provider_stats(
     let _t_prov = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("p", start_date.as_deref(), end_date.as_deref());
-    let set = fork_set(&conn);
+    let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref());
     let part_json = set.part_ids_json();
     let mut params = boxed(&filter_params);
     params.push(Box::new(part_json));
@@ -694,7 +706,7 @@ pub async fn dashboard_session_trend(
     } else {
         ""
     };
-    let set = fork_set(&conn);
+    let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref());
     let session_json = set.session_ids_json();
     let mut params = boxed(&filter_params);
     params.push(Box::new(session_json));
@@ -759,7 +771,7 @@ pub async fn dashboard_cost_trend(
     let _t_cost = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("p", start_date.as_deref(), end_date.as_deref());
-    let set = fork_set(&conn);
+    let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref());
     let part_json = set.part_ids_json();
     let mut params = boxed(&filter_params);
     params.push(Box::new(part_json));
@@ -824,7 +836,7 @@ pub async fn dashboard_message_trend(
     let _t_msg = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("", start_date.as_deref(), end_date.as_deref());
-    let set = fork_set(&conn);
+    let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref());
     let message_json = set.message_ids_json();
     let mut params = boxed(&filter_params);
     params.push(Box::new(message_json));

@@ -719,7 +719,7 @@ pub async fn messages_list(
         };
 
         let page = page.unwrap_or(1).max(1);
-        let page_size = page_size.unwrap_or(50).max(1);
+        let page_size = page_size.unwrap_or(50).clamp(1, 200);
         let offset = (page - 1) * page_size;
 
         // Count total
@@ -910,7 +910,7 @@ pub async fn messages_list_by_parent(
         };
 
         let page = page.unwrap_or(1).max(1);
-        let page_size = page_size.unwrap_or(50).max(1);
+        let page_size = page_size.unwrap_or(50).clamp(1, 200);
         let offset = (page - 1) * page_size;
 
         // Collect session IDs
