@@ -49,7 +49,7 @@ import {
 import StatCard from '@/components/StatCard'
 import PageHeader from '@/components/PageHeader'
 import TooltipHint from '@/components/TooltipHint'
-import { formatBytes, formatNumber } from '@/lib/format'
+import { formatBytes, formatNumber, sumTokenTotal } from '@/lib/format'
 
 // ── Color palette ──────────────────────────────────────────────────
 const TOKEN_COLORS = ['#3b82f6', '#10b981', '#8b5cf6']
@@ -900,6 +900,10 @@ function Dashboard() {
                       </ResponsiveContainer>
                     </div>
                     <div className="flex-1 space-y-3 min-w-0">
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-1">
+                        <span className="text-xs font-semibold text-gray-700">Token 总计</span>
+                        <span className="text-sm font-semibold text-gray-900">{formatNumber(sumTokenTotal(tokenStats))}</span>
+                      </div>
                       <TokenMetricRow
                         label="输入Token"
                         value={formatNumber(tokenStats.inputTokens)}
@@ -1073,6 +1077,9 @@ function Dashboard() {
                                    {entry.name}: {formatNumber(entry.value as number)}
                                  </div>
                                ))}
+                               <div style={{ color: '#111827', fontWeight: 600, marginTop: 4, paddingTop: 4, borderTop: '1px solid #f0f0f0' }}>
+                                 Token 总计: {formatNumber(sumTokenTotal(data))}
+                               </div>
                                <div style={{ color: '#6b7280', marginTop: 4, paddingTop: 4, borderTop: '1px solid #f0f0f0' }}>
                                  缓存命中率: {hitRate}%
                                </div>

@@ -32,6 +32,25 @@ export function formatLargeNumber(num: number | undefined | null): string {
 }
 
 /**
+ * 五项 Token 分量的字段结构（输入/输出/推理/缓存读/缓存写）
+ */
+export interface TokenTotalParts {
+  inputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  cacheRead: number
+  cacheWrite: number
+}
+
+/**
+ * Token 总量 = 输入 + 输出 + 推理 + 缓存读 + 缓存写。
+ * 缓存命中率是比率，不作为第六项计入总量。
+ */
+export function sumTokenTotal(tokens: TokenTotalParts): number {
+  return tokens.inputTokens + tokens.outputTokens + tokens.reasoningTokens + tokens.cacheRead + tokens.cacheWrite
+}
+
+/**
  * Format a timestamp (ms) into a relative time string
  */
 export function formatRelativeTime(timestamp: number): string {
