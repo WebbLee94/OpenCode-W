@@ -14,6 +14,7 @@ export function DataSourceSection() {
   const { connected: dbConnected, dbPath, dbSize } = useDataSource()
   const [switching, setSwitching] = useState(false)
   const [revealing, setRevealing] = useState(false)
+  const [revealError, setRevealError] = useState('')
   const [homePath, setHomePath] = useState('')
 
   useEffect(() => {
@@ -44,9 +45,11 @@ export function DataSourceSection() {
   const handleReveal = async () => {
     try {
       setRevealing(true)
+      setRevealError('')
       await invokeSafe<boolean>(IPC_CHANNELS.SHELL_REVEAL_DATABASE_DIRECTORY)
     } catch (err) {
       console.error('打开所在目录失败:', err)
+      setRevealError('打开所在目录失败，请稍后重试。')
     } finally {
       setRevealing(false)
     }
@@ -79,6 +82,7 @@ export function DataSourceSection() {
                 {revealing ? <Loader2 size={14} className="animate-spin" /> : <FolderOpen size={14} />}
               </button>
             </div>
+            {revealError && <p role="alert" className="text-xs text-red-600">{revealError}</p>}
           </div>
         )}
         {dbConnected && (
