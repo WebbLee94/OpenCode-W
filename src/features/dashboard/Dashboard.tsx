@@ -339,6 +339,7 @@ function Dashboard() {
     setRefreshing(true)
     setError(null)
     try {
+      await invokeSafe<void>(IPC_CHANNELS.DASHBOARD_REFRESH_ATTRIBUTION)
       // 始终刷新 overview（fast data）
       const fastResult = await loadFastData(timeRange, groupBy)
 

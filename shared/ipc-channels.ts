@@ -12,6 +12,7 @@ export const IPC_CHANNELS = {
   DASHBOARD_SESSION_TREND: 'dashboard:sessionTrend',
   DASHBOARD_COST_TREND: 'dashboard:costTrend',
   DASHBOARD_MESSAGE_TREND: 'dashboard:messageTrend',
+  DASHBOARD_REFRESH_ATTRIBUTION: 'dashboard:refreshAttribution',
 
   // Sessions
   SESSIONS_LIST: 'sessions:list',

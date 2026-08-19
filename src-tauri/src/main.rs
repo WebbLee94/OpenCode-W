@@ -29,6 +29,7 @@ pub fn run() {
             commands::dashboard_session_trend,
             commands::dashboard_cost_trend,
             commands::dashboard_message_trend,
+            commands::dashboard_refresh_attribution,
             // sessions
             commands::sessions_list,
             commands::sessions_detail,

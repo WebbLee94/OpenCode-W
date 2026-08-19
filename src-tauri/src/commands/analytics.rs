@@ -31,6 +31,12 @@ fn fork_set(
     }
 }
 
+#[tauri::command]
+pub fn dashboard_refresh_attribution() -> IpcResult<()> {
+    fork_stats::invalidate_cache();
+    IpcResult::ok(())
+}
+
 fn boxed(params: &[i64]) -> Vec<Box<dyn ToSql>> {
     params.iter().map(|v| Box::new(*v) as Box<dyn ToSql>).collect()
 }
