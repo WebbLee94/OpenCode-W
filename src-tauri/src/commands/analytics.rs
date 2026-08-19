@@ -6,12 +6,30 @@ use std::time::Instant;
 use chrono::TimeZone;
 
 use crate::db::{self, DbState};
+use crate::commands::fork_stats::{self, DedupSet};
 use crate::models::dto::{
     CostTrendItem, DatabaseStats, IpcResult, MessageTrendItem, ModelRankingItem, ProviderStatsItem,
     SessionTrendItem, SkillUsage, TokenGroupDataPoint, TokenStats, ToolRanking,
 };
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::ToSql;
+
+fn fork_set(conn: &rusqlite::Connection) -> DedupSet {
+    fork_stats::dedup(conn).unwrap_or_default()
+}
+
+fn boxed(params: &[i64]) -> Vec<Box<dyn ToSql>> {
+    params.iter().map(|v| Box::new(*v) as Box<dyn ToSql>).collect()
+}
+
+fn exclusion_fragment(alias: &str) -> String {
+    if alias.is_empty() {
+        " AND id NOT IN (SELECT value FROM json_each(?))".to_string()
+    } else {
+        format!(" AND {}.id NOT IN (SELECT value FROM json_each(?))", alias)
+    }
+}
 
 /// Dual return type for `dashboard_tokens` — either aggregate stats or grouped data points.
 /// Uses `#[serde(untagged)]` to match the TypeScript union `TokenStats | TokenGroupDataPoint[]`.
@@ -100,19 +118,50 @@ pub async fn dashboard_overview(
     end_date: Option<String>,
 ) -> IpcResult<DatabaseStats> {
     run_db_task(app, move |db| {
-    // No time range: delegate to db::get_stats for unfiltered counts
+    // No time range: use logical counts (fork-inherited rows excluded) plus file stats
     if start_date.is_none() || end_date.is_none() {
         let s = db::get_stats(db);
         if let Some(err) = s.error {
             return IpcResult::err(err);
         }
+        let conn = match db::get_db(db) {
+            Ok(c) => c,
+            Err(e) => return IpcResult::err(e),
+        };
+        let set = fork_set(&conn);
+        let session_json = set.session_ids_json();
+        let part_json = set.part_ids_json();
+        let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+        let compound_sql =
+            "SELECT 'root_session' as label, COUNT(*) as cnt FROM session WHERE parent_id IS NULL AND id NOT IN (SELECT value FROM json_each(?1))
+             UNION ALL
+             SELECT 'child_session', COUNT(*) FROM session WHERE parent_id IS NOT NULL AND id NOT IN (SELECT value FROM json_each(?1))
+             UNION ALL
+             SELECT 'project', COUNT(DISTINCT project_id) FROM session WHERE project_id IS NOT NULL AND project_id != ''
+             UNION ALL
+             SELECT 'part', COUNT(*) FROM part WHERE id NOT IN (SELECT value FROM json_each(?2))";
+        if let Ok(mut stmt) = conn.prepare(compound_sql) {
+            if let Ok(rows) = stmt.query_map(rusqlite::params![session_json, part_json], |row| {
+                let label: String = row.get(0)?;
+                let cnt: i64 = row.get(1)?;
+                Ok((label, cnt))
+            }) {
+                for (label, cnt) in rows.flatten() {
+                    counts.insert(label, cnt);
+                }
+            }
+        }
+        let root_session_count = counts.get("root_session").copied().unwrap_or(0);
+        let child_session_count = counts.get("child_session").copied().unwrap_or(0);
+        let project_count = counts.get("project").copied().unwrap_or(0);
+        let part_count = counts.get("part").copied().unwrap_or(0);
         return IpcResult::ok(DatabaseStats {
             db_size: s.db_size,
-            root_session_count: s.root_session_count,
-            child_session_count: s.child_session_count,
-            session_count: s.session_count,
-            project_count: s.project_count,
-            part_count: s.part_count,
+            root_session_count,
+            child_session_count,
+            session_count: root_session_count + child_session_count,
+            project_count,
+            part_count,
             freelist_size: s.freelist_size,
             wal_size: s.wal_size,
         });
@@ -126,20 +175,25 @@ pub async fn dashboard_overview(
 
     let start_epoch = date_to_epoch_ms(start_date.as_ref().unwrap(), true);
     let end_epoch = date_to_epoch_ms(end_date.as_ref().unwrap(), false);
-    let params: [&dyn rusqlite::types::ToSql; 2] = [&start_epoch, &end_epoch];
+    let set = fork_set(&conn);
+    let session_json = set.session_ids_json();
+    let part_json = set.part_ids_json();
+    let mut params: Vec<Box<dyn ToSql>> = vec![Box::new(start_epoch), Box::new(end_epoch)];
+    params.push(Box::new(session_json));
+    params.push(Box::new(part_json));
 
     let _overview_start = Instant::now();
     let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
     let compound_sql =
-        "SELECT 'root_session' as label, COUNT(*) as cnt FROM session WHERE parent_id IS NULL AND time_created BETWEEN ?1 AND ?2
+        "SELECT 'root_session' as label, COUNT(*) as cnt FROM session WHERE parent_id IS NULL AND time_created BETWEEN ?1 AND ?2 AND id NOT IN (SELECT value FROM json_each(?3))
          UNION ALL
-         SELECT 'child_session', COUNT(*) FROM session WHERE parent_id IS NOT NULL AND time_created BETWEEN ?1 AND ?2
+         SELECT 'child_session', COUNT(*) FROM session WHERE parent_id IS NOT NULL AND time_created BETWEEN ?1 AND ?2 AND id NOT IN (SELECT value FROM json_each(?3))
          UNION ALL
          SELECT 'project', COUNT(DISTINCT project_id) FROM session WHERE project_id IS NOT NULL AND project_id != '' AND time_created BETWEEN ?1 AND ?2
          UNION ALL
-         SELECT 'part', COUNT(*) FROM part WHERE time_created BETWEEN ?1 AND ?2";
+         SELECT 'part', COUNT(*) FROM part WHERE time_created BETWEEN ?1 AND ?2 AND id NOT IN (SELECT value FROM json_each(?4))";
     if let Ok(mut stmt) = conn.prepare(compound_sql) {
-        if let Ok(rows) = stmt.query_map(params, |row| {
+        if let Ok(rows) = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
             let label: String = row.get(0)?;
             let cnt: i64 = row.get(1)?;
             Ok((label, cnt))
@@ -214,6 +268,10 @@ pub async fn dashboard_tokens(
         start_date.as_deref(),
         end_date.as_deref(),
     );
+    let set = fork_set(&conn);
+    let part_json = set.part_ids_json();
+    let mut params = boxed(&filter_params);
+    params.push(Box::new(part_json));
 
     let _token_start = Instant::now();
     // Grouped mode: return time-series data points
@@ -234,17 +292,17 @@ pub async fn dashboard_tokens(
               COALESCE(SUM(json_extract(p.data, '$.tokens.cache.write')), 0) as cacheWrite,
               COALESCE(SUM(json_extract(p.data, '$.cost')), 0) as estimatedCost
             FROM part p
-            WHERE json_extract(p.data, '$.type') = 'step-finish' {}
+            WHERE json_extract(p.data, '$.type') = 'step-finish' {}{}
             GROUP BY period
             ORDER BY period ASC",
-            fmt, filter_sql
+            fmt, filter_sql, exclusion_fragment("p")
         );
 
         let mut stmt = match conn.prepare(&sql) {
             Ok(s) => s,
             Err(e) => return IpcResult::err(e.to_string()),
         };
-        let rows = match stmt.query_map(rusqlite::params_from_iter(filter_params.iter()), |row| {
+        let rows = match stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
             // SUM may return REAL even for integer JSON values — read as f64, cast to i64
             let input_tokens: f64 = row.get(1)?;
             let output_tokens: f64 = row.get(2)?;
@@ -288,13 +346,13 @@ pub async fn dashboard_tokens(
           COALESCE(SUM(json_extract(p.data, '$.tokens.cache.write')), 0) as cacheWrite,
           COALESCE(SUM(json_extract(p.data, '$.cost')), 0) as estimatedCost
         FROM part p
-        WHERE json_extract(p.data, '$.type') = 'step-finish' {}",
-        filter_sql
+        WHERE json_extract(p.data, '$.type') = 'step-finish' {}{}",
+        filter_sql, exclusion_fragment("p")
     );
 
     let stats = match conn.query_row(
         &sql,
-        rusqlite::params_from_iter(filter_params.iter()),
+        rusqlite::params_from_iter(params.iter()),
         |row| {
             let input_tokens: f64 = row.get(0)?;
             let output_tokens: f64 = row.get(1)?;
@@ -361,16 +419,20 @@ pub async fn dashboard_tool_ranking(
     let _t_tool = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("", start_date.as_deref(), end_date.as_deref());
+    let set = fork_set(&conn);
+    let part_json = set.part_ids_json();
+    let mut params = boxed(&filter_params);
+    params.push(Box::new(part_json));
     let sql = format!(
         "SELECT
           COALESCE(json_extract(data, '$.tool'), 'unknown') as toolName,
           COUNT(*) as count
         FROM part
-        WHERE json_extract(data, '$.type') = 'tool' {}
+        WHERE json_extract(data, '$.type') = 'tool' {}{}
         GROUP BY toolName
         ORDER BY count DESC
         LIMIT 20",
-        filter_sql
+        filter_sql, exclusion_fragment("")
     );
 
     let mut stmt = match conn.prepare(&sql) {
@@ -378,7 +440,7 @@ pub async fn dashboard_tool_ranking(
         Err(e) => return IpcResult::err(e.to_string()),
     };
     let rows = match stmt.query_map(
-        rusqlite::params_from_iter(filter_params.iter()),
+        rusqlite::params_from_iter(params.iter()),
         |row| {
             Ok(ToolRanking {
                 tool_name: row.get(0)?,
@@ -420,17 +482,21 @@ pub async fn dashboard_skill_usage(
     let _t_skill = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("", start_date.as_deref(), end_date.as_deref());
+    let set = fork_set(&conn);
+    let part_json = set.part_ids_json();
+    let mut params = boxed(&filter_params);
+    params.push(Box::new(part_json));
     let sql = format!(
         "SELECT
           COALESCE(json_extract(data, '$.state.input.name'), 'unknown') as skillName,
           COUNT(*) as count
         FROM part
         WHERE json_extract(data, '$.type') = 'tool'
-          AND json_extract(data, '$.tool') = 'skill' {}
+          AND json_extract(data, '$.tool') = 'skill' {}{}
         GROUP BY skillName
         ORDER BY count DESC
         LIMIT 20",
-        filter_sql
+        filter_sql, exclusion_fragment("")
     );
 
     let mut stmt = match conn.prepare(&sql) {
@@ -438,7 +504,7 @@ pub async fn dashboard_skill_usage(
         Err(e) => return IpcResult::err(e.to_string()),
     };
     let rows = match stmt.query_map(
-        rusqlite::params_from_iter(filter_params.iter()),
+        rusqlite::params_from_iter(params.iter()),
         |row| {
             Ok(SkillUsage {
                 skill_name: row.get(0)?,
@@ -480,6 +546,10 @@ pub async fn dashboard_model_ranking(
     let _t_model = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("p", start_date.as_deref(), end_date.as_deref());
+    let set = fork_set(&conn);
+    let part_json = set.part_ids_json();
+    let mut params = boxed(&filter_params);
+    params.push(Box::new(part_json));
     let sql = format!(
         "SELECT s.model as model,
                 COUNT(DISTINCT p.session_id) as sessionCount,
@@ -488,11 +558,11 @@ pub async fn dashboard_model_ranking(
          FROM part p
          JOIN session s ON s.id = p.session_id
          WHERE json_extract(p.data, '$.type') = 'step-finish'
-           AND s.model IS NOT NULL {}
+           AND s.model IS NOT NULL {}{}
          GROUP BY s.model
          ORDER BY sessionCount DESC
          LIMIT 10",
-        filter_sql
+        filter_sql, exclusion_fragment("p")
     );
 
     let mut stmt = match conn.prepare(&sql) {
@@ -500,7 +570,7 @@ pub async fn dashboard_model_ranking(
         Err(e) => return IpcResult::err(e.to_string()),
     };
     let rows = match stmt.query_map(
-        rusqlite::params_from_iter(filter_params.iter()),
+        rusqlite::params_from_iter(params.iter()),
         |row| {
             let token_count: f64 = row.get(2)?;
             let total_cost: f64 = row.get(3)?;
@@ -546,6 +616,10 @@ pub async fn dashboard_provider_stats(
     let _t_prov = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("p", start_date.as_deref(), end_date.as_deref());
+    let set = fork_set(&conn);
+    let part_json = set.part_ids_json();
+    let mut params = boxed(&filter_params);
+    params.push(Box::new(part_json));
     let sql = format!(
         "SELECT json_extract(s.model, '$.providerID') as provider,
                 COUNT(DISTINCT p.session_id) as sessionCount,
@@ -554,10 +628,10 @@ pub async fn dashboard_provider_stats(
          FROM part p
          JOIN session s ON s.id = p.session_id
          WHERE json_extract(p.data, '$.type') = 'step-finish'
-           AND json_extract(s.model, '$.providerID') IS NOT NULL {}
+           AND json_extract(s.model, '$.providerID') IS NOT NULL {}{}
          GROUP BY provider
          ORDER BY sessionCount DESC",
-        filter_sql
+        filter_sql, exclusion_fragment("p")
     );
 
     let mut stmt = match conn.prepare(&sql) {
@@ -565,7 +639,7 @@ pub async fn dashboard_provider_stats(
         Err(e) => return IpcResult::err(e.to_string()),
     };
     let rows = match stmt.query_map(
-        rusqlite::params_from_iter(filter_params.iter()),
+        rusqlite::params_from_iter(params.iter()),
         |row| {
             let provider: Option<String> = row.get(0)?;
             let token_count: f64 = row.get(2)?;
@@ -620,14 +694,18 @@ pub async fn dashboard_session_trend(
     } else {
         ""
     };
+    let set = fork_set(&conn);
+    let session_json = set.session_ids_json();
+    let mut params = boxed(&filter_params);
+    params.push(Box::new(session_json));
     let sql = format!(
         "SELECT date(time_created / 1000, 'unixepoch', 'localtime') as d,
                 COUNT(*) as cnt
          FROM session
-         WHERE 1=1 {}{}
+         WHERE 1=1 {}{}{}
          GROUP BY d
          ORDER BY d ASC",
-        filter_sql, root_filter
+        filter_sql, root_filter, exclusion_fragment("")
     );
 
     let mut stmt = match conn.prepare(&sql) {
@@ -635,7 +713,7 @@ pub async fn dashboard_session_trend(
         Err(e) => return IpcResult::err(e.to_string()),
     };
     let rows = match stmt.query_map(
-        rusqlite::params_from_iter(filter_params.iter()),
+        rusqlite::params_from_iter(params.iter()),
         |row| {
             let d: String = row.get(0)?;
             let cnt: i64 = row.get(1)?;
@@ -681,14 +759,18 @@ pub async fn dashboard_cost_trend(
     let _t_cost = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("p", start_date.as_deref(), end_date.as_deref());
+    let set = fork_set(&conn);
+    let part_json = set.part_ids_json();
+    let mut params = boxed(&filter_params);
+    params.push(Box::new(part_json));
     let sql = format!(
         "SELECT date(p.time_created / 1000, 'unixepoch', 'localtime') as d,
                 COALESCE(SUM(json_extract(p.data, '$.cost')), 0) as c
          FROM part p
-         WHERE json_extract(p.data, '$.type') = 'step-finish' {}
+         WHERE json_extract(p.data, '$.type') = 'step-finish' {}{}
          GROUP BY d
          ORDER BY d ASC",
-        filter_sql
+        filter_sql, exclusion_fragment("p")
     );
 
     let mut stmt = match conn.prepare(&sql) {
@@ -696,7 +778,7 @@ pub async fn dashboard_cost_trend(
         Err(e) => return IpcResult::err(e.to_string()),
     };
     let rows = match stmt.query_map(
-        rusqlite::params_from_iter(filter_params.iter()),
+        rusqlite::params_from_iter(params.iter()),
         |row| {
             let d: String = row.get(0)?;
             let c: f64 = row.get(1)?;
@@ -742,14 +824,18 @@ pub async fn dashboard_message_trend(
     let _t_msg = Instant::now();
 
     let (filter_sql, filter_params) = build_date_filter("", start_date.as_deref(), end_date.as_deref());
+    let set = fork_set(&conn);
+    let message_json = set.message_ids_json();
+    let mut params = boxed(&filter_params);
+    params.push(Box::new(message_json));
     let sql = format!(
         "SELECT date(m.time_created / 1000, 'unixepoch', 'localtime') as d,
                 COUNT(*) as cnt
          FROM message m
-         WHERE 1=1 {}
+         WHERE 1=1 {}{}
          GROUP BY d
          ORDER BY d ASC",
-        filter_sql
+        filter_sql, exclusion_fragment("m")
     );
 
     let mut stmt = match conn.prepare(&sql) {
@@ -757,7 +843,7 @@ pub async fn dashboard_message_trend(
         Err(e) => return IpcResult::err(e.to_string()),
     };
     let rows = match stmt.query_map(
-        rusqlite::params_from_iter(filter_params.iter()),
+        rusqlite::params_from_iter(params.iter()),
         |row| {
             let d: String = row.get(0)?;
             let cnt: i64 = row.get(1)?;

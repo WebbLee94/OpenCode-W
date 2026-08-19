@@ -19,6 +19,7 @@ use std::path::Path;
 use tauri::{AppHandle, Manager};
 
 use crate::db::{self, DbState};
+use crate::commands::fork_stats;
 use crate::models::dto::{
     IpcResult, SessionDTO, SessionDetailDTO, SessionShareDTO, SkillUsage, TokenStats, ToolRanking,
 };
@@ -203,6 +204,10 @@ pub async fn sessions_list(
             Ok(c) => c,
             Err(e) => return IpcResult::err(e),
         };
+        let set = fork_stats::dedup(&conn).unwrap_or_default();
+        let session_json = set.session_ids_json();
+        let message_json = set.message_ids_json();
+        let part_json = set.part_ids_json();
 
         let page = page.unwrap_or(1).max(1);
         let page_size = page_size.unwrap_or(50).clamp(1, 200);
@@ -211,9 +216,15 @@ pub async fn sessions_list(
         let sort_order = sort_order.unwrap_or_else(|| "desc".to_string());
 
         // Build WHERE clause using extracted helper
-        let (where_clause, params) = build_session_where(
+        let (mut where_clause, mut params) = build_session_where(
             &conn, &search, &project_id, &start_date, &end_date, &parent_filter,
         );
+        where_clause.push_str(if where_clause.is_empty() {
+            "WHERE s.id NOT IN (SELECT value FROM json_each(?))"
+        } else {
+            " AND s.id NOT IN (SELECT value FROM json_each(?))"
+        });
+        params.push(Box::new(session_json));
 
         // Validate sort column (SQL injection prevention)
         let allowed_sort_columns = [
@@ -316,7 +327,7 @@ pub async fn sessions_list(
 
             // msg_count: messages per session (via IN clause, not full table scan)
             let msg_sql = format!(
-                "SELECT session_id, COUNT(*) FROM message WHERE session_id IN ({}) GROUP BY session_id",
+                "SELECT session_id, COUNT(*) FROM message WHERE session_id IN ({}) AND id NOT IN (SELECT value FROM json_each(?)) GROUP BY session_id",
                 id_list
             );
             let msg_map: HashMap<String, i64> = {
@@ -324,7 +335,8 @@ pub async fn sessions_list(
                     Ok(s) => s,
                     Err(e) => return IpcResult::err(e.to_string()),
                 };
-                let id_params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
+                let mut id_params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
+                id_params.push(&message_json);
                 let rows = match stmt.query_map(id_params.as_slice(), |r| {
                     Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
                 }) {
@@ -339,7 +351,7 @@ pub async fn sessions_list(
 
             // data_size: total part data per session (via IN clause)
             let part_sql = format!(
-                "SELECT session_id, COALESCE(SUM(LENGTH(data)), 0) FROM part WHERE session_id IN ({}) GROUP BY session_id",
+                "SELECT session_id, COALESCE(SUM(LENGTH(data)), 0) FROM part WHERE session_id IN ({}) AND id NOT IN (SELECT value FROM json_each(?)) GROUP BY session_id",
                 id_list
             );
             let part_map: HashMap<String, i64> = {
@@ -347,7 +359,8 @@ pub async fn sessions_list(
                     Ok(s) => s,
                     Err(e) => return IpcResult::err(e.to_string()),
                 };
-                let id_params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
+                let mut id_params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
+                id_params.push(&part_json);
                 let rows = match stmt.query_map(id_params.as_slice(), |r| {
                     Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
                 }) {
@@ -386,6 +399,8 @@ pub async fn sessions_detail(app: AppHandle, value: String) -> IpcResult<Option<
             Ok(c) => c,
             Err(e) => return IpcResult::err(e),
         };
+        let set = fork_stats::dedup(&conn).unwrap_or_default();
+        let part_json = set.part_ids_json();
 
         // Get session base info
         let sql = "SELECT s.id, s.title, s.directory, s.model, s.agent, s.project_id, \
@@ -419,8 +434,9 @@ pub async fn sessions_detail(app: AppHandle, value: String) -> IpcResult<Option<
                COALESCE(SUM(json_extract(data, '$.tokens.cache.write')), 0) as cacheWrite, \
                COALESCE(SUM(json_extract(data, '$.cost')), 0) as estimatedCost \
              FROM part \
-             WHERE session_id = ? AND json_extract(data, '$.type') = 'step-finish'",
-            rusqlite::params![&session_id],
+             WHERE session_id = ? AND json_extract(data, '$.type') = 'step-finish' \
+               AND id NOT IN (SELECT value FROM json_each(?))",
+            rusqlite::params![&session_id, &part_json],
             |r| {
                 Ok((
                     r.get::<_, i64>(0)?,
@@ -461,12 +477,13 @@ pub async fn sessions_detail(app: AppHandle, value: String) -> IpcResult<Option<
              FROM part \
              WHERE session_id = ? AND json_extract(data, '$.type') = 'tool' \
                AND json_extract(data, '$.tool') IS NOT NULL \
+               AND id NOT IN (SELECT value FROM json_each(?)) \
              GROUP BY toolName ORDER BY count DESC",
         ) {
             Ok(s) => s,
             Err(e) => return IpcResult::err(e.to_string()),
         };
-        let tool_rows = match stmt.query_map(rusqlite::params![&session_id], |r| {
+        let tool_rows = match stmt.query_map(rusqlite::params![&session_id, &part_json], |r| {
             Ok(ToolRanking {
                 tool_name: r.get::<_, Option<String>>(0)?.unwrap_or_default(),
                 count: r.get(1)?,
@@ -490,12 +507,13 @@ pub async fn sessions_detail(app: AppHandle, value: String) -> IpcResult<Option<
              WHERE session_id = ? AND json_extract(data, '$.type') = 'tool' \
                AND json_extract(data, '$.tool') = 'skill' \
                AND json_extract(data, '$.state.input.name') IS NOT NULL \
+               AND id NOT IN (SELECT value FROM json_each(?)) \
              GROUP BY skillName ORDER BY count DESC",
         ) {
             Ok(s) => s,
             Err(e) => return IpcResult::err(e.to_string()),
         };
-        let skill_rows = match stmt.query_map(rusqlite::params![&session_id], |r| {
+        let skill_rows = match stmt.query_map(rusqlite::params![&session_id, &part_json], |r| {
             Ok(SkillUsage {
                 skill_name: r.get::<_, Option<String>>(0)?.unwrap_or_default(),
                 count: r.get(1)?,
