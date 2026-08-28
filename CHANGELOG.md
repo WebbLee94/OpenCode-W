@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### v1.3.5 - 2026-08-28
+
+#### 📊 仪表盘与数据展示优化
+- 🔹 新增项目 Token Top 10 排行，强化项目级使用洞察
+
+#### 🧹 清理与备份体验优化
+- 🔹 清理页收敛路径展示，移除冗余选项并新增回归测试
+- 🔹 备份页移除已废弃的压缩字段展示，前后端共享契约同步清理
+
+
 ### v1.3.4 - 2026-08-19
 
 #### 🐛 分叉会话统计修复
