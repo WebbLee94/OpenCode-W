@@ -111,4 +111,72 @@ describe('Dashboard health hot path', () => {
     expect(invokeSafe.mock.calls.some(([channel]) => channel === IPC_CHANNELS.DASHBOARD_SESSION_TREND)).toBe(false)
     expect(invokeSafe.mock.calls.some(([channel]) => channel === IPC_CHANNELS.DASHBOARD_MESSAGE_TREND)).toBe(false)
   })
+
+  it('loads and renders project ranking data with folder-name labels on stats tab', async () => {
+    const projectData = [
+      { project: 'my-app', tokenCount: 5000, totalCost: 0.5 },
+      { project: 'backend-api', tokenCount: 3000, totalCost: 0.3 },
+      { project: 'frontend', tokenCount: 1000, totalCost: 0.1 },
+    ]
+    invokeSafe.mockImplementation((channel: string) => {
+      if (channel === IPC_CHANNELS.DATABASE_HEALTH) {
+        return Promise.resolve({ ok: true, pageCount: 1, freelistPages: 0, walSize: 0 })
+      }
+      if (channel === IPC_CHANNELS.DASHBOARD_OVERVIEW) {
+        return Promise.resolve({ rootSessionCount: 0, childSessionCount: 0, projectCount: 0, partCount: 0 })
+      }
+      if (channel === IPC_CHANNELS.DASHBOARD_TOKENS) return Promise.resolve({ inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheRead: 0, cacheWrite: 0, estimatedCost: 0, cacheHitRate: 0 })
+      if (channel === IPC_CHANNELS.DASHBOARD_PROJECT_RANKING) return Promise.resolve(projectData)
+      return Promise.resolve([])
+    })
+
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+
+    fireEvent.click(screen.getByRole('button', { name: /统计/ }))
+    await waitFor(() => expect(invokeSafe).toHaveBeenCalledWith(IPC_CHANNELS.DASHBOARD_PROJECT_RANKING, expect.anything()))
+
+    expect(screen.getByText(/项目 Token 排行 TOP 10/)).toBeDefined()
+
+    const projectCalls = invokeSafe.mock.calls.filter(([ch]) => ch === IPC_CHANNELS.DASHBOARD_PROJECT_RANKING)
+    expect(projectCalls.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('keeps project ranking visible after refresh while remaining on the stats tab', async () => {
+    const projectData = [
+      { project: 'core', tokenCount: 900, totalCost: 0.9 },
+    ]
+    invokeSafe.mockImplementation((channel: string, payload?: { groupBy?: string }) => {
+      if (channel === IPC_CHANNELS.DATABASE_HEALTH) {
+        return Promise.resolve({ ok: true, pageCount: 1, freelistPages: 0, walSize: 0 })
+      }
+      if (channel === IPC_CHANNELS.DASHBOARD_OVERVIEW) {
+        return Promise.resolve({ rootSessionCount: 0, childSessionCount: 0, projectCount: 0, partCount: 0 })
+      }
+      if (channel === IPC_CHANNELS.DASHBOARD_TOKENS && payload?.groupBy) {
+        return Promise.resolve([{ period: '2026-08-01', inputTokens: 1, outputTokens: 2, reasoningTokens: 3, cacheRead: 4, cacheWrite: 5, estimatedCost: 0.1 }])
+      }
+      if (channel === IPC_CHANNELS.DASHBOARD_TOKENS) {
+        return Promise.resolve({ inputTokens: 10, outputTokens: 20, reasoningTokens: 30, cacheRead: 40, cacheWrite: 50, estimatedCost: 0.3, cacheHitRate: 80 })
+      }
+      if (channel === IPC_CHANNELS.DASHBOARD_PROJECT_RANKING) {
+        return Promise.resolve(projectData)
+      }
+      if (channel === IPC_CHANNELS.DASHBOARD_TOOL_RANKING) return Promise.resolve([])
+      if (channel === IPC_CHANNELS.DASHBOARD_SKILL_USAGE) return Promise.resolve([])
+      if (channel === IPC_CHANNELS.DASHBOARD_MODEL_RANKING) return Promise.resolve([])
+      if (channel === IPC_CHANNELS.DASHBOARD_PROVIDER_STATS) return Promise.resolve([])
+      return Promise.resolve([])
+    })
+
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+
+    fireEvent.click(screen.getByRole('button', { name: /统计/ }))
+    await waitFor(() => expect(invokeSafe).toHaveBeenCalledWith(IPC_CHANNELS.DASHBOARD_PROJECT_RANKING, expect.anything()))
+    expect(screen.getByText(/项目 Token 排行 TOP 10/)).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }))
+    await waitFor(() => expect(invokeSafe.mock.calls.filter(([channel]) => channel === IPC_CHANNELS.DASHBOARD_PROJECT_RANKING)).toHaveLength(2))
+
+    expect(screen.getByText(/项目 Token 排行 TOP 10/)).toBeDefined()
+  })
 })

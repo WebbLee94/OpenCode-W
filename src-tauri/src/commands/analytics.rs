@@ -8,8 +8,8 @@ use chrono::TimeZone;
 use crate::db::{self, DbState};
 use crate::commands::fork_stats::{self, DedupSet};
 use crate::models::dto::{
-    CostTrendItem, DatabaseStats, IpcResult, MessageTrendItem, ModelRankingItem, ProviderStatsItem,
-    SessionTrendItem, SkillUsage, TokenGroupDataPoint, TokenStats, ToolRanking,
+    CostTrendItem, DatabaseStats, IpcResult, MessageTrendItem, ModelRankingItem, ProjectRankingItem,
+    ProviderStatsItem, SessionTrendItem, SkillUsage, TokenGroupDataPoint, TokenStats, ToolRanking,
 };
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -682,7 +682,77 @@ pub async fn dashboard_provider_stats(
     }).await
 }
 
-// ─── 7. dashboard_session_trend ─────────────────────────────────────────
+// ─── 7. dashboard_project_ranking ────────────────────────────────────────
+
+/// Project ranking — top 10 projects by total tokens, using the folder name from session.directory.
+#[tauri::command]
+pub async fn dashboard_project_ranking(
+    app: AppHandle,
+    start_date: Option<String>,
+    end_date: Option<String>,
+) -> IpcResult<Vec<ProjectRankingItem>> {
+    run_db_task(app, move |db| {
+        let conn = match db::get_db(db) {
+            Ok(c) => c,
+            Err(e) => return IpcResult::err(e),
+        };
+    let _t_proj = Instant::now();
+
+    let (filter_sql, filter_params) = build_date_filter("p", start_date.as_deref(), end_date.as_deref());
+    let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref());
+    let part_json = set.part_ids_json();
+    let mut params = boxed(&filter_params);
+    params.push(Box::new(part_json));
+    let sql = format!(
+        "SELECT s.directory,
+                COALESCE(SUM(json_extract(p.data, '$.tokens.total')), 0) as tokenCount,
+                COALESCE(SUM(json_extract(p.data, '$.cost')), 0) as totalCost
+         FROM part p
+         JOIN session s ON s.id = p.session_id
+         WHERE json_extract(p.data, '$.type') = 'step-finish'
+           AND s.directory IS NOT NULL AND s.directory != '' {}{}
+         GROUP BY s.directory
+         ORDER BY tokenCount DESC
+         LIMIT 10",
+        filter_sql, exclusion_fragment("p")
+    );
+
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(e) => return IpcResult::err(e.to_string()),
+    };
+    let rows = match stmt.query_map(
+        rusqlite::params_from_iter(params.iter()),
+        |row| {
+            let directory: String = row.get(0)?;
+            let token_count: f64 = row.get(1)?;
+            let total_cost: f64 = row.get(2)?;
+            let project = directory.rsplit('/').next().unwrap_or(&directory).to_string();
+            Ok(ProjectRankingItem {
+                project,
+                token_count: token_count as i64,
+                total_cost,
+            })
+        },
+    ) {
+        Ok(r) => r,
+        Err(e) => return IpcResult::err(e.to_string()),
+    };
+
+    let mut items = Vec::new();
+    for row in rows {
+        match row {
+            Ok(item) => items.push(item),
+            Err(e) => return IpcResult::err(e.to_string()),
+        }
+    }
+    #[cfg(debug_assertions)]
+    eprintln!("[perf] dashboard_project_ranking: {}ms", _t_proj.elapsed().as_millis());
+    IpcResult::ok(items)
+    }).await
+}
+
+// ─── 8. dashboard_session_trend ─────────────────────────────────────────
 
 /// Session creation trend — daily counts, optionally filtered to root sessions only.
 ///

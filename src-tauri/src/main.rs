@@ -26,6 +26,7 @@ pub fn run() {
             commands::dashboard_skill_usage,
             commands::dashboard_model_ranking,
             commands::dashboard_provider_stats,
+            commands::dashboard_project_ranking,
             commands::dashboard_session_trend,
             commands::dashboard_cost_trend,
             commands::dashboard_message_trend,
