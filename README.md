@@ -40,7 +40,7 @@ W = **W**orkshop（工坊），也是作者 **W**ebb 的印记。
 
 ## ✨ 功能特性
 
-![Dashboard](assets/images/preview.gif)
+![Dashboard](docs/images/preview.gif)
 
 - 📊 **仪表盘** — 会话资产、Token 消耗、成本水位、工具排行，Dashboard 一眼看清 AI 编程全貌
 - 💬 **会话浏览** — 父子会话完整工艺链，从需求到交付每一步都在这里，支持键盘导航

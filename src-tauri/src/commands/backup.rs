@@ -284,7 +284,6 @@ fn list_backups_in_dir(dir: &Path) -> Result<Vec<BackupDTO>, String> {
             file_path,
             file_size,
             created_at,
-            compressed: false,
         });
     }
 
@@ -410,7 +409,6 @@ pub async fn backup_create(app: AppHandle) -> IpcResult<BackupDTO> {
             file_path: backup_path_str,
             file_size,
             created_at,
-            compressed: false,
         })
     })
     .await
@@ -534,7 +532,6 @@ pub async fn backup_preview(value: String) -> IpcResult<BackupPreviewDTO> {
                 .ok()
                 .map(|t| DateTime::<Utc>::from(t).to_rfc3339())
                 .unwrap_or_default(),
-            compressed: false,
         };
 
         // Try to open the backup file read-only to get content counts.

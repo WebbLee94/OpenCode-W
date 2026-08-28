@@ -299,7 +299,7 @@ export interface CleanupResultDTO {
   vacuumAfter: number;
 }
 
-export type CleanupStrategy = 'time' | 'size' | 'project' | 'custom';
+export type CleanupStrategy = 'time' | 'size' | 'project';
 
 export interface CleanupFilter {
   strategy: CleanupStrategy;
@@ -316,7 +316,6 @@ export interface BackupDTO {
   filePath: string;
   fileSize: number;
   createdAt: string;
-  compressed: boolean;
 }
 
 // Backup preview with content counts
@@ -364,6 +363,14 @@ export interface ModelRankingItem {
 
 export interface ProviderStatsItem {
   provider: string
+  tokenCount: number
+  totalCost: number
+}
+
+// ─── Route B: Project Ranking ──────────────────────────────────────────────
+
+export interface ProjectRankingItem {
+  project: string       // project folder name (last path segment)
   tokenCount: number
   totalCost: number
 }

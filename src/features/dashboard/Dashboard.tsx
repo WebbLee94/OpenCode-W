@@ -9,6 +9,7 @@ import type {
   TokenGroupDataPoint,
   ModelRankingItem,
   ProviderStatsItem,
+  ProjectRankingItem,
   SessionTrendItem,
   CostTrendItem,
   MessageTrendItem,
@@ -120,6 +121,7 @@ interface DashboardCache {
   groupBy: GroupBy
   modelRanking: ModelRankingItem[]
   providerStats: ProviderStatsItem[]
+  projectRanking: ProjectRankingItem[]
   sessionTrend: SessionTrendItem[]
   costTrend: CostTrendItem[]
   messageTrend: MessageTrendItem[]
@@ -137,6 +139,7 @@ function Dashboard() {
   const [tokenGroupData, setTokenGroupData] = useState<TokenGroupDataPoint[]>(dashboardCache?.tokenGroupData ?? [])
   const [modelRanking, setModelRanking] = useState<ModelRankingItem[]>(dashboardCache?.modelRanking ?? [])
   const [providerStats, setProviderStats] = useState<ProviderStatsItem[]>(dashboardCache?.providerStats ?? [])
+  const [projectRanking, setProjectRanking] = useState<ProjectRankingItem[]>(dashboardCache?.projectRanking ?? [])
   const [sessionTrend, setSessionTrend] = useState<SessionTrendItem[]>(dashboardCache?.sessionTrend ?? [])
   const [costTrend, setCostTrend] = useState<CostTrendItem[]>(dashboardCache?.costTrend ?? [])
   const [messageTrend, setMessageTrend] = useState<MessageTrendItem[]>(dashboardCache?.messageTrend ?? [])
@@ -233,16 +236,18 @@ function Dashboard() {
   // 仅在切换到"统计"tab 时按需加载，避免初始加载和切换时间范围时的不必要开销
   const loadSlowData = useCallback(async (tr: TimeRange | undefined) => {
     setSlowLoading(true)
-    const [tools, skills, models, providers] = await Promise.all([
+    const [tools, skills, models, providers, projects] = await Promise.all([
       invokeSafe<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, tr),
       invokeSafe<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE, tr),
       invokeSafe<ModelRankingItem[]>(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, tr).catch(() => [] as ModelRankingItem[]),
       invokeSafe<ProviderStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, tr).catch(() => [] as ProviderStatsItem[]),
+      invokeSafe<ProjectRankingItem[]>(IPC_CHANNELS.DASHBOARD_PROJECT_RANKING, tr).catch(() => [] as ProjectRankingItem[]),
     ])
     setToolRanking(tools ?? [])
     setSkillUsage(skills ?? [])
     setModelRanking(models ?? [])
     setProviderStats(providers ?? [])
+    setProjectRanking(projects ?? [])
     setSlowLoading(false)
     setStatsLoaded(true)
     return {
@@ -250,6 +255,7 @@ function Dashboard() {
       skills: skills ?? [],
       models: models ?? [],
       providers: providers ?? [],
+      projects: projects ?? [],
     }
   }, [])
 
@@ -294,6 +300,7 @@ function Dashboard() {
       setGroupBy(dashboardCache.groupBy)
       setModelRanking(dashboardCache.modelRanking ?? [])
       setProviderStats(dashboardCache.providerStats ?? [])
+      setProjectRanking(dashboardCache.projectRanking ?? [])
       setSessionTrend(dashboardCache.sessionTrend ?? [])
       setCostTrend(dashboardCache.costTrend ?? [])
       setMessageTrend(dashboardCache.messageTrend ?? [])
@@ -323,6 +330,7 @@ function Dashboard() {
         groupBy,
         modelRanking: dashboardCache?.modelRanking ?? [],
         providerStats: dashboardCache?.providerStats ?? [],
+        projectRanking: dashboardCache?.projectRanking ?? [],
         sessionTrend: dashboardCache?.sessionTrend ?? [],
         costTrend: dashboardCache?.costTrend ?? [],
         messageTrend: dashboardCache?.messageTrend ?? [],
@@ -348,7 +356,7 @@ function Dashboard() {
 
       // 根据当前 tab 刷新对应数据，并重置其他 tab 的 loaded 状态
       // loadSlowData / loadTrendsData 返回最新数据用于缓存
-      let statsResult: { tools: ToolRanking[]; skills: SkillUsage[]; models: ModelRankingItem[]; providers: ProviderStatsItem[] } | null = null
+      let statsResult: { tools: ToolRanking[]; skills: SkillUsage[]; models: ModelRankingItem[]; providers: ProviderStatsItem[]; projects: ProjectRankingItem[] } | null = null
       let trendsResult: { sessionTrend: SessionTrendItem[]; costTrend: CostTrendItem[]; messageTrend: MessageTrendItem[] } | null = null
       if (dashboardTab === 'stats') {
         statsResult = await loadSlowData(timeRange)
@@ -376,6 +384,7 @@ function Dashboard() {
         groupBy,
         modelRanking: statsResult?.models ?? (dashboardCache?.modelRanking ?? []),
         providerStats: statsResult?.providers ?? (dashboardCache?.providerStats ?? []),
+        projectRanking: statsResult?.projects ?? (dashboardCache?.projectRanking ?? []),
         sessionTrend: trendsResult?.sessionTrend ?? (dashboardCache?.sessionTrend ?? []),
         costTrend: trendsResult?.costTrend ?? (dashboardCache?.costTrend ?? []),
         messageTrend: trendsResult?.messageTrend ?? (dashboardCache?.messageTrend ?? []),
@@ -395,17 +404,18 @@ function Dashboard() {
       if (dashboardCache) {
         setDbStats(dashboardCache.dbStats)
         setTokenStats(dashboardCache.tokenStats)
-        setToolRanking(dashboardCache.toolRanking)
-        setSkillUsage(dashboardCache.skillUsage)
-        setDbHealth(dashboardCache.dbHealth)
-        setTimeRange(dashboardCache.timeRange)
-        setTimePreset(dashboardCache.timePreset)
-        setGroupBy(dashboardCache.groupBy)
-        setModelRanking(dashboardCache.modelRanking ?? [])
-        setProviderStats(dashboardCache.providerStats ?? [])
-        setSessionTrend(dashboardCache.sessionTrend ?? [])
-        setCostTrend(dashboardCache.costTrend ?? [])
-        setMessageTrend(dashboardCache.messageTrend ?? [])
+      setToolRanking(dashboardCache.toolRanking)
+      setSkillUsage(dashboardCache.skillUsage)
+      setDbHealth(dashboardCache.dbHealth)
+      setTimeRange(dashboardCache.timeRange)
+      setTimePreset(dashboardCache.timePreset)
+      setGroupBy(dashboardCache.groupBy)
+      setModelRanking(dashboardCache.modelRanking ?? [])
+      setProviderStats(dashboardCache.providerStats ?? [])
+      setProjectRanking(dashboardCache.projectRanking ?? [])
+      setSessionTrend(dashboardCache.sessionTrend ?? [])
+      setCostTrend(dashboardCache.costTrend ?? [])
+      setMessageTrend(dashboardCache.messageTrend ?? [])
         setStatsLoaded(!!(dashboardCache.toolRanking?.length || dashboardCache.skillUsage?.length))
         setTrendsLoaded(!!(dashboardCache.sessionTrend?.length || dashboardCache.costTrend?.length || dashboardCache.messageTrend?.length))
         setConnected(true)
@@ -576,7 +586,7 @@ function Dashboard() {
       const fastResult = await loadFastData(tr, groupBy)
 
       // 根据当前 tab 加载对应数据
-      let statsResult: { tools: ToolRanking[]; skills: SkillUsage[]; models: ModelRankingItem[]; providers: ProviderStatsItem[] } | null = null
+      let statsResult: { tools: ToolRanking[]; skills: SkillUsage[]; models: ModelRankingItem[]; providers: ProviderStatsItem[]; projects: ProjectRankingItem[] } | null = null
       let trendsResult: { sessionTrend: SessionTrendItem[]; costTrend: CostTrendItem[]; messageTrend: MessageTrendItem[] } | null = null
       if (dashboardTab === 'stats') {
         statsResult = await loadSlowData(tr)
@@ -599,6 +609,7 @@ function Dashboard() {
         groupBy,
         modelRanking: statsResult?.models ?? [],
         providerStats: statsResult?.providers ?? [],
+        projectRanking: statsResult?.projects ?? [],
         sessionTrend: trendsResult?.sessionTrend ?? [],
         costTrend: trendsResult?.costTrend ?? [],
         messageTrend: trendsResult?.messageTrend ?? [],
@@ -632,6 +643,7 @@ function Dashboard() {
         groupBy: gb,
         modelRanking: prevCache?.modelRanking ?? [],
         providerStats: prevCache?.providerStats ?? [],
+        projectRanking: prevCache?.projectRanking ?? [],
         sessionTrend: prevCache?.sessionTrend ?? [],
         costTrend: prevCache?.costTrend ?? [],
         messageTrend: prevCache?.messageTrend ?? [],
@@ -1046,7 +1058,7 @@ function Dashboard() {
                         {actionLoading === 'integrityCheck' ? <Loader2 size={14} className="animate-spin" /> : <Heart size={14} />}
                         {actionLoading === 'integrityCheck' ? '检查中...' : '完整性检查'}
                       </button>
-                      <TooltipHint text={'执行 SQLite 完整性检查\n\n大型数据库可能需要较长时间，仅在需要诊断时执行'} />
+                       <TooltipHint text={'执行 SQLite 完整性检查\n\n大型数据库可能需要较长时间，仅在需要诊断时执行'} />
                     </div>
                   </div>
                 )}
@@ -1405,10 +1417,10 @@ function Dashboard() {
 
           {/* 下层：模型&Provider统计 */}
           <div>
-            {modelRanking.length > 0 ? (
-              <div>
-                <p className="text-xs text-gray-400 font-medium mb-2">🤖 模型 & Provider 统计</p>
-                <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <p className="text-xs text-gray-400 font-medium mb-2">🤖 模型 & Provider 统计</p>
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              {modelRanking.length > 0 ? (
+                <>
                   {(() => {
                     const modelChartData = modelRanking
                       .slice()
@@ -1460,20 +1472,62 @@ function Dashboard() {
                       </ResponsiveContainer>
                     )
                   })()}
-                </div>
-                {providerStats.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {providerStats.map(p => (
-                      <span key={p.provider} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                        {p.provider}: {formatLargeNumber(p.tokenCount)} tokens · ${p.totalCost.toFixed(2)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-400 text-center py-8">暂无模型数据</p>
-            )}
+                  {providerStats.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {providerStats.map(p => (
+                        <span key={p.provider} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                          {p.provider}: {formatLargeNumber(p.tokenCount)} tokens · ${p.totalCost.toFixed(2)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-8">暂无模型数据</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs text-gray-400 font-medium mb-2">📁 项目 Token 排行 TOP 10</p>
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              {projectRanking.length > 0 ? (
+                <ResponsiveContainer width="100%" height={projectRanking.length * 36 + 20}>
+                  <BarChart data={projectRanking.map(p => ({ name: p.project, tokens: p.tokenCount, cost: p.totalCost }))} layout="vertical" margin={{ left: 0, right: 20, top: 0, bottom: 0 }}>
+                    <XAxis type="number" tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={140}
+                      interval={0}
+                      tick={{ fontSize: 11 }}
+                      stroke="#9ca3af"
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        fontSize: '12px',
+                        borderRadius: '8px',
+                        border: '1px solid #e5e7eb',
+                      }}
+                      content={({ active, payload }) => {
+                        if (!active || !payload || !payload.length) return null
+                        const data = payload[0].payload as { name: string; tokens: number; cost: number }
+                        return (
+                          <div style={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fff', padding: '8px 12px' }}>
+                            <div style={{ fontWeight: 600, marginBottom: 4 }}>{data.name}</div>
+                            <div>Token 总计: {formatLargeNumber(data.tokens ?? 0)}</div>
+                            <div>费用: ${(data.cost ?? 0).toFixed(2)}</div>
+                          </div>
+                        )
+                      }}
+                    />
+                    <Bar dataKey="tokens" fill="#10b981" radius={[0, 4, 4, 0]} barSize={16} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-8">暂无项目 Token 数据</p>
+              )}
+            </div>
           </div>
         </div>
       )}

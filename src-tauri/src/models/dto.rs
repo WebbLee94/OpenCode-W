@@ -207,6 +207,14 @@ pub struct ProviderStatsItem {
     pub total_cost: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectRankingItem {
+    pub project: String,
+    pub token_count: i64,
+    pub total_cost: f64,
+}
+
 // ─── Messages ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -456,7 +464,6 @@ pub struct BackupDTO {
     pub file_path: String,
     pub file_size: i64,
     pub created_at: String,
-    pub compressed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

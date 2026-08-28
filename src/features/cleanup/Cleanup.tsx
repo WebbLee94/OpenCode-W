@@ -4,7 +4,7 @@ import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatNumber } from '../../lib/format'
 import PageHeader from '../../components/PageHeader'
-import { Shield, AlertTriangle, Check, Clock, HardDrive, FolderOpen, Code, ChevronRight, ChevronLeft, Trash2, RotateCcw } from 'lucide-react'
+import { Shield, AlertTriangle, Check, Clock, HardDrive, FolderOpen, ChevronRight, ChevronLeft, Trash2, RotateCcw } from 'lucide-react'
 
 type WizardStep = 1 | 2 | 3
 
@@ -12,8 +12,19 @@ const STRATEGY_OPTIONS: { value: CleanupStrategy; label: string; icon: typeof Cl
   { value: 'time', label: '按时间', icon: Clock, description: '删除指定天数前的旧会话' },
   { value: 'size', label: '按大小', icon: HardDrive, description: '删除数据量超过阈值的会话' },
   { value: 'project', label: '按项目', icon: FolderOpen, description: '删除指定项目的所有会话' },
-  { value: 'custom', label: '自定义', icon: Code, description: '使用自定义 SQL WHERE 条件' },
 ]
+
+function sanitizeProjectPath(p: string): string {
+  const home = '/Users/'
+  if (p.startsWith(home)) {
+    const rest = p.slice(home.length)
+    const slashIdx = rest.indexOf('/')
+    if (slashIdx !== -1) {
+      return '~/' + rest.slice(slashIdx + 1)
+    }
+  }
+  return p
+}
 
 function Cleanup() {
   // Wizard step
@@ -24,7 +35,6 @@ function Cleanup() {
   const [days, setDays] = useState(90)
   const [sizeMB, setSizeMB] = useState(50)
   const [projectId, setProjectId] = useState('')
-  const [customWhere, setCustomWhere] = useState('')
   const [projects, setProjects] = useState<string[]>([])
 
   // Preview state
@@ -62,15 +72,12 @@ function Cleanup() {
       case 'project':
         filter.projectId = projectId
         break
-      case 'custom':
-        filter.customWhere = customWhere
-        break
     }
     if (excludedIds.size > 0) {
       filter.excludedSessionIds = [...excludedIds]
     }
     return filter
-  }, [strategy, days, sizeMB, projectId, customWhere, excludedIds])
+  }, [strategy, days, sizeMB, projectId, excludedIds])
 
   // Check if strategy form is valid
   const isStrategyValid = (): boolean => {
@@ -81,8 +88,6 @@ function Cleanup() {
         return sizeMB > 0
       case 'project':
         return projectId.length > 0
-      case 'custom':
-        return customWhere.trim().length > 0
       default:
         return false
     }
@@ -259,24 +264,9 @@ function Cleanup() {
                       >
                         <option value="">-- 请选择项目 --</option>
                         {projects.map(p => (
-                          <option key={p} value={p}>{p}</option>
+                          <option key={p} value={p}>{sanitizeProjectPath(p)}</option>
                         ))}
                       </select>
-                    </div>
-                  )}
-                  {value === 'custom' && (
-                    <div className="text-sm">
-                      <span className="text-gray-700 block mb-1">WHERE 条件</span>
-                      <input
-                        type="text"
-                        value={customWhere}
-                        onChange={e => setCustomWhere(e.target.value)}
-                        placeholder="例如: s.time_created < 1700000000000"
-                        className="w-full px-3 py-2 border border-gray-300 rounded font-mono text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
-                      />
-                      <p className="mt-1 text-xs text-gray-400">
-                        表别名: s=session, 使用 s. 前缀引用 session 表字段
-                      </p>
                     </div>
                   )}
                 </div>
@@ -520,8 +510,7 @@ function Cleanup() {
               <span className="font-medium text-gray-900">
                 {strategy === 'time' && `${days} 天前`}
                 {strategy === 'size' && `大于 ${sizeMB} MB`}
-                {strategy === 'project' && projectId}
-                {strategy === 'custom' && customWhere}
+                {strategy === 'project' && sanitizeProjectPath(projectId)}
               </span>
             </div>
             <div className="border-t border-gray-200 pt-3">

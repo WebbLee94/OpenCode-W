@@ -224,7 +224,6 @@ function Backup() {
                     <th className="text-left px-4 py-3 font-medium text-gray-500">文件名</th>
                     <th className="text-right px-4 py-3 font-medium text-gray-500 w-28">大小</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-500 w-44">创建时间</th>
-                    <th className="text-center px-4 py-3 font-medium text-gray-500 w-20">压缩</th>
                     <th className="text-right px-4 py-3 font-medium text-gray-500 w-40">操作</th>
                   </tr>
                 </thead>
@@ -245,15 +244,6 @@ function Backup() {
                             {formatRelativeTime(new Date(backup.createdAt).getTime())}
                           </span>
                         </div>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {backup.compressed ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-brand-100 text-brand-700">
-                            gzip
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 text-xs">-</span>
-                        )}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
