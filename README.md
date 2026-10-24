@@ -89,7 +89,7 @@ npm run tauri:build
 - **样式**: Tailwind CSS 4
 - **图表**: Recharts
 - **构建工具**: Vite 5 + Tauri CLI
-- **跨平台**: macOS arm64 / Windows x64+arm64 / Linux x64
+- **跨平台**: macOS arm64 / macOS x64 (Intel) / Windows x64 / Linux x64
 
 ## 📁 项目结构
 
@@ -107,8 +107,7 @@ OpenCode-W/
 │   │       ├── messages.rs   # 消息查询 + 全文搜索
 │   │       ├── todos.rs      # 待办 Tab
 │   │       ├── cleanup.rs    # 清理操作
-│   │       ├── backup.rs     # 备份恢复
-│   │       └── update.rs     # 应用更新
+│   │       └── backup.rs     # 备份恢复
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── src/                # 前端渲染进程 (React)

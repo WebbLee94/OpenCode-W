@@ -112,3 +112,56 @@ export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text
   return text.slice(0, maxLength) + '...'
 }
+
+/**
+ * 本地日期格式 YYYY-MM-DD。
+ *
+ * ⚠️ **不要**用 `toISOString().slice(0, 10)` 代替：那是 **UTC** 日期。
+ * 在 UTC+8 的每天 08:00 之前它返回的是「昨天」，用户点「今天」实际筛的是昨天；
+ * 负时区则会快一天。日期筛选必须按**本地日历**算。
+ */
+export function toLocalDateString(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/**
+ * 在**本地日历**上减 N 天，返回同一天时刻的 Date。
+ *
+ * ⚠️ **不要**用 `Date.now() - n * 86_400_000` 减毫秒来代替：
+ * 夏令时切换日本地墙钟偏移 ±1 小时，减出来的瞬间落在**前一个本地日**，
+ * 于是「含今日在内的 N 个自然日」会变成 N+1 天（春季）或 N−1 天（秋季）。
+ * `setDate()` 走的是日历日加减，跨月 / 跨年都正确，且完全不受夏令时影响。
+ */
+export function subtractLocalDays(d: Date, days: number): Date {
+  const c = new Date(d.getTime())
+  c.setDate(c.getDate() - days)
+  return c
+}
+
+/**
+ * 「今天（含）往前推 N 个自然日」的起点日期串 YYYY-MM-DD。
+ *
+ * 预设时间范围的统一口径就是它：
+ * 「含今日在内的 N 个自然日」= `[今天 − (N−1), 今天]`。
+ *
+ * @param days 往前推的自然日数（0 = 今天）
+ * @param from 基准时刻，默认现在；测试里可传入固定值来钉住口径
+ */
+export function toLocalDateStringDaysAgo(days: number, from: Date = new Date()): string {
+  return toLocalDateString(subtractLocalDays(from, days))
+}
+
+/**
+ * 两个 YYYY-MM-DD 之间的**自然日**差（后者 − 前者）。
+ *
+ * 两端都按 UTC 解析 → 纯日历日差，与夏令时 / 本地时区**无关**。
+ * （直接减本地午夜的时间戳会带上 ±1 小时的夏令时偏移。）
+ */
+export function calendarDayDiff(from: string, to: string): number {
+  const [y1, m1, d1] = from.split('-').map(Number)
+  const [y2, m2, d2] = to.split('-').map(Number)
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000)
+}

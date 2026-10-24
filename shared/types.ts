@@ -456,6 +456,48 @@ export interface ProviderStatsItem {
   totalCost: number
 }
 
+/**
+ * 排行未覆盖到的 token（没有归属到任何模型 / 服务商）。
+ *
+ * 真库里存在**没有 model 字段**的会话（`session_v2.model` 为 NULL）：它们的
+ * token 会进入概览卡的「Token 合计」，却不进入模型排行，用户对比排行与
+ * 概览合计时对不上又无从解释。后端把这段差额**如实算出来**交给前端展示。
+ *
+ * ⚠️ 它**不是**「总数 − 排行合计」：排行是 TOP 10，模型超过 10 个时排行
+ * 合计不含第 11 名及以后。所以「排行合计 + 缺口」≠ 概览 Token 合计，
+ * 文案不能写成「排行未覆盖的全部 token」。
+ *
+ * ⚠️ 模型缺口与服务商缺口是**两组不相交**的 token，不能相加、不能互相替代：
+ *   - 模型缺口 = 完全没有 model 记录的会话（不进模型排行）
+ *   - 服务商缺口 = 有 model、但取不到 providerID 的会话（进模型排行、不进服务商统计）
+ */
+export interface RankingCoverageGap {
+  /** 没有归属到任何模型（或服务商）的 token 合计 */
+  tokenCount: number
+  /** 涉及的会话数 */
+  sessionCount: number
+}
+
+/**
+ * `dashboard:modelRanking` 的返回体。
+ *
+ * 向后兼容：旧后端直接返回 `ModelRankingItem[]`（数组），前端两种形态都接受
+ * （见 Dashboard.tsx 的 normalizeModelRanking）→ 新前端配旧后端不会崩，
+ * 只是没有缺口说明。
+ */
+export interface ModelRankingResponse {
+  items: ModelRankingItem[]
+  /** 覆盖缺口；后端没有缺口（或旧库路径）时不返回该字段 → 前端整行不显示 */
+  coverageGap?: RankingCoverageGap
+}
+
+/** `dashboard:providerStats` 的返回体（兼容说明同 ModelRankingResponse）。 */
+export interface ProviderStatsResponse {
+  items: ProviderStatsItem[]
+  /** 覆盖缺口；后端没有缺口（或旧库路径）时不返回该字段 → 前端整行不显示 */
+  coverageGap?: RankingCoverageGap
+}
+
 // ─── Route B: Project Ranking ──────────────────────────────────────────────
 
 export interface ProjectRankingItem {
@@ -472,6 +514,20 @@ export type UpdateState =
   | 'downloaded'
   | 'installing'
 
+/**
+ * 「检查更新」的结果状态。
+ *
+ * 与 UpdateState（更新下载流程）分离：UpdateState 描述「已发现更新之后」的
+ * 下载/安装进度，而 checkStatus 描述「这次检查得出了什么结论」。
+ * 两者组合才能唯一确定设置页要呈现的状态文案。
+ */
+export type UpdateCheckStatus =
+  | 'idle'        // 未检查
+  | 'checking'    // 检查中
+  | 'up-to-date'  // 已是最新版本
+  | 'available'   // 有可用更新
+  | 'failed'      // 检查失败
+
 export interface UpdateInfo {
   version: string         // 远端版本号，semver
   releaseDate: string     // ISO 8601
@@ -486,7 +542,23 @@ export interface UpdateProgress {
   total: number
 }
 
+/**
+ * 更新相关错误的分类码。
+ *
+ * 注意：这里**不能**用「当前已是最新版本」作为任何错误的兜底文案 ——
+ * 「已是最新」是 check() 返回 null 的成功结果，不是错误。
+ */
+export type UpdateErrorCode =
+  | 'network'            // 网络 / 超时 / DNS / TLS
+  | 'ratelimit'          // 被限流
+  | 'manifest-missing'   // 远端更新清单 404 / 不可用
+  | 'no-platform-asset'  // 清单里没有当前平台的产物
+  | 'signature-failed'   // 签名校验失败
+  | 'download-failed'    // 下载更新包失败
+  | 'install-failed'     // 安装 / 重启失败
+  | 'unknown'            // 无法归类
+
 export interface UpdateErrorPayload {
-  code: 'network' | 'ratelimit' | 'no-asset' | 'download-failed' | 'install-failed' | 'unknown'
+  code: UpdateErrorCode
   message: string
 }

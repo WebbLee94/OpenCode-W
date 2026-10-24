@@ -4,7 +4,7 @@ import type { SessionDTO, SessionDetailDTO, SessionFilter, TodoDTO, SessionShare
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe, openExternal } from '../../lib/ipc'
 import { open as showDialog } from '@tauri-apps/plugin-dialog'
-import { formatBytes, formatNumber, formatLargeNumber, formatRelativeTime, sumTokenTotal, truncateText } from '../../lib/format'
+import { formatBytes, formatNumber, formatLargeNumber, formatRelativeTime, sumTokenTotal, truncateText, toLocalDateString, toLocalDateStringDaysAgo } from '../../lib/format'
 import { useToast } from '../../hooks/useToast'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import {
@@ -132,11 +132,18 @@ function Sessions() {
   ]
 
   function applyDateFilter(preset: string) {
-    const today = new Date().toISOString().slice(0, 10)
+    // ⚠️ 用**本地**日期（共享实现），不能用 toISOString()：那是 UTC 日期，
+    // 在 UTC+8 的每天 08:00 之前会算成「昨天」，用户点「今天」实际筛昨天。
+    const today = toLocalDateString(new Date())
     if (preset === 'today') { setStartDate(today); setEndDate(today) }
-    else if (preset === '3days') { setStartDate(new Date(Date.now()-3*86400000).toISOString().slice(0,10)); setEndDate(today) }
-    else if (preset === '7days') { setStartDate(new Date(Date.now()-7*86400000).toISOString().slice(0,10)); setEndDate(today) }
-    else if (preset === '30days') { setStartDate(new Date(Date.now()-30*86400000).toISOString().slice(0,10)); setEndDate(today) }
+    // 起点 = 今天 − (N−1) 天 → 区间含今日在内正好 N 个自然日
+    // （后端窗口两端都含：start 当天 00:00:00 ~ end 当天 23:59:59）
+    //
+    // ⚠️ 必须用**日历日**减法（共享实现 toLocalDateStringDaysAgo）：
+    // 减毫秒（`Date.now() - n * 86_400_000`）在夏令时切换日会差一天。
+    else if (preset === '3days') { setStartDate(toLocalDateStringDaysAgo(2)); setEndDate(today) }
+    else if (preset === '7days') { setStartDate(toLocalDateStringDaysAgo(6)); setEndDate(today) }
+    else if (preset === '30days') { setStartDate(toLocalDateStringDaysAgo(29)); setEndDate(today) }
     else { setStartDate(''); setEndDate('') }
     setDatePreset(preset)
     setPage(1)

@@ -4,7 +4,17 @@ import { MemoryRouter } from 'react-router'
 import Dashboard, { invalidateDashboardCache } from './Dashboard'
 import { IPC_CHANNELS } from '@shared/ipc-channels'
 
-const { invokeSafe } = vi.hoisted(() => ({ invokeSafe: vi.fn() }))
+const { invokeSafe, tooltipContents } = vi.hoisted(() => ({
+  invokeSafe: vi.fn(),
+  /**
+   * 被渲染出来的 recharts `<Tooltip content={...}>` 回调（按渲染顺序）。
+   *
+   * 现有 mock 把 Tooltip 整个丢掉（`Tooltip: () => null`），于是 tooltip 文案
+   * 完全没有回归保护。趋势 / 模型 / 项目三处都有自定义 content，这里把它们
+   * 抓下来，测试里直接调用并渲染其返回值。
+   */
+  tooltipContents: [] as Array<TooltipContentFn>,
+}))
 
 vi.mock('@/lib/ipc', () => ({
   invokeSafe,
@@ -19,16 +29,34 @@ vi.mock('recharts', () => ({
   Bar: () => null,
   XAxis: () => null,
   YAxis: () => null,
-  Tooltip: () => null,
+  Tooltip: ({ content }: { content?: TooltipContentFn }) => {
+    if (typeof content === 'function') tooltipContents.push(content)
+    return null
+  },
   ResponsiveContainer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   LineChart: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   Line: () => null,
   CartesianGrid: () => null,
 }))
 
+/** recharts 自定义 tooltip content 的最小调用签名（只用到这几个字段）。 */
+interface TooltipProbeArgs {
+  active?: boolean
+  label?: string
+  payload?: Array<{
+    color?: string
+    name?: string
+    value?: number
+    payload?: Record<string, unknown>
+  }>
+}
+
+type TooltipContentFn = (args: TooltipProbeArgs) => React.ReactNode
+
 beforeEach(() => {
   // 模块级缓存会在用例之间共享，先清空保证每个用例都从真实首载开始。
   invalidateDashboardCache()
+  tooltipContents.length = 0
 })
 
 afterEach(() => {
@@ -249,5 +277,505 @@ describe('Dashboard health hot path', () => {
     // 手动关闭后消失
     fireEvent.click(screen.getByRole('button', { name: '知道了' }))
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+// ── tooltip 口径词 ──────────────────────────────────────────────────────
+
+/** recharts 会把 X 轴的取值作为 `label` 传给自定义 content。 */
+const TOOLTIP_PROBE: TooltipProbeArgs = {
+  active: true,
+  label: '2026-10-24',
+  payload: [
+    {
+      color: '#3B82F6',
+      name: '输入',
+      value: 1,
+      payload: {
+        period: '2026-10-24',
+        inputTokens: 1,
+        outputTokens: 2,
+        reasoningTokens: 3,
+        cacheRead: 4,
+        cacheWrite: 5,
+        estimatedCost: 0.5,
+        name: 'probe',
+        tokens: 123,
+        cost: 1.5,
+      },
+    },
+  ],
+}
+
+/** 渲染某个被捕获的 Tooltip content，返回其纯文本。 */
+function renderTooltipText(content: TooltipContentFn, args: TooltipProbeArgs = TOOLTIP_PROBE): string {
+  const { container, unmount } = render(<>{content(args)}</>)
+  const text = container.textContent ?? ''
+  unmount()
+  return text
+}
+
+/**
+ * 按输出特征定位某个 Tooltip content。
+ *
+ * 从**后往前**找：每次重渲染都会再推一份 content，最后一份才是当前状态的。
+ */
+function findTooltipContent(match: (text: string) => boolean, label: string): TooltipContentFn {
+  for (let i = tooltipContents.length - 1; i >= 0; i -= 1) {
+    if (match(renderTooltipText(tooltipContents[i]))) return tooltipContents[i]
+  }
+  throw new Error(`没有找到符合条件的 Tooltip：${label}`)
+}
+
+/**
+ * 默认 mock：health / overview / tokens 正常，且**趋势分组数据非空**
+ * （否则趋势折线图不渲染，抓不到它的 tooltip）。
+ *
+ * `overrides` 按 channel 覆盖返回体（用来模拟后端的新对象返回体）。
+ */
+function mockDashboardIpc(overrides: Record<string, unknown> = {}) {
+  invokeSafe.mockImplementation((channel: string, payload?: { groupBy?: string }) => {
+    if (channel === IPC_CHANNELS.DATABASE_HEALTH) {
+      return Promise.resolve({ ok: true, pageCount: 1, freelistPages: 0, walSize: 0 })
+    }
+    if (channel === IPC_CHANNELS.DASHBOARD_OVERVIEW) {
+      return Promise.resolve({ rootSessionCount: 3, childSessionCount: 1, projectCount: 2, partCount: 42 })
+    }
+    if (channel === IPC_CHANNELS.DASHBOARD_TOKENS) {
+      if (payload?.groupBy) {
+        return Promise.resolve([
+          { period: '2026-10-24', inputTokens: 1, outputTokens: 2, reasoningTokens: 3, cacheRead: 4, cacheWrite: 5, estimatedCost: 0.5 },
+        ])
+      }
+      return Promise.resolve({ inputTokens: 10, outputTokens: 20, reasoningTokens: 30, cacheRead: 40, cacheWrite: 50, estimatedCost: 0.3, cacheHitRate: 80 })
+    }
+    if (channel in overrides) return Promise.resolve(overrides[channel])
+    if (channel === IPC_CHANNELS.DASHBOARD_MODEL_RANKING) {
+      return Promise.resolve([{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }])
+    }
+    if (channel === IPC_CHANNELS.DASHBOARD_PROVIDER_STATS) {
+      return Promise.resolve([{ provider: 'openai', tokenCount: 900, totalCost: 1 }])
+    }
+    if (channel === IPC_CHANNELS.DASHBOARD_PROJECT_RANKING) {
+      return Promise.resolve([{ project: 'my-app', tokenCount: 800, totalCost: 0.8 }])
+    }
+    return Promise.resolve([])
+  })
+}
+
+// ── 时间范围口径 ────────────────────────────────────────────────────────
+
+/**
+ * 两个 YYYY-MM-DD 之间的**自然日**差（后者 − 前者）。
+ *
+ * 两端按 UTC 解析 → 纯日历日差，与夏令时 / 本地时区无关。
+ *
+ * ⚠️ 这里刻意**不复刻**实现的「减毫秒」公式（`Date.now() - n * 86_400_000`）：
+ * 那种断言在夏令时切换日会跟着实现**一起错**，照样是绿的，抓不到 DST 缺陷。
+ * 这里的期望值一律是**字面日期串**（时区 + 时钟都钉死），断言钉的是日历语义。
+ */
+function dayDiff(from: string, to: string): number {
+  const [y1, m1, d1] = from.split('-').map(Number)
+  const [y2, m2, d2] = to.split('-').map(Number)
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000)
+}
+
+/** 最近一次「区间型」请求带的时间范围（统计类 IPC 的 payload 就是区间本身）。 */
+function lastRequestedRange(): { startDate: string; endDate: string } | null {
+  for (let i = invokeSafe.mock.calls.length - 1; i >= 0; i -= 1) {
+    const [channel, payload] = invokeSafe.mock.calls[i]
+    if (channel !== IPC_CHANNELS.DASHBOARD_TOKENS) continue
+    const range = payload as { startDate?: string; endDate?: string } | undefined
+    if (range?.startDate && range?.endDate) {
+      return { startDate: range.startDate, endDate: range.endDate }
+    }
+  }
+  return null
+}
+
+describe('Dashboard 时间范围口径', () => {
+  const ORIGINAL_TZ = process.env.TZ
+
+  beforeEach(() => {
+    // 固定时区 + 固定时钟 →「今天」是确定的本地日历日，
+    // 期望值才能写成**字面日期串**（而不是跟着实现公式一起错）。
+    process.env.TZ = 'Asia/Shanghai'
+    // 只伪造 Date（定时器保持真实，testing-library 的 waitFor 才能正常轮询）
+    vi.useFakeTimers({ toFake: ['Date'] })
+    // 本地 2026-10-24 00:30 (+08:00) = 2026-10-23T16:30Z
+    vi.setSystemTime(new Date('2026-10-23T16:30:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    // 还原时区：process.env.TZ = undefined 会写成字符串 "undefined"
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ
+    else process.env.TZ = ORIGINAL_TZ
+  })
+
+  it('「7 天」预设覆盖含今日在内的 7 个自然日（起点 = 今天 − 6 天）', async () => {
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '7天' }))
+
+    await waitFor(() => {
+      const range = lastRequestedRange()
+      // 今天 = 2026-10-24（本地日历日）→ 7 天 = [10-18, 10-24]
+      expect(range?.startDate).toBe('2026-10-18')
+      expect(range?.endDate).toBe('2026-10-24')
+    })
+
+    // 端点相差 6 天 → 区间含 7 个自然日（含今日）
+    const range = lastRequestedRange()!
+    expect(dayDiff(range.startDate, range.endDate)).toBe(6)
+  })
+
+  it('「30 天」「90 天」同样按「含今日」计算', async () => {
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '30天' }))
+    await waitFor(() => {
+      const range = lastRequestedRange()
+      expect(range?.startDate).toBe('2026-09-25')
+      expect(range?.endDate).toBe('2026-10-24')
+    })
+    expect(dayDiff(lastRequestedRange()!.startDate, lastRequestedRange()!.endDate)).toBe(29)
+
+    fireEvent.click(screen.getByRole('button', { name: '90天' }))
+    await waitFor(() => {
+      const range = lastRequestedRange()
+      expect(range?.startDate).toBe('2026-07-27')
+      expect(range?.endDate).toBe('2026-10-24')
+    })
+    expect(dayDiff(lastRequestedRange()!.startDate, lastRequestedRange()!.endDate)).toBe(89)
+  })
+
+  it('「对比上期」的上期区间与当前区间等长且紧邻其前', async () => {
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /趋势/ }))
+
+    // 趋势页会同时发「当前区间」和「上期区间」两次请求
+    await waitFor(() => {
+      const ranges = invokeSafe.mock.calls
+        .filter(([channel]) => channel === IPC_CHANNELS.DASHBOARD_SESSION_TREND)
+        .map(([, payload]) => payload as { startDate?: string; endDate?: string })
+        .filter((p) => p.startDate && p.endDate)
+      expect(ranges.length).toBeGreaterThanOrEqual(2)
+    })
+
+    const ranges = invokeSafe.mock.calls
+      .filter(([channel]) => channel === IPC_CHANNELS.DASHBOARD_SESSION_TREND)
+      .map(([, payload]) => payload as { startDate: string; endDate: string })
+      .filter((p) => p.startDate && p.endDate)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))
+
+    const prev = ranges[0]
+    const current = ranges[ranges.length - 1]
+
+    // 默认 30 天 → 本期 [2026-09-25, 2026-10-24]，上期紧邻其前
+    expect(current.startDate).toBe('2026-09-25')
+    expect(current.endDate).toBe('2026-10-24')
+    expect(prev.startDate).toBe('2026-08-26')
+    expect(prev.endDate).toBe('2026-09-24')
+    // 上期与当前**等长**（端点差相同 → 自然日数量相同）
+    expect(dayDiff(prev.startDate, prev.endDate)).toBe(dayDiff(current.startDate, current.endDate))
+    // 上期紧邻当前区间之前（不重叠、不留空档）
+    expect(dayDiff(prev.endDate, current.startDate)).toBe(1)
+  })
+})
+
+/**
+ * 夏令时切换日专项 —— 预设时间范围必须按**日历日**算。
+ *
+ * 背景：旧实现用 `Date.now() - (N−1) * 86_400_000`（减毫秒）算起点，
+ * 跨过夏令时边界时本地墙钟偏移 ±1 小时 → 本地日期翻转一天：
+ *   - 春季跳表落在窗口内 → 区间变成 8 天
+ *   - 秋季回拨落在窗口内 → 区间变成 6 天
+ */
+describe('Dashboard 时间范围口径（夏令时切换日）', () => {
+  const ORIGINAL_TZ = process.env.TZ
+
+  beforeEach(() => {
+    process.env.TZ = 'America/New_York'
+    vi.useFakeTimers({ toFake: ['Date'] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ
+    else process.env.TZ = ORIGINAL_TZ
+  })
+
+  it('春季跳表（2026-03-08）落在窗口内：「7 天」仍是 7 个自然日', async () => {
+    // 本地 2026-03-14 00:30 (-04:00 EDT) = 2026-03-14T04:30Z
+    vi.setSystemTime(new Date('2026-03-14T04:30:00Z'))
+
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '7天' }))
+    await waitFor(() => {
+      const range = lastRequestedRange()
+      expect(range?.startDate).toBe('2026-03-08')
+      expect(range?.endDate).toBe('2026-03-14')
+    })
+
+    const range = lastRequestedRange()!
+    // 端点差恰好 6 天 → 区间含 7 个自然日（不是 8 天）
+    expect(dayDiff(range.startDate, range.endDate)).toBe(6)
+  })
+
+  it('秋季回拨（2026-11-01）落在窗口内：「7 天」仍是 7 个自然日', async () => {
+    // 本地 2026-11-02 23:30 (-05:00 EST) = 2026-11-03T04:30Z
+    vi.setSystemTime(new Date('2026-11-03T04:30:00Z'))
+
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '7天' }))
+    await waitFor(() => {
+      const range = lastRequestedRange()
+      expect(range?.startDate).toBe('2026-10-27')
+      expect(range?.endDate).toBe('2026-11-02')
+    })
+
+    const range = lastRequestedRange()!
+    // 端点差恰好 6 天 → 区间含 7 个自然日（不是 6 天）
+    expect(dayDiff(range.startDate, range.endDate)).toBe(6)
+  })
+
+  it('夏令时切换日：「对比上期」的上期仍与本期等长且紧邻', async () => {
+    // 本地 2026-03-14 00:30 (-04:00 EDT)
+    vi.setSystemTime(new Date('2026-03-14T04:30:00Z'))
+
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '7天' }))
+    fireEvent.click(screen.getByRole('button', { name: /趋势/ }))
+
+    await waitFor(() => {
+      const ranges = invokeSafe.mock.calls
+        .filter(([channel]) => channel === IPC_CHANNELS.DASHBOARD_SESSION_TREND)
+        .map(([, payload]) => payload as { startDate?: string; endDate?: string })
+        .filter((p) => p.startDate && p.endDate)
+      expect(ranges.length).toBeGreaterThanOrEqual(2)
+    })
+
+    const ranges = invokeSafe.mock.calls
+      .filter(([channel]) => channel === IPC_CHANNELS.DASHBOARD_SESSION_TREND)
+      .map(([, payload]) => payload as { startDate: string; endDate: string })
+      .filter((p) => p.startDate && p.endDate)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))
+
+    const prev = ranges[0]
+    const current = ranges[ranges.length - 1]
+
+    // 本期 [3/8, 3/14]（7 天），上期 [3/1, 3/7]（也是 7 天，紧邻）
+    expect(current.startDate).toBe('2026-03-08')
+    expect(current.endDate).toBe('2026-03-14')
+    expect(prev.startDate).toBe('2026-03-01')
+    expect(prev.endDate).toBe('2026-03-07')
+    expect(dayDiff(prev.startDate, prev.endDate)).toBe(dayDiff(current.startDate, current.endDate))
+    expect(dayDiff(prev.endDate, current.startDate)).toBe(1)
+  })
+})
+
+describe('Dashboard 模型 / Provider 排行覆盖缺口', () => {
+  /** 切到统计 tab 并等 stats 段加载完（Provider 徽标出现即已加载）。 */
+  async function openStatsTab() {
+    fireEvent.click(screen.getByRole('button', { name: /统计/ }))
+    await waitFor(() => expect(screen.getByText(/openai: 900\.00 tokens/)).toBeTruthy())
+  }
+
+  it('后端返回新对象时，模型缺口行按预期文案渲染、数值正确', async () => {
+    mockDashboardIpc({
+      [IPC_CHANNELS.DASHBOARD_MODEL_RANKING]: {
+        items: [{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }],
+        coverageGap: { tokenCount: 681_728_091, sessionCount: 43 },
+      },
+    })
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    await openStatsTab()
+
+    expect(screen.getByText(/另有 43 个会话未记录模型/)).toBeTruthy()
+    expect(screen.getByText(/681\.73 M tokens 未计入上方排行/)).toBeTruthy()
+    // 缺口行不进图表：模型条目照常渲染
+    expect(screen.getByText(/模型 & Provider 统计/)).toBeTruthy()
+  })
+
+  it('模型缺口与服务商缺口分别渲染自己的文案与数值（不可混用）', async () => {
+    mockDashboardIpc({
+      [IPC_CHANNELS.DASHBOARD_MODEL_RANKING]: {
+        items: [{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }],
+        coverageGap: { tokenCount: 681_728_091, sessionCount: 43 },
+      },
+      [IPC_CHANNELS.DASHBOARD_PROVIDER_STATS]: {
+        items: [{ provider: 'openai', tokenCount: 900, totalCost: 1 }],
+        coverageGap: { tokenCount: 12_345, sessionCount: 7 },
+      },
+    })
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    await openStatsTab()
+
+    const modelLine = screen.getByText(/未记录模型/)
+    const providerLine = screen.getByText(/未记录服务商/)
+
+    expect(modelLine.textContent).toContain('另有 43 个会话未记录模型')
+    expect(modelLine.textContent).toContain('681.73 M')
+    expect(modelLine.textContent).not.toContain('12.35 K')
+    expect(modelLine.textContent).not.toContain('7 个会话')
+
+    expect(providerLine.textContent).toContain('另有 7 个会话未记录服务商')
+    expect(providerLine.textContent).toContain('12.35 K')
+    expect(providerLine.textContent).not.toContain('681.73 M')
+    expect(providerLine.textContent).not.toContain('43 个会话')
+  })
+
+  it('缺口文案不含「排行未覆盖」这类错误表述，也不出现字段名', async () => {
+    mockDashboardIpc({
+      [IPC_CHANNELS.DASHBOARD_MODEL_RANKING]: {
+        items: [{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }],
+        coverageGap: { tokenCount: 681_728_091, sessionCount: 43 },
+      },
+    })
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    await openStatsTab()
+
+    const line = screen.getByText(/未记录模型/)
+    // 缺口 ≠ 「总数 − 排行合计」（排行是 TOP 10），不能这么写
+    expect(line.textContent).not.toMatch(/排行未覆盖|未覆盖|全部未覆盖|剩余/)
+    // 面向用户：不出现字段名
+    expect(line.textContent).not.toMatch(/coverageGap|providerID|model|tokenCount|sessionCount/i)
+    // 不显示百分比
+    expect(line.textContent).not.toMatch(/%|％/)
+  })
+
+  it('后端返回旧数组时：不崩、不显示缺口行', async () => {
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    await openStatsTab()
+
+    // 旧后端返回数组 → 排行照常渲染，但没有缺口信息
+    expect(screen.getByText(/模型 & Provider 统计/)).toBeTruthy()
+    expect(screen.queryByText(/未记录模型/)).toBeNull()
+    expect(screen.queryByText(/未记录服务商/)).toBeNull()
+  })
+
+  it('coverageGap 缺失时不显示缺口行', async () => {
+    mockDashboardIpc({
+      [IPC_CHANNELS.DASHBOARD_MODEL_RANKING]: {
+        items: [{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }],
+      },
+      [IPC_CHANNELS.DASHBOARD_PROVIDER_STATS]: {
+        items: [{ provider: 'openai', tokenCount: 900, totalCost: 1 }],
+      },
+    })
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    await openStatsTab()
+
+    expect(screen.getByText(/模型 & Provider 统计/)).toBeTruthy()
+    expect(screen.queryByText(/未记录模型/)).toBeNull()
+    expect(screen.queryByText(/未记录服务商/)).toBeNull()
+  })
+
+  it('coverageGap.tokenCount 为 0 时不显示缺口行', async () => {
+    mockDashboardIpc({
+      [IPC_CHANNELS.DASHBOARD_MODEL_RANKING]: {
+        items: [{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }],
+        coverageGap: { tokenCount: 0, sessionCount: 0 },
+      },
+      [IPC_CHANNELS.DASHBOARD_PROVIDER_STATS]: {
+        items: [{ provider: 'openai', tokenCount: 900, totalCost: 1 }],
+        coverageGap: { tokenCount: 0, sessionCount: 0 },
+      },
+    })
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    await openStatsTab()
+
+    expect(screen.getByText(/模型 & Provider 统计/)).toBeTruthy()
+    expect(screen.queryByText(/未记录模型/)).toBeNull()
+    expect(screen.queryByText(/未记录服务商/)).toBeNull()
+  })
+})
+
+describe('Dashboard tooltip 口径词', () => {
+  it('趋势 tooltip 首行是分桶日期，合计行是「当日合计」而不是「Token 总计」', async () => {
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /趋势/ }))
+
+    const trend = findTooltipContent((t) => t.includes('缓存命中率'), '趋势 Token 趋势')
+    const text = renderTooltipText(trend)
+    // 首行就是这一桶的日期（此前 tooltip 首行没有日期）
+    expect(text.startsWith('2026-10-24')).toBe(true)
+    // 合计行说清楚是「当日」而不是整个范围的总量
+    expect(text).toContain('当日合计: 15')
+    expect(text).not.toContain('Token 总计')
+  })
+
+  it('切「周」后趋势 tooltip 首行是周编号、合计行变「本周合计」', async () => {
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /趋势/ }))
+    fireEvent.click(screen.getByRole('button', { name: '周' }))
+
+    // 口径词跟着分桶粒度走
+    await waitFor(() => {
+      const trend = findTooltipContent((t) => t.includes('缓存命中率'), '趋势 Token 趋势')
+      const text = renderTooltipText(trend, { ...TOOLTIP_PROBE, label: '2026-W43' })
+      expect(text).toContain('本周合计: 15')
+      expect(text).not.toContain('当日合计')
+    })
+
+    const trend = findTooltipContent((t) => t.includes('缓存命中率'), '趋势 Token 趋势')
+    const text = renderTooltipText(trend, { ...TOOLTIP_PROBE, label: '2026-W43' })
+    // 首行是周编号（2026-W43）
+    expect(text.startsWith('2026-W43')).toBe(true)
+  })
+
+  it('统计 tab 的模型 / 项目 tooltip 用「所选范围合计」', async () => {
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /统计/ }))
+    // 等统计数据落位（Provider 徽标出现 = stats 段已加载）
+    await waitFor(() => expect(screen.getByText(/openai: 900\.00 tokens/)).toBeTruthy())
+
+    // 模型 tooltip：没有「费用」行；项目 tooltip：有「费用」行
+    const model = findTooltipContent((t) => t.includes('所选范围合计') && !t.includes('费用'), '模型排行')
+    expect(renderTooltipText(model)).toContain('所选范围合计: 123.00')
+    expect(renderTooltipText(model)).not.toContain('Token 总计')
+
+    const project = findTooltipContent((t) => t.includes('费用'), '项目排行')
+    expect(renderTooltipText(project)).toContain('所选范围合计: 123.00')
+    expect(renderTooltipText(project)).not.toContain('Token 总计')
+  })
+
+  it('概览 Token 统计的总计行标签说明是「所选范围」合计', async () => {
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    expect(screen.getByText('所选范围 Token 合计')).toBeTruthy()
+    expect(screen.queryByText('Token 总计')).toBeNull()
   })
 })

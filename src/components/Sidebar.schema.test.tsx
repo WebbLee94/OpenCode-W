@@ -36,13 +36,17 @@ function info(overrides: Partial<SchemaInfoDTO> = {}): SchemaInfoDTO {
 function renderSidebar(schema: SchemaUiState, connected = true) {
   const update: UseUpdateStatus = {
     state: 'idle',
+    checkStatus: 'idle',
     info: null,
     progress: null,
     error: null,
     isChecking: false,
+    lastCheckedAt: null,
+    dialogOpen: false,
     check: vi.fn(),
     download: vi.fn(),
     install: vi.fn(),
+    dismissDialog: vi.fn(),
   }
   const dataSource: DataSourceState = { connected, dbPath: '', dbSize: 0, schema }
   return render(
