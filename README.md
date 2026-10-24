@@ -89,7 +89,7 @@ npm run tauri:build
 - **样式**: Tailwind CSS 4
 - **图表**: Recharts
 - **构建工具**: Vite 5 + Tauri CLI
-- **跨平台**: macOS arm64 / Windows x64+arm64 / Linux x64
+- **跨平台**: macOS arm64 / macOS x64 (Intel) / Windows x64 / Linux x64
 
 ## 📁 项目结构
 
