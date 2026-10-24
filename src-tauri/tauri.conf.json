@@ -37,7 +37,7 @@
     "macOS": {
       "signingIdentity": "-",
       "hardenedRuntime": true,
-      "minimumSystemVersion": "10.13"
+      "minimumSystemVersion": "12.0"
     },
     "windows": {
       "nsis": null,
