@@ -2,8 +2,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod compat;
 mod db;
 mod models;
+mod schema;
+mod search;
 mod security;
 
 use commands::update::UpdateStateMgr;
@@ -14,6 +17,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .manage(DbState::new())
+        .manage(search::SearchIndex::new())
         .manage(UpdateStateMgr::default())
         .invoke_handler(tauri::generate_handler![
             // health
@@ -45,6 +49,9 @@ pub fn run() {
             commands::messages_detail,
             commands::messages_list_by_parent,
             commands::messages_search,
+            // search index (FTS5 sidecar)
+            commands::search_index_status,
+            commands::search_ensure_index,
             // todos
             commands::todos_by_parent,
             // cleanup
@@ -52,6 +59,7 @@ pub fn run() {
             commands::cleanup_execute,
             // database ops
             commands::database_open,
+            commands::database_info,
             commands::database_vacuum,
             commands::database_checkpoint,
             // dialog
@@ -122,6 +130,14 @@ pub fn run() {
                         }
                     }
                 }
+            }
+
+            // 后台构建全文搜索索引（sidecar，不阻塞 UI、不写 OpenCode 库）。
+            // 已有索引时这里只是一次增量检查；失败也不影响主流程（查询回退 LIKE）。
+            if db_state.is_open() {
+                let index = app.state::<search::SearchIndex>().inner().clone();
+                let status = search::ensure(app.handle(), db_state.inner(), &index);
+                log::info!("Search index status: {:?}", status.state);
             }
 
             Ok(())

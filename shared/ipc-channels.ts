@@ -30,12 +30,17 @@ export const IPC_CHANNELS = {
   MESSAGES_LIST_BY_PARENT: 'messages:list-by-parent',
   MESSAGES_SEARCH: 'messages:search',
 
+  // Search index（FTS5 sidecar）
+  SEARCH_INDEX_STATUS: 'search:index-status',
+  SEARCH_ENSURE_INDEX: 'search:ensure-index',
+
   // Operations
   CLEANUP_PREVIEW: 'cleanup:preview',
   CLEANUP_EXECUTE: 'cleanup:execute',
   DATABASE_VACUUM: 'database:vacuum',
   DATABASE_CHECKPOINT: 'database:checkpoint',
   DATABASE_OPEN: 'database:open',
+  DATABASE_INFO: 'database:info',
   DATABASE_HEALTH: 'database:health',
   DATABASE_INTEGRITY_CHECK: 'database:integrityCheck',
 
@@ -71,4 +76,6 @@ export const IPC_CHANNELS = {
   UPDATE_EVENT_PROGRESS: 'update:event:progress',
   UPDATE_EVENT_DOWNLOADED: 'update:event:downloaded',
   UPDATE_EVENT_ERROR: 'update:event:error',
+  // 事件：搜索索引构建进度
+  SEARCH_EVENT_INDEX_PROGRESS: 'search:index-progress',
 } as const;

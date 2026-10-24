@@ -7,7 +7,8 @@
 
 import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import { open as tauriShellOpen } from '@tauri-apps/plugin-shell'
-import type { IpcResult } from '@shared/types'
+import { IPC_CHANNELS } from '@shared/ipc-channels'
+import type { IpcResult, SchemaInfoDTO } from '@shared/types'
 
 /**
  * Check if we are running inside a Tauri window.
@@ -91,6 +92,24 @@ export async function invokeSafe<T = unknown>(channel: string, ...args: unknown[
     return result.data
   }
   throw new Error(result.error)
+}
+
+/**
+ * 读取当前数据库的 schema 形态与迁移阶段（`database:info`）。
+ *
+ * `refresh: true` 对应后端 TASK-051：`database:info` 增加可选 `refresh` 参数，
+ * 用新的只读连接重新探测并更新 `DbState` 缓存。
+ *
+ * 向后兼容说明：当前后端的 `database_info` 只接受 `State<DbState>`，Tauri 会
+ * **忽略 payload 中未声明的字段**，因此 `refresh: true` 不会报错，只会读到
+ * `db::open` 时缓存的快照。后端补上 `refresh` 参数后，同一份调用即变成真正的
+ * 重新探测，无需再改前端。
+ */
+export async function fetchSchemaInfo(options?: { refresh?: boolean }): Promise<SchemaInfoDTO> {
+  if (options?.refresh) {
+    return invokeSafe<SchemaInfoDTO>(IPC_CHANNELS.DATABASE_INFO, { refresh: true })
+  }
+  return invokeSafe<SchemaInfoDTO>(IPC_CHANNELS.DATABASE_INFO)
 }
 
 /**

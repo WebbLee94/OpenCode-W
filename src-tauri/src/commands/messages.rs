@@ -6,6 +6,7 @@
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
+use crate::compat;
 use crate::db::{self, DbState};
 use crate::models::dto::{
     IpcResult, MessageDTO, PartAttachment, PartTimeRange, PartTokens, SearchResult,
@@ -128,7 +129,13 @@ pub struct PartDTOOut {
 }
 
 impl PartDTOOut {
-    fn new(id: &str, message_id: &str, session_id: &str, part_type: String, data_size: i64) -> Self {
+    pub(crate) fn new(
+        id: &str,
+        message_id: &str,
+        session_id: &str,
+        part_type: String,
+        data_size: i64,
+    ) -> Self {
         Self {
             id: id.to_string(),
             message_id: message_id.to_string(),
@@ -593,6 +600,8 @@ fn parse_part_data(
                         reasoning: tokens.get("reasoning").and_then(|v| v.as_i64()).unwrap_or(0),
                         cache_read,
                         cache_write,
+                        // v1 的 total 由渲染端自行相加，保持 IPC 输出与 1.3.5 一致。
+                        total: None,
                     };
                     let mut summary_parts = Vec::new();
                     if t.input != 0 {
@@ -711,7 +720,9 @@ pub async fn messages_list(
     page: Option<i64>,
     page_size: Option<i64>,
 ) -> IpcResult<MessageListResult> {
-    let db = app.state::<DbState>().clone_inner();
+    let state = app.state::<DbState>();
+    let schema = state.schema();
+    let db = state.clone_inner();
     tauri::async_runtime::spawn_blocking(move || {
         let conn = match db::get_db(&db) {
             Ok(c) => c,
@@ -721,6 +732,17 @@ pub async fn messages_list(
         let page = page.unwrap_or(1).max(1);
         let page_size = page_size.unwrap_or(50).clamp(1, 200);
         let offset = (page - 1) * page_size;
+
+        // v2 方言：读 `session_message` 并合并旧表尾消息；v1 / 未迁移会话返回 None，
+        // 继续执行下面原封不动的 v1 SQL。
+        let env = compat::env(&conn, schema.as_ref());
+        if env.is_v2() {
+            match compat::messages::list(&conn, &env, &session_id, page, page_size) {
+                Ok(Some(result)) => return IpcResult::ok(result),
+                Ok(None) => {}
+                Err(e) => return IpcResult::err(e),
+            }
+        }
 
         // Count total
         let total: i64 = match conn.query_row(
@@ -786,7 +808,9 @@ pub async fn messages_detail(
     app: AppHandle,
     value: String,
 ) -> IpcResult<Option<MessageDetailDTO>> {
-    let db = app.state::<DbState>().clone_inner();
+    let state = app.state::<DbState>();
+    let schema = state.schema();
+    let db = state.clone_inner();
     tauri::async_runtime::spawn_blocking(move || {
         let message_id = value;
 
@@ -794,6 +818,21 @@ pub async fn messages_detail(
             Ok(c) => c,
             Err(e) => return IpcResult::err(e),
         };
+
+        // v2 消息：content[] → PartDTO 映射 + 合成 step-finish。
+        // 查不到时回退旧表（尾消息），v2-fresh 库则直接视为「无此消息」。
+        let env = compat::env(&conn, schema.as_ref());
+        if env.is_v2() {
+            match compat::messages::detail(&conn, &message_id) {
+                Ok(Some(detail)) => return IpcResult::ok(Some(detail)),
+                Ok(None) => {
+                    if !env.has_legacy_tables {
+                        return IpcResult::ok(None);
+                    }
+                }
+                Err(e) => return IpcResult::err(e),
+            }
+        }
 
         // Get message — select specific columns (schema: id, session_id, data, time_created)
         let row = match conn.query_row(
@@ -902,7 +941,9 @@ pub async fn messages_list_by_parent(
     page: Option<i64>,
     page_size: Option<i64>,
 ) -> IpcResult<MessageListResult> {
-    let db = app.state::<DbState>().clone_inner();
+    let state = app.state::<DbState>();
+    let schema = state.schema();
+    let db = state.clone_inner();
     tauri::async_runtime::spawn_blocking(move || {
         let conn = match db::get_db(&db) {
             Ok(c) => c,
@@ -919,7 +960,11 @@ pub async fn messages_list_by_parent(
             session_ids.push(parent.clone());
         }
         if let Some(children) = &child_session_ids {
-            session_ids.extend(children.iter().cloned());
+            for child in children {
+                if !session_ids.contains(child) {
+                    session_ids.push(child.clone());
+                }
+            }
         }
 
         if session_ids.is_empty() {
@@ -929,6 +974,17 @@ pub async fn messages_list_by_parent(
                 page,
                 page_size,
             });
+        }
+
+        // 任一会话属于 v2 方言时由 compat 处理（混合方言逐会话取数后归并）；
+        // 全部为 legacy 时返回 None，继续执行下面的 v1 SQL。
+        let env = compat::env(&conn, schema.as_ref());
+        if env.is_v2() {
+            match compat::messages::list_by_parent(&conn, &env, &session_ids, page, page_size) {
+                Ok(Some(result)) => return IpcResult::ok(result),
+                Ok(None) => {}
+                Err(e) => return IpcResult::err(e),
+            }
         }
 
         // Build placeholders for IN clause
@@ -1008,74 +1064,34 @@ pub async fn messages_list_by_parent(
     .unwrap_or_else(|e| IpcResult::err(format!("thread error: {}", e)))
 }
 
-/// messages:search — LIKE full-text search on message content.
+/// messages:search — 全文搜索。
 ///
-/// Frontend calls: `invokeSafe('messages_search', keyword)`
-/// ipc.ts wraps single string arg as `{ value: keyword }`.
+/// 数据来源按优先级：
+/// 1. **FTS5 sidecar**（`search::search`）：索引就绪且关键词 >= 3 字符时走
+///    `MATCH`，trigram 分词支持中文子串；结果按 `time_created` 倒序取 100 条，
+///    正文以不超过 200 字的 snippet 返回。
+/// 2. **LIKE 回退**：索引未就绪/加载失败，或关键词 < 3 字符（trigram 下限）时，
+///    在最近 30 天内用 LIKE 查询；v2 查 `session_message`，v1 沿用旧 `message`。
+///
+/// 任何索引侧错误都不会让命令失败：`search()` 内部 `log::warn` 后回退。
+/// `SearchResult` 契约保持不变。
+///
+/// 前端调用：`invokeSafe('messages_search', keyword)`，
+/// ipc.ts 把单字符串参数包装为 `{ value: keyword }`。
 #[tauri::command]
 pub async fn messages_search(
     app: AppHandle,
     value: String,
 ) -> IpcResult<Vec<SearchResult>> {
     let db = app.state::<DbState>().clone_inner();
+    let index = app.state::<crate::search::SearchIndex>().inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let keyword = value;
-
         let conn = match db::get_db(&db) {
             Ok(c) => c,
             Err(e) => return IpcResult::err(e),
         };
 
-        if keyword.trim().is_empty() {
-            return IpcResult::ok(Vec::new());
-        }
-
-        // SQL copied verbatim from messages.ts
-        let sql = r#"
-        SELECT m.id, m.session_id,
-               json_extract(m.data, '$.content') as content,
-               s.title as session_title,
-               m.time_created
-        FROM message m
-        JOIN session s ON m.session_id = s.id
-        WHERE json_extract(m.data, '$.content') LIKE ?
-        ORDER BY m.time_created DESC
-        LIMIT 100
-    "#;
-
-        let pattern = format!("%{}%", keyword);
-
-        let mut stmt = match conn.prepare(sql) {
-            Ok(s) => s,
-            Err(e) => return IpcResult::err(e.to_string()),
-        };
-
-        let rows = match stmt.query_map(rusqlite::params![&pattern], |row| {
-            let id: String = row.get(0)?;
-            let session_id: String = row.get(1)?;
-            let content: String = row.get::<_, Option<String>>(2)?.unwrap_or_default();
-            let session_title: String = row.get::<_, Option<String>>(3)?.unwrap_or_default();
-            let time_created = row_get_time(row, 4)?;
-            Ok(SearchResult {
-                id,
-                session_id,
-                content,
-                session_title,
-                time_created,
-            })
-        }) {
-            Ok(r) => r,
-            Err(e) => return IpcResult::err(e.to_string()),
-        };
-
-        let mut results = Vec::new();
-        for row in rows {
-            match row {
-                Ok(r) => results.push(r),
-                Err(e) => return IpcResult::err(e.to_string()),
-            }
-        }
-
+        let results = crate::search::search(&conn, &index, &value);
         IpcResult::ok(results)
     })
     .await
