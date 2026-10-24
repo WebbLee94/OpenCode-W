@@ -575,7 +575,7 @@ mod tests {
         conn.execute(
             "INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data)
              VALUES (?1, ?2, ?3, ?4, 1000, 2000, ?5)",
-            rusqlite::params![id, session_id, kind, seq, format!("{{\"content\":[]}}")],
+            rusqlite::params![id, session_id, kind, seq, "{\"content\":[]}".to_string()],
         )
         .expect("v2 message inserts");
     }
