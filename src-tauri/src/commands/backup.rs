@@ -68,11 +68,55 @@ mod tests {
     use rusqlite::Connection;
 
     use super::{
-        backup_timestamp_metadata, list_backups_in_dir, parse_backup_timestamp,
-        restore_backup_in_dir,
+        backup_content_counts, backup_timestamp_metadata, list_backups_in_dir,
+        parse_backup_timestamp, restore_backup_in_dir,
     };
     use crate::db::{self, DbState};
     use crate::security;
+
+    /// 备份预览的计数按方言分支（TASK-025）。
+    #[test]
+    fn backup_content_counts_follow_the_database_dialect() {
+        let fixture = |file: &str| -> Option<Connection> {
+            let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../test-data")
+                .join(file);
+            if !source.is_file() {
+                eprintln!("[skip] 缺少夹具 {file}");
+                return None;
+            }
+            let dir = std::env::temp_dir().join(format!(
+                "opencode-w-backup-count-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("clock after epoch")
+                    .as_nanos()
+            ));
+            fs::create_dir_all(&dir).expect("temp dir is created");
+            let path = dir.join("fixture.db");
+            fs::copy(&source, &path).expect("fixture is copied");
+            let conn = Connection::open(&path).expect("fixture opens");
+            let _ = fs::remove_dir_all(&dir);
+            Some(conn)
+        };
+
+        // v1：会话 / 消息 / part 行数，is_v2 = false。
+        let Some(conn) = fixture("test.db") else { return };
+        assert_eq!(backup_content_counts(&conn), (5, 20, 80, false));
+
+        // v2-fresh：没有旧表，part 计数为 0，is_v2 = true。
+        let Some(conn) = fixture("v2-fresh.db") else { return };
+        assert_eq!(backup_content_counts(&conn), (6, 20, 0, true));
+
+        // v2-mixed：与 v2-fresh 同口径，只统计 v2 表，is_v2 = true。
+        let Some(conn) = fixture("v2-mixed.db") else { return };
+        assert_eq!(
+            backup_content_counts(&conn),
+            (6, 20, 0, true),
+            "6 个 v2 会话；20 条 v2 消息；旧表冻结副本不计入"
+        );
+    }
 
     fn remove_database_files(path: &Path) {
         for suffix in ["", "-wal", "-shm"] {
@@ -173,6 +217,9 @@ mod tests {
 
     #[test]
     fn restore_lifecycle_opens_trusted_backup_snapshot_and_rejects_outside_input() {
+        // db::open / db::close 会推进 fork_stats 的进程级缓存 generation，
+        // 与缓存测试共用同一把锁，避免失效落在 dedup 与断言之间。
+        let _cache_guard = crate::commands::fork_stats::test_serial_guard();
         let root = std::env::temp_dir().join(format!(
             "opencode-w-backup-restore-{}-{}",
             std::process::id(),
@@ -186,6 +233,10 @@ mod tests {
 
         {
             let connection = Connection::open(&original).unwrap();
+            // 夹具必须是可打开的 OpenCode 库：db::open 会拒绝非 OpenCode 文件。
+            connection
+                .execute_batch(crate::schema::fixtures::v1_schema())
+                .unwrap();
             connection
                 .execute_batch(
                     "CREATE TABLE marker (value TEXT); INSERT INTO marker VALUES ('original');",
@@ -194,6 +245,9 @@ mod tests {
         }
         {
             let connection = Connection::open(&backup).unwrap();
+            connection
+                .execute_batch(crate::schema::fixtures::v1_schema())
+                .unwrap();
             connection
                 .execute_batch(
                     "CREATE TABLE marker (value TEXT); INSERT INTO marker VALUES ('backup');",
@@ -432,9 +486,30 @@ pub async fn backup_list() -> IpcResult<Vec<BackupDTO>> {
 /// 前端 ipc.ts 将单字符串参数包装为 `{ value: arg }`，因此 Rust 端使用 `value: Option<String>` 接收。
 #[tauri::command]
 pub async fn backup_restore(app: AppHandle, value: Option<String>) -> IpcResult<String> {
-    let db = app.state::<DbState>().inner().clone();
+    let state = app.state::<DbState>();
+    if let Err(e) = db::ensure_writable(&state) {
+        return IpcResult::err(e);
+    }
+    let db = state.inner().clone();
     let previous_path = db.path();
     tauri::async_runtime::spawn_blocking(move || {
+        // 实时迁移闸门：缓存可能是开库时的旧值（OpenCode 之后才启动迁移）。
+        // 恢复会覆盖当前库文件，必须在动文件之前确认没有迁移在进行。
+        // 没有已打开的库时跳过检查（恢复会打开另一个文件，没有可被破坏的迁移）。
+        if db.is_open() {
+            let pool = db.clone_inner();
+            let conn = match db::get_db(&pool) {
+                Ok(c) => c,
+                // 拿不到连接 → 无法确认迁移状态 → 保守拒绝。
+                Err(e) => {
+                    return IpcResult::err(format!("无法确认数据库迁移状态，已阻止恢复：{}", e))
+                }
+            };
+            if let Err(e) = db::ensure_writable_conn(&conn) {
+                return IpcResult::err(e);
+            }
+        }
+
         let backup_dir = match get_backup_dir() {
             Ok(d) => d,
             Err(e) => return IpcResult::err(e),
@@ -494,6 +569,42 @@ pub async fn backup_delete(value: String) -> IpcResult<bool> {
     .unwrap_or_else(|e| IpcResult::err(format!("thread error: {}", e)))
 }
 
+/// 备份文件里的内容计数（按方言分支，TASK-025）。
+///
+/// - v1：`session` / `message` / `part` 行数；
+/// - v2-fresh：`session_v2` / `session_message` 行数，没有 part 表 → 0；
+/// - v2-mixed：与 v2-fresh 同口径，只统计 v2 表（v2-only 收口；
+///   旧表是迁移后的冻结副本，不是 OpenCode-W 的读对象）。
+fn backup_content_counts(conn: &Connection) -> (i64, i64, i64, bool) {
+    // 先用与主库相同的探测逻辑判定备份的方言：v2 备份没有
+    // `session` / `message` / `part` 表，直接查会静默变成 0。
+    let v2 = crate::schema::detect(conn)
+        .map(|info| info.mode.is_v2())
+        .unwrap_or(false);
+    if !v2 {
+        let sessions: i64 = conn
+            .query_row("SELECT COUNT(*) as cnt FROM session", (), |row| row.get(0))
+            .unwrap_or(0);
+        let messages: i64 = conn
+            .query_row("SELECT COUNT(*) as cnt FROM message", (), |row| row.get(0))
+            .unwrap_or(0);
+        let parts: i64 = conn
+            .query_row("SELECT COUNT(*) as cnt FROM part", (), |row| row.get(0))
+            .unwrap_or(0);
+        return (sessions, messages, parts, false);
+    }
+
+    let v2_sessions: i64 = conn
+        .query_row("SELECT COUNT(*) FROM session_v2", (), |row| row.get(0))
+        .unwrap_or(0);
+    let v2_messages: i64 = conn
+        .query_row("SELECT COUNT(*) FROM session_message", (), |row| row.get(0))
+        .unwrap_or(0);
+
+    // v2-only：旧表冻结副本不计入内容计数，v2 没有 part 表 → 0。
+    (v2_sessions, v2_messages, 0, true)
+}
+
 /// backup:preview — preview a backup file's contents in read-only mode.
 /// Returns backup metadata plus session/message/part counts.
 ///
@@ -536,30 +647,19 @@ pub async fn backup_preview(value: String) -> IpcResult<BackupPreviewDTO> {
 
         // Try to open the backup file read-only to get content counts.
         // If we can't read the backup database, just return 0 counts.
-        let (session_count, message_count, part_count) = {
+        let (session_count, message_count, part_count, is_v2) = {
             let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
             match Connection::open_with_flags(&resolved_path, flags) {
-                Ok(conn) => {
-                    let s: i64 = conn
-                        .query_row("SELECT COUNT(*) as cnt FROM session", (), |row| row.get(0))
-                        .unwrap_or(0);
-                    let m: i64 = conn
-                        .query_row("SELECT COUNT(*) as cnt FROM message", (), |row| row.get(0))
-                        .unwrap_or(0);
-                    let p: i64 = conn
-                        .query_row("SELECT COUNT(*) as cnt FROM part", (), |row| row.get(0))
-                        .unwrap_or(0);
-                    (s, m, p)
-                }
-                Err(_) => (0, 0, 0),
+                Ok(conn) => backup_content_counts(&conn),
+                Err(_) => (0, 0, 0, false),
             }
         };
-
         IpcResult::ok(BackupPreviewDTO {
             backup,
             session_count,
             message_count,
             part_count,
+            is_v2,
         })
     })
     .await
