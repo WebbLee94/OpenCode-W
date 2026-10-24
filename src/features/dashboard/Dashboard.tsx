@@ -8,7 +8,10 @@ import type {
   TimeRange,
   TokenGroupDataPoint,
   ModelRankingItem,
+  ModelRankingResponse,
   ProviderStatsItem,
+  ProviderStatsResponse,
+  RankingCoverageGap,
   ProjectRankingItem,
   SessionTrendItem,
   CostTrendItem,
@@ -53,7 +56,7 @@ import PageHeader from '@/components/PageHeader'
 import TooltipHint from '@/components/TooltipHint'
 import SchemaBlockedState from '@/features/datasource/SchemaBlockedState'
 import { useSchemaStatus, useOptionalDataSource } from '@/features/datasource/useDataSource'
-import { formatBytes, formatNumber, formatLargeNumber, sumTokenTotal } from '@/lib/format'
+import { formatBytes, formatNumber, formatLargeNumber, sumTokenTotal, toLocalDateString } from '@/lib/format'
 
 // ── 统计不可用时的统一占位 ─────────────────────────────────────
 // 后端拒绝或查询失败都落到这里：只给「暂不可用」，不再区分具体原因，
@@ -128,41 +131,101 @@ type TimePreset = 'all' | 7 | 30 | 90 | 'custom'
 type GroupBy = 'day' | 'week' | 'month'
 type DashboardTab = 'overview' | 'stats' | 'trends'
 
+// ── 时间分桶口径 ────────────────────────────────────────────────────────
+
+/**
+ * 趋势 tooltip 里那个合计行的口径词。
+ *
+ * 「Token 总计」在中文里会被读成「整个所选范围的总量」，而这里给出的是
+ * 单个分桶（当日 / 本周 / 本月）的合计，必须说清楚。
+ */
+const GROUP_BY_TOTAL_LABEL: Record<GroupBy, string> = {
+  day: '当日合计',
+  week: '本周合计',
+  month: '本月合计',
+}
+
 const DASHBOARD_TABS: { key: DashboardTab; label: string; icon: string }[] = [
   { key: 'overview', label: '概览', icon: '📋' },
   { key: 'stats', label: '统计', icon: '📊' },
   { key: 'trends', label: '趋势', icon: '📈' },
 ]
 
-// 本地日期格式 YYYY-MM-DD（避免 toISOString() 的 UTC 偏移）
-function toLocalDateString(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+// 本地日期格式 YYYY-MM-DD 现在是共享实现（@/lib/format 的 toLocalDateString），
+// 会话浏览页的日期筛选也用它，避免两页出现两套日期口径。
+
+/**
+ * 模型排行返回体归一化：**同时兼容旧数组与新对象**。
+ *
+ * - 旧后端：直接是 `ModelRankingItem[]`（没有缺口信息）
+ * - 新后端：`{ items, coverageGap? }`（`coverageGap` 缺省 = 没有缺口）
+ *
+ * 新前端配旧后端必须照常工作（只是不显示缺口说明），所以按形态分流。
+ */
+function normalizeModelRanking(
+  data: ModelRankingItem[] | ModelRankingResponse,
+): { items: ModelRankingItem[]; coverageGap?: RankingCoverageGap } {
+  if (Array.isArray(data)) {
+    return { items: data }
+  }
+  return { items: data.items ?? [], coverageGap: data.coverageGap }
 }
 
+/** 服务商统计返回体归一化（同 normalizeModelRanking）。 */
+function normalizeProviderStats(
+  data: ProviderStatsItem[] | ProviderStatsResponse,
+): { items: ProviderStatsItem[]; coverageGap?: RankingCoverageGap } {
+  if (Array.isArray(data)) {
+    return { items: data }
+  }
+  return { items: data.items ?? [], coverageGap: data.coverageGap }
+}
+
+/**
+ * 预设时间范围：**含今日**在内的 N 个自然日。
+ *
+ * ⚠️ 端点必须算准：后端窗口是
+ * `date_to_epoch_ms(start, true) ~ date_to_epoch_ms(end, false)` + `BETWEEN`，
+ * 即 start 当天 00:00:00 到 end 当天 23:59:59，**两端都含**。
+ * 所以「7 天」= `[今天−6, 今天]`（7 个自然日），而不是 `[今天−7, 今天]`
+ * ——后者是 8 天，会让按钮文案与实际口径对不上。
+ */
 function computeTimeRange(days: TimePreset, start?: string, end?: string): TimeRange | undefined {
   if (days === 'all') return undefined
   if (days === 'custom' && start && end) return { startDate: start, endDate: end }
   if (days === 'custom') return undefined
   const endDate = toLocalDateString(new Date())
-  const startDate = toLocalDateString(new Date(Date.now() - days * 24 * 60 * 60 * 1000))
+  // 含今日 → 起点是「今天 − (N−1) 天」
+  const startDate = toLocalDateString(new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000))
   return { startDate, endDate }
 }
 
-// 计算"上期"时间范围 — 与当前 timeRange 等长且紧邻的前一个区间
-// 例如：当前 5/14 ~ 6/13（30 天）→ 上期 4/14 ~ 5/13（30 天）
+/**
+ * 计算"上期"时间范围 — 与当前 timeRange **等长**且紧邻的前一个区间。
+ *
+ * 例如：当前 5/14 ~ 6/12（30 天）→ 上期 4/14 ~ 5/13（30 天）。
+ *
+ * 按**日历日**推（`new Date(y, m, d - n)`），不用毫秒差：
+ * 毫秒差在夏令时切换的区间里会差 1 小时，可能把上期算成少一天 / 多一天，
+ * 「等长」就不成立了。
+ */
 function computePrevTimeRange(current: TimeRange | undefined): TimeRange | undefined {
   if (!current) return undefined
   const [y1, m1, d1] = current.startDate.split('-').map(Number)
   const [y2, m2, d2] = current.endDate.split('-').map(Number)
   const start = new Date(y1, m1 - 1, d1)
   const end = new Date(y2, m2 - 1, d2)
-  const ms = end.getTime() - start.getTime()
-  if (ms <= 0) return undefined
-  const prevEnd = new Date(start.getTime() - 24 * 60 * 60 * 1000) // 上期 endDate = 当前 startDate - 1 天
-  const prevStart = new Date(prevEnd.getTime() - ms)
+  if (end.getTime() <= start.getTime()) return undefined
+  // 当前区间含端点的自然日数量（上期必须与它等长）
+  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1
+  // 上期 endDate = 当前 startDate - 1 天（紧邻，不重叠）
+  const prevEnd = new Date(start.getFullYear(), start.getMonth(), start.getDate() - 1)
+  // 上期 startDate = 上期 endDate 再往前推 (天数 − 1) 天
+  const prevStart = new Date(
+    prevEnd.getFullYear(),
+    prevEnd.getMonth(),
+    prevEnd.getDate() - (days - 1),
+  )
   return {
     startDate: toLocalDateString(prevStart),
     endDate: toLocalDateString(prevEnd),
@@ -195,6 +258,10 @@ interface StatsCacheSlice {
   modelRanking: ModelRankingItem[]
   providerStats: ProviderStatsItem[]
   projectRanking: ProjectRankingItem[]
+  /** 模型排行的覆盖缺口（没有 model 记录的会话） */
+  modelCoverageGap?: RankingCoverageGap
+  /** 服务商统计的覆盖缺口（有 model、但没有 providerID 的会话） */
+  providerCoverageGap?: RankingCoverageGap
 }
 
 interface TrendsCacheSlice {
@@ -293,6 +360,9 @@ function Dashboard() {
   const [modelRanking, setModelRanking] = useState<ModelRankingItem[]>([])
   const [providerStats, setProviderStats] = useState<ProviderStatsItem[]>([])
   const [projectRanking, setProjectRanking] = useState<ProjectRankingItem[]>([])
+  // 排行的覆盖缺口（后端没有缺口时不返回字段 → undefined → 整行不显示）
+  const [modelCoverageGap, setModelCoverageGap] = useState<RankingCoverageGap | undefined>(undefined)
+  const [providerCoverageGap, setProviderCoverageGap] = useState<RankingCoverageGap | undefined>(undefined)
   const [sessionTrend, setSessionTrend] = useState<SessionTrendItem[]>([])
   const [costTrend, setCostTrend] = useState<CostTrendItem[]>([])
   const [messageTrend, setMessageTrend] = useState<MessageTrendItem[]>([])
@@ -479,17 +549,27 @@ function Dashboard() {
       const [toolsR, skillsR, modelsR, providersR, projectsR] = await Promise.all([
         settle(invokeSafe<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, tr)),
         settle(invokeSafe<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE, tr)),
-        settle(invokeSafe<ModelRankingItem[]>(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, tr)),
-        settle(invokeSafe<ProviderStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, tr)),
+        settle(invokeSafe<ModelRankingItem[] | ModelRankingResponse>(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, tr)),
+        settle(invokeSafe<ProviderStatsItem[] | ProviderStatsResponse>(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, tr)),
         settle(invokeSafe<ProjectRankingItem[]>(IPC_CHANNELS.DASHBOARD_PROJECT_RANKING, tr)),
       ])
       if (gen !== slowGenRef.current) return null
 
+      // 排行返回体有两种形态（数组 / { items, coverageGap }），统一归一化
+      const modelPayload = modelsR.ok ? normalizeModelRanking(modelsR.data) : null
+      const providerPayload = providersR.ok ? normalizeProviderStats(providersR.data) : null
+
       // 只写成功段；失败段保留上一次的结果。
       if (toolsR.ok) setToolRanking(toolsR.data ?? [])
       if (skillsR.ok) setSkillUsage(skillsR.data ?? [])
-      if (modelsR.ok) setModelRanking(modelsR.data ?? [])
-      if (providersR.ok) setProviderStats(providersR.data ?? [])
+      if (modelPayload) {
+        setModelRanking(modelPayload.items)
+        setModelCoverageGap(modelPayload.coverageGap)
+      }
+      if (providerPayload) {
+        setProviderStats(providerPayload.items)
+        setProviderCoverageGap(providerPayload.coverageGap)
+      }
       if (projectsR.ok) setProjectRanking(projectsR.data ?? [])
 
       const firstError = [toolsR, skillsR, modelsR, providersR, projectsR].find(r => !r.ok)
@@ -502,9 +582,11 @@ function Dashboard() {
       const nextStats: StatsCacheSlice = {
         toolRanking: toolsR.ok ? (toolsR.data ?? []) : previous?.toolRanking ?? [],
         skillUsage: skillsR.ok ? (skillsR.data ?? []) : previous?.skillUsage ?? [],
-        modelRanking: modelsR.ok ? (modelsR.data ?? []) : previous?.modelRanking ?? [],
-        providerStats: providersR.ok ? (providersR.data ?? []) : previous?.providerStats ?? [],
+        modelRanking: modelPayload ? modelPayload.items : previous?.modelRanking ?? [],
+        providerStats: providerPayload ? providerPayload.items : previous?.providerStats ?? [],
         projectRanking: projectsR.ok ? (projectsR.data ?? []) : previous?.projectRanking ?? [],
+        modelCoverageGap: modelPayload ? modelPayload.coverageGap : previous?.modelCoverageGap,
+        providerCoverageGap: providerPayload ? providerPayload.coverageGap : previous?.providerCoverageGap,
       }
       dashboardCache = {
         ...(dashboardCache ?? emptyDashboardCache()),
@@ -650,6 +732,8 @@ function Dashboard() {
         setModelRanking(statsKeyMatches ? cached.stats?.modelRanking ?? [] : [])
         setProviderStats(statsKeyMatches ? cached.stats?.providerStats ?? [] : [])
         setProjectRanking(statsKeyMatches ? cached.stats?.projectRanking ?? [] : [])
+        setModelCoverageGap(statsKeyMatches ? cached.stats?.modelCoverageGap : undefined)
+        setProviderCoverageGap(statsKeyMatches ? cached.stats?.providerCoverageGap : undefined)
         setSessionTrend(trendsKeyMatches ? cached.trends?.sessionTrend ?? [] : [])
         setCostTrend(trendsKeyMatches ? cached.trends?.costTrend ?? [] : [])
         setMessageTrend(trendsKeyMatches ? cached.trends?.messageTrend ?? [] : [])
@@ -1016,6 +1100,16 @@ function Dashboard() {
   // Token 统计占位：失败时给统一文案，不显示「暂无Token数据」误导用户
   const tokenPlaceholder = tokenError ? TOKEN_STATS_UNAVAILABLE : '暂无Token数据'
 
+  // ── 排行覆盖缺口 ───────────────────────────────────────────────────
+  // 没有缺口（后端不返回该字段 / token 数为 0）时整行不显示，不占位。
+  //
+  // ⚠️ 两组缺口**不相交**：模型缺口 = 没有 model 记录的会话；服务商缺口 =
+  // 有 model 但取不到 providerID 的会话。不可相加、不可互相替代。
+  // ⚠️ 缺口**不是**「总数 − 排行合计」（排行是 TOP 10），文案不能写成
+  // 「排行未覆盖的全部 token」。
+  const modelGap = modelCoverageGap && modelCoverageGap.tokenCount > 0 ? modelCoverageGap : null
+  const providerGap = providerCoverageGap && providerCoverageGap.tokenCount > 0 ? providerCoverageGap : null
+
   // ── 数据块状态机 ─────────────────────────────────────────────────
   const fastStatus = deriveSliceStatus({
     loading: fastLoading,
@@ -1237,7 +1331,7 @@ function Dashboard() {
                     </div>
                     <div className="flex-1 space-y-3 min-w-0">
                       <div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-1">
-                        <span className="text-xs font-semibold text-gray-700">Token 总计</span>
+                        <span className="text-xs font-semibold text-gray-700">所选范围 Token 合计</span>
                         <span className="text-sm font-semibold text-gray-900">{formatNumber(sumTokenTotal(tokenStats))}</span>
                       </div>
                       <TokenMetricRow
@@ -1441,22 +1535,25 @@ function Dashboard() {
                       <XAxis dataKey="period" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
                       <YAxis tick={{ fontSize: 10 }} />
                        <Tooltip
-                         content={({ active, payload }) => {
+                         content={({ active, payload, label }) => {
                            if (!active || !payload || !payload.length) return null
                            const data = payload[0].payload as TokenGroupDataPoint
                            const totalAttempts = data.cacheRead + data.inputTokens
                            const hitRate = totalAttempts > 0
                              ? (data.cacheRead / totalAttempts * 100).toFixed(1)
                              : '—'
+                           // label 就是这个桶的 period（day: 2026-10-24 / week: 2026-W43 / month: 2026-10）
+                           const bucket = label ?? data.period
                            return (
                              <div style={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fff', padding: '8px 12px' }}>
+                               <div style={{ fontWeight: 600, marginBottom: 4 }}>{bucket}</div>
                                {payload.map((entry, i) => (
                                  <div key={i} style={{ color: entry.color, marginBottom: 2 }}>
                                    {entry.name}: {formatNumber(entry.value as number)}
                                  </div>
                                ))}
                                <div style={{ color: '#111827', fontWeight: 600, marginTop: 4, paddingTop: 4, borderTop: '1px solid #f0f0f0' }}>
-                                 Token 总计: {formatNumber(sumTokenTotal(data))}
+                                 {GROUP_BY_TOTAL_LABEL[groupBy]}: {formatNumber(sumTokenTotal(data))}
                                </div>
                                <div style={{ color: '#6b7280', marginTop: 4, paddingTop: 4, borderTop: '1px solid #f0f0f0' }}>
                                  缓存命中率: {hitRate}%
@@ -1813,7 +1910,7 @@ function Dashboard() {
                               return (
                                 <div style={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fff', padding: '8px 12px' }}>
                                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{data.name}</div>
-                                  <div>Token 总计: {formatLargeNumber(data.tokens ?? 0)}</div>
+                                  <div>所选范围合计: {formatLargeNumber(data.tokens ?? 0)}</div>
                                 </div>
                               )
                             }}
@@ -1839,6 +1936,19 @@ function Dashboard() {
                 </div>
               ) : (
                 <p className="text-sm text-gray-400 text-center py-8">暂无模型数据</p>
+              )}
+              {/* 覆盖缺口说明：浅灰小字，不进图表。
+                  缺口 = 没有任何模型 / 服务商归属的那部分会话（后端如实聚合），
+                  不是「总数 − 排行合计」（排行是 TOP 10）。 */}
+              {modelGap && (
+                <p className="mt-3 text-xs text-gray-400">
+                  另有 {formatNumber(modelGap.sessionCount)} 个会话未记录模型，合计 {formatLargeNumber(modelGap.tokenCount)} tokens 未计入上方排行
+                </p>
+              )}
+              {providerGap && (
+                <p className="mt-1 text-xs text-gray-400">
+                  另有 {formatNumber(providerGap.sessionCount)} 个会话未记录服务商，合计 {formatLargeNumber(providerGap.tokenCount)} tokens 未计入上方统计
+                </p>
               )}
               </SliceSurface>
             </div>
@@ -1872,7 +1982,7 @@ function Dashboard() {
                         return (
                           <div style={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fff', padding: '8px 12px' }}>
                             <div style={{ fontWeight: 600, marginBottom: 4 }}>{data.name}</div>
-                            <div>Token 总计: {formatLargeNumber(data.tokens ?? 0)}</div>
+                            <div>所选范围合计: {formatLargeNumber(data.tokens ?? 0)}</div>
                             <div>费用: ${(data.cost ?? 0).toFixed(2)}</div>
                           </div>
                         )

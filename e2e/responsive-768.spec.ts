@@ -249,4 +249,183 @@ test.describe('768px 窄屏', () => {
       `「设置」在 768px 下出现文档级横向滚动：scrollWidth=${m.docScrollWidth} clientWidth=${m.docClientWidth}`,
     ).toBeLessThanOrEqual(m.docClientWidth)
   })
+
+  test('768px 下「Token 统计」总计行标签不溢出（标签比原来的「Token 总计」长）', async ({ page }) => {
+    // 必须伪造 Tauri：否则浏览器里 isTauri() 为 false，仪表盘停在「未连接数据库」，
+    // Token 统计面板根本不渲染，量不到任何东西。
+    await installTauriStub(page, {
+      respond: {
+        [CH.DATABASE_INFO]: {
+          mode: 'v2',
+          migrationPhase: 'none',
+          hasLegacyTables: false,
+          v2SessionCount: 3,
+          unsupportedReason: null,
+        },
+        [CH.DATABASE_HEALTH]: {
+          ok: true,
+          pageCount: 1,
+          freelistPages: 0,
+          walSize: 0,
+          dbSize: 4096,
+          currentPath: '/tmp/opencode.db',
+        },
+        [CH.DASHBOARD_OVERVIEW]: {
+          rootSessionCount: 30,
+          childSessionCount: 0,
+          projectCount: 2,
+          partCount: 42,
+        },
+        [CH.DASHBOARD_TOKENS]: {
+          inputTokens: 1_000,
+          outputTokens: 2_000,
+          reasoningTokens: 300,
+          cacheRead: 4_000,
+          cacheWrite: 500,
+          estimatedCost: 1.25,
+          cacheHitRate: 80,
+        },
+        [CH.SESSIONS_PROJECTS]: [],
+      },
+    })
+
+    await page.setViewportSize({ width: 768, height: 800 })
+    await page.goto('/#/')
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByText('所选范围 Token 合计')).toBeVisible()
+
+    const m = await page.evaluate(() => {
+      const label = Array.from(document.querySelectorAll('span')).find(
+        (el) => (el.textContent ?? '').trim() === '所选范围 Token 合计',
+      ) as HTMLElement | undefined
+      if (!label) return null
+      const panel = label.closest('div.bg-white') as HTMLElement | null
+      const scroller = document.scrollingElement as HTMLElement
+      return {
+        labelScrollWidth: label.scrollWidth,
+        labelClientWidth: label.clientWidth,
+        labelScrollHeight: label.scrollHeight,
+        labelClientHeight: label.clientHeight,
+        labelRight: label.getBoundingClientRect().right,
+        panelRight: panel?.getBoundingClientRect().right ?? 0,
+        docScrollWidth: scroller.scrollWidth,
+        docClientWidth: scroller.clientWidth,
+      }
+    })
+
+    expect(m, '未找到「所选范围 Token 合计」标签').not.toBeNull()
+    const v = m!
+
+    // 标签变长后必须**换行**而不是横向溢出自己的盒子
+    expect(v.labelScrollWidth, '总计行标签横向溢出').toBeLessThanOrEqual(v.labelClientWidth + 1)
+    // 换行后也不能被裁掉（文字完整可见）
+    expect(v.labelScrollHeight, '总计行标签被纵向裁切').toBeLessThanOrEqual(v.labelClientHeight + 1)
+    // 标签没有跑到卡片外面
+    expect(v.labelRight, '总计行标签超出卡片右边界').toBeLessThanOrEqual(v.panelRight + 0.5)
+    // 文档级没有横向滚动
+    expect(
+      v.docScrollWidth,
+      `「仪表盘」在 768px 下出现文档级横向滚动：scrollWidth=${v.docScrollWidth} clientWidth=${v.docClientWidth}`,
+    ).toBeLessThanOrEqual(v.docClientWidth)
+
+    // ⚠️ 已知既有问题（**不是**本次改动引入的，单独记录，不在本用例断言）：
+    // 768px 下「Token 统计」右侧指标列被固定 160px 的饼图挤到只剩 ~18px，
+    // 整行与卡片早已横向溢出（实测 rowScrollWidth 73 > rowClientWidth 18，
+    // 数值文本已越出卡片右边缘 ~34px）。改成更长的标签只让该列多折一行，
+    // 横向溢出幅度不变；修复它属于布局改动，不在本次「tooltip 口径词」范围内。
+  })
+
+  test('768px 下「模型 & Provider 统计」的缺口说明不溢出、不破版', async ({ page }) => {
+    // 必须伪造 Tauri：否则浏览器里 isTauri() 为 false，仪表盘停在「未连接数据库」。
+    await installTauriStub(page, {
+      respond: {
+        [CH.DATABASE_INFO]: {
+          mode: 'v2',
+          migrationPhase: 'none',
+          hasLegacyTables: false,
+          v2SessionCount: 3,
+          unsupportedReason: null,
+        },
+        [CH.DATABASE_HEALTH]: {
+          ok: true,
+          pageCount: 1,
+          freelistPages: 0,
+          walSize: 0,
+          dbSize: 4096,
+          currentPath: '/tmp/opencode.db',
+        },
+        [CH.DASHBOARD_OVERVIEW]: {
+          rootSessionCount: 30,
+          childSessionCount: 0,
+          projectCount: 2,
+          partCount: 42,
+        },
+        [CH.DASHBOARD_TOKENS]: {
+          inputTokens: 1_000,
+          outputTokens: 2_000,
+          reasoningTokens: 300,
+          cacheRead: 4_000,
+          cacheWrite: 500,
+          estimatedCost: 1.25,
+          cacheHitRate: 80,
+        },
+        // 后端新返回体：带覆盖缺口
+        [CH.DASHBOARD_MODEL_RANKING]: {
+          items: [{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }],
+          coverageGap: { tokenCount: 681_728_091, sessionCount: 43 },
+        },
+        [CH.DASHBOARD_PROVIDER_STATS]: {
+          items: [{ provider: 'openai', tokenCount: 900, totalCost: 1 }],
+          coverageGap: { tokenCount: 0, sessionCount: 0 },
+        },
+        [CH.DASHBOARD_TOOL_RANKING]: [],
+        [CH.DASHBOARD_SKILL_USAGE]: [],
+        [CH.DASHBOARD_PROJECT_RANKING]: [],
+        [CH.SESSIONS_PROJECTS]: [],
+      },
+    })
+
+    await page.setViewportSize({ width: 768, height: 800 })
+    await page.goto('/#/')
+    await page.getByRole('button', { name: /统计/ }).click()
+
+    // 缺口说明（浅灰小字）在图表下方；tokenCount 为 0 的服务商缺口不出现
+    const line = page.getByText(/未记录模型/)
+    await expect(line).toBeVisible()
+    await expect(page.getByText(/未记录服务商/)).toHaveCount(0)
+
+    const m = await page.evaluate(() => {
+      const el = Array.from(document.querySelectorAll('p')).find((node) =>
+        (node.textContent ?? '').includes('未记录模型'),
+      ) as HTMLElement | undefined
+      if (!el) return null
+      const panel = el.closest('div.bg-white') as HTMLElement | null
+      const scroller = document.scrollingElement as HTMLElement
+      return {
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        right: el.getBoundingClientRect().right,
+        panelRight: panel?.getBoundingClientRect().right ?? 0,
+        docScrollWidth: scroller.scrollWidth,
+        docClientWidth: scroller.clientWidth,
+      }
+    })
+
+    expect(m, '未找到缺口说明行').not.toBeNull()
+    const v = m!
+
+    // 文字换行而不是横向溢出
+    expect(v.scrollWidth, '缺口说明横向溢出').toBeLessThanOrEqual(v.clientWidth + 1)
+    // 换行后文字完整可见（不被裁切）
+    expect(v.scrollHeight, '缺口说明被纵向裁切').toBeLessThanOrEqual(v.clientHeight + 1)
+    // 没有越出卡片右边界
+    expect(v.right, '缺口说明超出卡片右边界').toBeLessThanOrEqual(v.panelRight + 0.5)
+    // 文档级没有横向滚动
+    expect(
+      v.docScrollWidth,
+      `「仪表盘」在 768px 下出现文档级横向滚动：scrollWidth=${v.docScrollWidth} clientWidth=${v.docClientWidth}`,
+    ).toBeLessThanOrEqual(v.docClientWidth)
+  })
 })
