@@ -53,6 +53,15 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Verify release version matches tag (tag release only)
+        # 打包前的版本一致性守卫：tag 必须与 src-tauri/tauri.conf.json、
+        # src-tauri/Cargo.toml、package.json 三处 version 完全一致。
+        # 否则清单会写 tag 的版本、用户装的却是另一版，updater 每次检查都判定
+        # 「有新版本」-> 无限更新循环。放在依赖安装之前，版本写错时几十秒内失败，
+        # 不必等整套构建跑完。
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/verify-release-version.mjs "${{ github.ref_name }}"
+
       - name: Install dependencies
         run: npm ci
 
@@ -75,6 +84,10 @@ jobs:
 
       - name: Test
         run: npm test -- --run
+
+      - name: Release scripts self-test
+        # 清单生成 / 清单校验 / 版本守卫的回归自测（零依赖，见 scripts/selftest-latest-json.mjs）
+        run: npm run release:selftest
 
       - name: Enable updater artifacts (tag release only)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -116,13 +129,19 @@ jobs:
           archs="$(lipo -archs "$exe")"
           echo "bundle executable: $exe"
           echo "lipo -archs: $archs"
-          case "$archs" in
-            *"${{ matrix.bundle-arch }}"*) ;;
-            *)
-              echo "::error::架构不符：期望 ${{ matrix.bundle-arch }}，实际 $archs"
-              exit 1
-              ;;
-          esac
+          # 精确比对架构集合（逗号/空格分隔后逐项比较），不能用子串匹配：
+          # 子串匹配会让 universal binary（x86_64 arm64）在单架构条目下误判为通过，
+          # 也会让「Intel 交叉编译静默产出 arm64」这种真实故障漏过。
+          normalize_archs() {
+            printf '%s\n' "$1" | tr ',' '\n' | tr ' ' '\n' | awk 'NF {print}' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//'
+          }
+          expected_archs="$(normalize_archs "${{ matrix.bundle-arch }}")"
+          actual_archs="$(normalize_archs "$archs")"
+          if [ "$expected_archs" != "$actual_archs" ]; then
+            echo "::error::架构不符：期望 [$expected_archs]，实际 [$actual_archs]"
+            exit 1
+          fi
+          echo "✓ 架构校验通过：[$actual_archs]"
 
       - name: Normalize macOS updater artifact name
         if: matrix.bundle-arch != ''
@@ -170,7 +189,9 @@ jobs:
             # deb 内部的 control/data tarball 不是给用户下载的安装包，别混进 Release 资产
             !${{ env.BUNDLE_ROOT }}/**/control.tar.gz
             !${{ env.BUNDLE_ROOT }}/**/data.tar.gz
-            # `.rpm.sig` 是 deb→rpm 转换的副产物，`.rpm` 本身没上传，会变成孤儿签名
+            # `.rpm` 是 tauri-bundler 的一等 Linux bundle target（Deb / Rpm / AppImage 并列），
+            # 但本次上传范围里不含 `.rpm`，单独留下它的签名会变成没有对应产物的孤儿签名，
+            # 故一并排除
             !${{ env.BUNDLE_ROOT }}/**/*.rpm.sig
           if-no-files-found: error
           retention-days: 14
@@ -189,6 +210,14 @@ jobs:
         with:
           node-version: 22
 
+      - name: Verify release version matches tag
+        # 生成清单前的版本一致性守卫：tag 必须与 src-tauri/tauri.conf.json、
+        # src-tauri/Cargo.toml、package.json 三处 version 完全一致。
+        # 清单里的 version 取自 tag，而打进二进制的版本取自 tauri.conf.json，
+        # 两者不一致时 updater 会一直判定「有新版本」，装完却什么也没变，
+        # 形成无限更新循环 —— 所以这里直接失败，不让 Release 被创建。
+        run: node scripts/verify-release-version.mjs "${{ github.ref_name }}"
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -201,6 +230,21 @@ jobs:
 
       - name: Verify latest.json
         run: node scripts/verify-latest-json.mjs latest.json "${{ github.ref_name }}"
+
+      - name: Assert excluded artifacts are absent
+        run: |
+          set -euo pipefail
+          # 兜底断言：deb 内部的 control/data tarball 与 `.rpm.sig` 在 build job 的
+          # upload-artifact 阶段就已被排除（@actions/glob 支持 `!` 负向模式），
+          # download-artifact 拿到的目录里本就不该出现它们。这里再确认一次，
+          # 避免将来有人扩大上传范围时把内部 tarball / 孤儿签名带进 Release。
+          found="$(find artifacts -type f \( -name 'control.tar.gz' -o -name 'data.tar.gz' -o -name '*.rpm.sig' \) -print)"
+          if [ -n "$found" ]; then
+            echo "::error::Release 资产里出现了本应排除的文件："
+            echo "$found"
+            exit 1
+          fi
+          echo "✓ 未发现需要排除的产物"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -220,10 +264,13 @@ jobs:
             artifacts/**/*.tar.gz
             artifacts/**/*.sig
             latest.json
-            # deb 内部的 control/data tarball 不是给用户下载的安装包
-            !artifacts/**/control.tar.gz
-            !artifacts/**/data.tar.gz
-            # `.rpm.sig` 是 deb→rpm 转换的副产物，`.rpm` 本身没上传，会变成孤儿签名
-            !artifacts/**/*.rpm.sig
+            # 说明：这里不能写 `!artifacts/**/control.tar.gz` 之类的排除。
+            # `softprops/action-gh-release` 的 `files` 是把每条 pattern 单独 glob
+            # 之后拼接（其内置 glob 的 Pattern 显式 nonegate），`!` 不会被解释成取反，
+            # 写了也是无效代码、只会制造「已经兜底」的假象。
+            # 真正的排除发生在 build job 的 upload-artifact 阶段：那里的
+            # `@actions/glob` 支持 `!` 负向模式，deb 内部的 control/data tarball
+            # 与 `.rpm.sig` 已经被排除，因此下载到的目录里根本不存在这些文件。
+            # 上面的「Assert excluded artifacts are absent」步骤会对这个前提做真实断言。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
