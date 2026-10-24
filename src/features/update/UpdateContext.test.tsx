@@ -14,14 +14,19 @@ import { UpdateProvider } from './UpdateContext'
 import { useUpdateStatus } from './useUpdateStatus'
 import type { UseUpdateStatus } from './useUpdateStatus'
 
-const { checkMock, isTauriMock, addToast } = vi.hoisted(() => ({
+const { checkMock, isTauriMock, addToast, relaunchMock } = vi.hoisted(() => ({
   checkMock: vi.fn(),
   isTauriMock: vi.fn(() => true),
   addToast: vi.fn(),
+  relaunchMock: vi.fn(),
 }))
 
 vi.mock('@tauri-apps/plugin-updater', () => ({
   check: checkMock,
+}))
+
+vi.mock('@tauri-apps/plugin-process', () => ({
+  relaunch: relaunchMock,
 }))
 
 vi.mock('@/lib/ipc', () => ({
@@ -64,6 +69,8 @@ beforeEach(() => {
   isTauriMock.mockReturnValue(true)
   checkMock.mockReset()
   addToast.mockReset()
+  relaunchMock.mockReset()
+  relaunchMock.mockResolvedValue(undefined)
   progressLog.length = 0
 })
 
@@ -203,6 +210,90 @@ describe('UpdateProvider.download', () => {
 
     expect(latest.error?.code).toBe('download-failed')
     expect(latest.state).toBe('available')
+  })
+
+  it('并发调用只下载一次（双击守卫，不会并发跑两次 downloadAndInstall）', async () => {
+    // 双击「立即更新」：三次 download() 在同一个 tick 内发起
+    let resolveDownload!: () => void
+    const update = makeUpdate({
+      downloadAndInstall: vi.fn(() => new Promise<void>(resolve => { resolveDownload = resolve })),
+    })
+    checkMock.mockResolvedValue(update)
+    renderProvider()
+    await act(async () => { await latest.check() })
+
+    await act(async () => {
+      void latest.download()
+      void latest.download()
+      void latest.download()
+    })
+
+    // 守卫是同步生效的：同一个 Update 实例上只跑了一次下载
+    expect(update.downloadAndInstall).toHaveBeenCalledTimes(1)
+
+    await act(async () => { resolveDownload() })
+
+    expect(update.downloadAndInstall).toHaveBeenCalledTimes(1)
+    expect(latest.state).toBe('downloaded')
+  })
+
+  it('下载失败后可以重试（守卫不会永久卡死）', async () => {
+    const downloadAndInstall = vi.fn()
+      .mockRejectedValueOnce(new Error('Download request failed with status: 500'))
+      .mockResolvedValueOnce(undefined)
+    const update = makeUpdate({ downloadAndInstall })
+    checkMock.mockResolvedValue(update)
+    renderProvider()
+    await act(async () => { await latest.check() })
+
+    await act(async () => { await latest.download() })
+    expect(latest.state).toBe('available')
+
+    await act(async () => { await latest.download() })
+    expect(downloadAndInstall).toHaveBeenCalledTimes(2)
+    expect(latest.state).toBe('downloaded')
+  })
+})
+
+describe('UpdateProvider.install', () => {
+  /** 先跑一遍 check + download，把状态推到「已下载待安装」 */
+  async function reachDownloaded(): Promise<void> {
+    checkMock.mockResolvedValue(makeUpdate())
+    renderProvider()
+    await act(async () => { await latest.check() })
+    await act(async () => { await latest.download() })
+    expect(latest.state).toBe('downloaded')
+  }
+
+  it('并发调用只重启一次（双击守卫，不会重复 relaunch）', async () => {
+    await reachDownloaded()
+    let resolveRelaunch!: () => void
+    relaunchMock.mockImplementation(() => new Promise<void>(resolve => { resolveRelaunch = resolve }))
+
+    await act(async () => {
+      void latest.install()
+      void latest.install()
+      void latest.install()
+    })
+
+    // 守卫是同步生效的：只重启了一次
+    expect(relaunchMock).toHaveBeenCalledTimes(1)
+
+    await act(async () => { resolveRelaunch() })
+    expect(relaunchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('重启失败 → 回到「已下载待安装」，允许再点一次安装', async () => {
+    await reachDownloaded()
+    relaunchMock.mockRejectedValueOnce(new Error('relaunch failed'))
+
+    await act(async () => { await latest.install() })
+
+    expect(addToast).toHaveBeenCalledWith('重启失败，请手动启动应用。', 'error')
+    expect(latest.state).toBe('downloaded')
+
+    await act(async () => { await latest.install() })
+    expect(relaunchMock).toHaveBeenCalledTimes(2)
   })
 })
 

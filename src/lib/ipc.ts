@@ -130,7 +130,25 @@ export async function openExternal(url: string): Promise<'system' | 'builtin'> {
   }
 
   // 浏览器降级
-  const win = window.open(url, '_blank', 'noopener,noreferrer')
+  //
+  // ⚠️ 这里**不能**写成 `window.open(url, '_blank', 'noopener,noreferrer')`：
+  // 按 HTML 规范，只要 windowFeatures 里带 `noopener`（或 `noreferrer`），
+  // `window.open` 就**返回 null** —— 那是规范行为，不是「被浏览器拦截」。
+  // 旧实现据此判定「打开失败」，于是浏览器预览里点「打开发布页」只会弹一条
+  // 失败提示，链接根本开不出来。
+  // 正确做法：先按普通新窗口打开拿到句柄，再立刻把 opener 置空
+  // （opener 是跨域可写属性，置空等价于 noopener，且没有竞态窗口）。
+  let win: Window | null = null
+  try {
+    win = window.open(url, '_blank')
+  } catch {
+    // 某些环境（严格 CSP、沙箱 iframe）下 window.open 会直接抛错
+  }
   if (!win) throw new Error('打开内置浏览器失败（可能被拦截）')
+  try {
+    win.opener = null
+  } catch {
+    // 极端环境下不可写时忽略：功能不受影响，只是新页面理论上能拿到 opener
+  }
   return 'builtin'
 }

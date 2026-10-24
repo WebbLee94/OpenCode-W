@@ -195,6 +195,31 @@ async function shellOpenTargets(page: Page): Promise<string[]> {
   })
 }
 
+/**
+ * 让 `plugin:shell|open` 失败 —— 模拟「系统浏览器打不开」。
+ *
+ * 打开发布页时 `openExternal` 先试 shell plugin，失败才降级到 `window.open`。
+ * 把 shell 打掉，就能测到这条浏览器降级路径。
+ */
+async function breakShellOpen(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const internals = (
+      window as unknown as {
+        __TAURI_INTERNALS__?: {
+          invoke: (cmd: string, payload?: unknown, options?: unknown) => Promise<unknown>
+        }
+      }
+    ).__TAURI_INTERNALS__
+    if (!internals) throw new Error('Tauri stub 未安装：必须先调用 installTauriStub')
+
+    const original = internals.invoke.bind(internals)
+    internals.invoke = (cmd, payload, options) => {
+      if (cmd === 'plugin:shell|open') return Promise.reject(new Error('shell unavailable'))
+      return original(cmd, payload, options)
+    }
+  })
+}
+
 interface CollectedErrors {
   consoleErrors: string[]
   pageErrors: string[]
@@ -440,5 +465,51 @@ test.describe('设置页 · 版本更新（模拟 Tauri 环境）', () => {
     await releaseBtn.click()
     await expect.poll(() => shellOpenTargets(page)).toHaveLength(1)
     expect((await shellOpenTargets(page))[0]).toContain('/releases/latest')
+  })
+
+  test('TLS 校验失败：报「网络连接失败」，绝不报「签名校验未通过」', async ({ page }) => {
+    await page.goto('/#/settings')
+    await installUpdaterGate(page)
+
+    await page.getByRole('button', { name: '检查更新' }).click()
+    // ⚠️ 这类错误里有裸 "verify"：旧规则会先命中签名规则，
+    // 报成「更新包签名校验未通过，已拒绝安装」—— 比真实原因严重得多。
+    await rejectUpdaterCheck(page, 'failed to verify TLS certificate')
+
+    const status = page.getByTestId('update-status')
+    await expect(status).toHaveText(NETWORK_FAIL_HINT)
+    await expect(status).not.toContainText('签名')
+    await expect(status).not.toContainText('已是最新')
+  })
+
+  test('系统浏览器不可用时：降级到浏览器新窗口打开发布页（不走失败提示）', async ({ page, context }) => {
+    const errors = attachErrorCollectors(page)
+    await page.goto('/#/settings')
+    await installUpdaterGate(page)
+    // shell plugin 打掉 → openExternal 走浏览器降级路径
+    await breakShellOpen(page)
+
+    await page.getByRole('button', { name: '检查更新' }).click()
+    await rejectUpdaterCheck(page, 'minisign error: signature verification failed')
+
+    const releaseBtn = page.getByRole('button', { name: '打开发布页' })
+    await expect(releaseBtn).toBeVisible()
+
+    // ⚠️ 回归点：浏览器降级路径必须真的开出一个窗口。
+    // 旧实现用 window.open(url, '_blank', 'noopener,noreferrer')，
+    // 按规范带 noopener 时 window.open 返回 null → 被误判成「打开失败」。
+    const popupPromise = context.waitForEvent('page')
+    await releaseBtn.click()
+    const popup = await popupPromise
+    // GitHub 会把 /releases/latest 重定向到具体的 tag 页，两者都算对
+    expect(popup.url()).toContain('/WebbLee94/OpenCode-W/releases')
+    await popup.close()
+
+    // 没有走失败提示分支。
+    // ⚠️ 失败提示是 toast，3 秒后自动消失 —— 必须在其消失前断言，
+    // 否则「不存在」会先假通过、再变真（反过来也一样会漏判）。
+    await page.waitForTimeout(500)
+    expect(errors.consoleErrors.filter(e => e.includes('打开发布页失败'))).toEqual([])
+    expect(await page.getByText(/打开发布页失败/).count()).toBe(0)
   })
 })
