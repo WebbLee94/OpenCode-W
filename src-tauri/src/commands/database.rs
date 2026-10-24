@@ -220,7 +220,7 @@ mod tests {
         assert_eq!(info.mode, SchemaMode::Unsupported);
         assert!(info.unsupported_reason.is_some());
 
-        let _ = std::fs::remove_file(path);
+        crate::db::remove_fixture_file_if_exists(&path);
     }
 
     /// 已打开的库：默认直接返回缓存，不重新探测。
@@ -244,7 +244,9 @@ mod tests {
         let refreshed = schema_info(&state, Some(true)).expect("重新探测必须成功");
         assert_eq!(refreshed.mode, SchemaMode::V1);
 
-        let _ = std::fs::remove_file(path);
+        // 先关掉连接池再删夹具：Windows 不允许删除仍被句柄占用的文件。
+        crate::db::close(&state).expect("state closes fixture");
+        crate::db::remove_fixture_file_if_exists(&path);
     }
 
     /// v2-mixed 夹具：`refresh=false` 命中缓存，`refresh=true` 重新探测不报错。
@@ -274,7 +276,9 @@ mod tests {
         assert_eq!(refreshed.v2_session_count, 6);
         assert!(state.is_open(), "重新探测不得关闭连接池");
 
-        let _ = std::fs::remove_file(path);
+        // 先关掉连接池再删夹具：Windows 不允许删除仍被句柄占用的文件。
+        crate::db::close(&state).expect("state closes fixture");
+        crate::db::remove_fixture_file_if_exists(&path);
     }
 
     /// P2-13：探测快照与生效形态分离。
@@ -325,6 +329,6 @@ mod tests {
         assert_eq!(cached.mode, SchemaMode::V2Mixed);
 
         crate::db::close(&state).expect("state closes fixture");
-        let _ = std::fs::remove_file(path);
+        crate::db::remove_fixture_file_if_exists(&path);
     }
 }

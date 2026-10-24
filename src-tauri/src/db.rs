@@ -9,6 +9,93 @@ use std::sync::{Arc, Mutex};
 
 use crate::schema::{MigrationPhase, SchemaInfo, SchemaMode};
 
+// ─── 测试夹具清理（跨平台）─────────────────────────────────────────────
+//
+// Windows 不允许删除仍被句柄打开的文件；r2d2 连接池是**异步**回收连接的，
+// 因此 `close()` 之后立刻 `remove_file` 仍可能拿到
+// “The process cannot access the file because it is being used by another process”。
+//
+// 统一策略：
+// - 先尝试删除，明显不是「文件被占用」的错误立即失败；
+// - 命中「文件被占用」（Windows sharing violation / lock violation / access denied）
+//   时重试约 5 秒（100 × 50ms），等待句柄释放；
+// - 仍失败：**非 Windows 平台继续 panic**（保留 macOS/Linux 的严格性，
+//   能发现真实的句柄泄漏）；Windows 平台打印警告后放过
+//   （夹具在临时目录、文件名唯一，残留无害）。
+
+/// 删除测试夹具文件（存在即删）。
+#[cfg(test)]
+pub(crate) fn remove_fixture_file(path: &Path) {
+    remove_fixture_with_retry(path, "fixture database is removed", || {
+        std::fs::remove_file(path)
+    });
+}
+
+/// 删除测试夹具文件；文件不存在时静默跳过（`-wal` / `-shm` 侧车文件常用）。
+#[cfg(test)]
+pub(crate) fn remove_fixture_file_if_exists(path: &Path) {
+    remove_fixture_with_retry(path, "fixture file is removed", || {
+        match std::fs::remove_file(path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            other => other,
+        }
+    });
+}
+
+/// 递归删除测试夹具目录。
+#[cfg(test)]
+pub(crate) fn remove_fixture_dir(path: &Path) {
+    remove_fixture_with_retry(path, "fixture directory is removed", || {
+        std::fs::remove_dir_all(path)
+    });
+}
+
+/// 带重试的删除：见文件顶部说明。
+#[cfg(test)]
+fn remove_fixture_with_retry<F>(path: &Path, label: &str, mut remove: F)
+where
+    F: FnMut() -> std::io::Result<()>,
+{
+    const RETRIES: usize = 100;
+    const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(50);
+
+    let mut last_error = None;
+    for attempt in 0..=RETRIES {
+        match remove() {
+            Ok(()) => return,
+            Err(error) => {
+                let retryable = is_file_in_use(&error);
+                last_error = Some(error);
+                if !retryable || attempt == RETRIES {
+                    break;
+                }
+                std::thread::sleep(RETRY_DELAY);
+            }
+        }
+    }
+
+    let error = last_error.expect("删除失败时一定拿到错误");
+    if cfg!(target_os = "windows") {
+        eprintln!(
+            "[warn] {label}: Windows 仍占用该文件，跳过清理（残留无害）：{path:?}（{error}）"
+        );
+    } else {
+        panic!("{label}: {error}");
+    }
+}
+
+/// 错误是否表示「文件仍被其他句柄占用」。
+#[cfg(test)]
+fn is_file_in_use(error: &std::io::Error) -> bool {
+    if cfg!(target_os = "windows") {
+        // ERROR_ACCESS_DENIED(5) / ERROR_SHARING_VIOLATION(32) / ERROR_LOCK_VIOLATION(33)
+        matches!(error.raw_os_error(), Some(5 | 32 | 33))
+    } else {
+        // EBUSY(16) / ETXTBSY(26)
+        matches!(error.raw_os_error(), Some(16 | 26))
+    }
+}
+
 /// Get a pooled connection from the database state.
 ///
 /// The Mutex is held only briefly to clone the Pool; the actual connection
@@ -558,7 +645,9 @@ mod health_tests {
 
     use rusqlite::Connection;
 
-    use super::{close, integrity_check, lightweight_health_check, open, DbState};
+    use super::{
+        close, integrity_check, lightweight_health_check, open, remove_fixture_file, DbState,
+    };
 
     static FIXTURE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -602,7 +691,7 @@ mod health_tests {
         assert!(health.page_count >= 0);
 
         close(&state).expect("state closes fixture");
-        std::fs::remove_file(path).expect("fixture database is removed");
+        remove_fixture_file(&path);
     }
 
     #[test]
@@ -623,7 +712,7 @@ mod health_tests {
         assert_eq!(diagnostic.result.as_deref(), Some("ok"));
 
         close(&state).expect("state closes fixture");
-        std::fs::remove_file(path).expect("fixture database is removed");
+        remove_fixture_file(&path);
     }
 }
 
@@ -1119,7 +1208,9 @@ mod schema_integration_tests {
 
     use rusqlite::Connection;
 
-    use super::{close, get_pool, get_stats, open, DbState};
+    use super::{
+        close, get_pool, get_stats, open, remove_fixture_file, DbState,
+    };
     use crate::schema::{fixtures, MigrationPhase, SchemaMode};
 
     static FIXTURE_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -1212,7 +1303,7 @@ mod schema_integration_tests {
         assert_eq!(stats.part_count, 3, "v1 仍按 part 行数统计");
 
         close(&state).expect("state closes fixture");
-        std::fs::remove_file(path).expect("fixture database is removed");
+        remove_fixture_file(&path);
     }
 
     #[test]
@@ -1244,7 +1335,7 @@ mod schema_integration_tests {
         assert_eq!(stats.part_count, 3, "v2 无 part 表，按 session_message 行数统计");
 
         close(&state).expect("state closes fixture");
-        std::fs::remove_file(path).expect("fixture database is removed");
+        remove_fixture_file(&path);
     }
 
     #[test]
@@ -1294,7 +1385,7 @@ mod schema_integration_tests {
         assert_eq!(stats.root_session_count, 1);
 
         close(&state).expect("state closes fixture");
-        std::fs::remove_file(path).expect("fixture database is removed");
+        remove_fixture_file(&path);
     }
 
     #[test]
@@ -1315,7 +1406,7 @@ mod schema_integration_tests {
         assert_eq!(schema.migration_phase, MigrationPhase::Running);
 
         close(&state).expect("state closes fixture");
-        std::fs::remove_file(path).expect("fixture database is removed");
+        remove_fixture_file(&path);
     }
 
     /// 写后一致性（TASK-026）：写完刷新缓存的计数。
@@ -1352,7 +1443,7 @@ mod schema_integration_tests {
         assert_eq!(refreshed.v2_session_count, 5, "少了一个 v2 会话");
 
         close(&state).expect("state closes fixture");
-        std::fs::remove_file(path).expect("fixture database is removed");
+        remove_fixture_file(&path);
     }
 
     /// `database:info` 的 `refresh` 分支（TASK-051）：用新只读连接重新探测，
@@ -1432,8 +1523,11 @@ mod schema_integration_tests {
             }
         }
 
+        // 必须先释放本地持有的 pool 副本：`close()` 只撤掉 state 里的那一份，
+        // 本地的 `pool` 仍让连接池活着 → 文件句柄不释放（Windows 删不掉）。
+        drop(pool);
         close(&state).expect("state closes fixture");
-        std::fs::remove_file(path).expect("fixture database is removed");
+        remove_fixture_file(&path);
     }
 
     /// P2-13：探测与生效形态分离。
@@ -1489,7 +1583,7 @@ mod schema_integration_tests {
         );
 
         close(&state).expect("state closes fixture");
-        std::fs::remove_file(path).expect("fixture database is removed");
+        remove_fixture_file(&path);
     }
 
     /// 重新探测失败时保留原缓存（不把「可用」变成「未知」）。
@@ -1505,7 +1599,13 @@ mod schema_integration_tests {
         let before = state.schema().expect("schema is stored");
 
         // 文件被移走 → 只读连接打不开 → 刷新必须报错且不改动缓存。
-        std::fs::remove_file(&path).expect("fixture database is removed");
+        //
+        // 先**只丢连接池**、保留 schema 缓存：Windows 不允许删除仍被句柄占用
+        // 的文件，而连接池里的连接正占着它。注意不能用 `close()` 代替——
+        // `close()` 会把 schema 缓存一起清掉，本用例的语义恰恰是
+        // 「刷新失败了，但缓存必须还在」。
+        *state.0.lock().expect("pool lock is available") = None;
+        remove_fixture_file(&path);
 
         let error = state.refresh_schema().expect_err("刷新必须失败");
         assert!(
@@ -1624,7 +1724,7 @@ mod schema_integration_tests {
         assert!(!state.is_open());
         assert!(state.schema().is_none());
 
-        std::fs::remove_file(path).expect("fixture database is removed");
+        remove_fixture_file(&path);
     }
 
     #[test]
@@ -1639,7 +1739,7 @@ mod schema_integration_tests {
         close(&state).expect("state closes fixture");
         assert!(state.schema().is_none());
 
-        std::fs::remove_file(path).expect("fixture database is removed");
+        remove_fixture_file(&path);
     }
 }
 
@@ -1654,7 +1754,9 @@ mod write_gate_tests {
 
     use rusqlite::Connection;
 
-    use super::{close, ensure_writable, ensure_writable_conn, get_pool, open, DbState};
+    use super::{
+        close, ensure_writable, ensure_writable_conn, get_pool, open, remove_fixture_file, DbState,
+    };
     use crate::schema::{fixtures, MigrationPhase};
 
     static FIXTURE_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -1725,8 +1827,12 @@ mod write_gate_tests {
         let error = ensure_writable_conn(&conn).expect_err("迁移失败必须拒绝写入");
         assert_eq!(error, super::READ_ONLY_MESSAGE);
 
+        // 删夹具前必须释放仍持有文件句柄的连接与连接池副本
+        // （Windows 不允许删除仍被占用的文件）。
+        drop(conn);
+        drop(pool);
         close(&state).expect("state closes fixture");
-        std::fs::remove_file(path).expect("fixture database is removed");
+        remove_fixture_file(&path);
     }
 
     /// 没有 `kv` 表（v1 库）或没有迁移记录 → 放行。
@@ -1743,7 +1849,9 @@ mod write_gate_tests {
             ensure_writable_conn(&conn).is_ok(),
             "v1 库没有 kv 表，必须放行"
         );
-        std::fs::remove_file(path).expect("fixture database is removed");
+        // 连接仍打开着文件：删之前先放掉句柄（Windows）。
+        drop(conn);
+        remove_fixture_file(&path);
 
         // v2 库有 kv 表但没有迁移记录 → 放行。
         let path = fixture_path();
@@ -1757,7 +1865,8 @@ mod write_gate_tests {
             ensure_writable_conn(&conn).is_ok(),
             "没有迁移记录时必须放行"
         );
-        std::fs::remove_file(path).expect("fixture database is removed");
+        drop(conn);
+        remove_fixture_file(&path);
     }
 
     /// 读不到迁移状态时**保守拒绝**：宁可拦住写入，也不能在迁移期间破坏它。
@@ -1778,7 +1887,8 @@ mod write_gate_tests {
             error.contains("无法确认数据库迁移状态"),
             "错误文案要说明原因：{error}"
         );
-        std::fs::remove_file(path).expect("fixture database is removed");
+        drop(conn);
+        remove_fixture_file(&path);
     }
 }
 
