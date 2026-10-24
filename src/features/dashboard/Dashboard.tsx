@@ -53,7 +53,7 @@ import PageHeader from '@/components/PageHeader'
 import TooltipHint from '@/components/TooltipHint'
 import SchemaBlockedState from '@/features/datasource/SchemaBlockedState'
 import { useSchemaStatus, useOptionalDataSource } from '@/features/datasource/useDataSource'
-import { formatBytes, formatNumber, formatLargeNumber, sumTokenTotal } from '@/lib/format'
+import { formatBytes, formatNumber, formatLargeNumber, sumTokenTotal, toLocalDateString } from '@/lib/format'
 
 // ── 统计不可用时的统一占位 ─────────────────────────────────────
 // 后端拒绝或查询失败都落到这里：只给「暂不可用」，不再区分具体原因，
@@ -148,13 +148,8 @@ const DASHBOARD_TABS: { key: DashboardTab; label: string; icon: string }[] = [
   { key: 'trends', label: '趋势', icon: '📈' },
 ]
 
-// 本地日期格式 YYYY-MM-DD（避免 toISOString() 的 UTC 偏移）
-function toLocalDateString(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
+// 本地日期格式 YYYY-MM-DD 现在是共享实现（@/lib/format 的 toLocalDateString），
+// 会话浏览页的日期筛选也用它，避免两页出现两套日期口径。
 
 /**
  * 预设时间范围：**含今日**在内的 N 个自然日。

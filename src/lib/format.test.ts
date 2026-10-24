@@ -2,8 +2,8 @@
  * 冒烟测试：验证纯函数模块 `src/lib/format.ts` 行为
  * 目的：保证 build 后关键工具函数不回归
  */
-import { describe, it, expect } from 'vitest'
-import { formatBytes, formatNumber, sumTokenTotal, tildifyPath, truncateText } from './format'
+import { describe, it, expect, afterEach } from 'vitest'
+import { formatBytes, formatNumber, sumTokenTotal, tildifyPath, truncateText, toLocalDateString } from './format'
 
 describe('formatBytes', () => {
   it('returns "0 B" for zero', () => {
@@ -81,5 +81,38 @@ describe('tildifyPath', () => {
   it('returns empty for empty inputs', () => {
     expect(tildifyPath('', '/Users/webb')).toBe('')
     expect(tildifyPath('/Users/webb/db.sqlite', '')).toBe('/Users/webb/db.sqlite')
+  })
+})
+
+describe('toLocalDateString', () => {
+  const ORIGINAL_TZ = process.env.TZ
+
+  afterEach(() => {
+    // 还原时区：process.env.TZ = undefined 会写成字符串 "undefined"
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ
+    else process.env.TZ = ORIGINAL_TZ
+  })
+
+  it('按本地日历输出 YYYY-MM-DD，而不是 UTC 日期', () => {
+    // 固定到 UTC+8（Asia/Shanghai）：2026-10-24 00:30 (+08:00) = 2026-10-23T16:30Z
+    process.env.TZ = 'Asia/Shanghai'
+    const d = new Date('2026-10-23T16:30:00Z')
+
+    // UTC 日期是「昨天」，本地日期才是「今天」——这正是 toISOString() 会踩的坑
+    expect(d.toISOString().slice(0, 10)).toBe('2026-10-23')
+    expect(toLocalDateString(d)).toBe('2026-10-24')
+  })
+
+  it('负时区同样按本地日历走', () => {
+    process.env.TZ = 'America/Los_Angeles'
+    // 2026-10-24 20:00 (-07:00) = 2026-10-25T03:00Z → UTC 是「明天」
+    const d = new Date('2026-10-25T03:00:00Z')
+    expect(d.toISOString().slice(0, 10)).toBe('2026-10-25')
+    expect(toLocalDateString(d)).toBe('2026-10-24')
+  })
+
+  it('月份与日期都补零', () => {
+    process.env.TZ = 'UTC'
+    expect(toLocalDateString(new Date('2026-01-05T00:00:00Z'))).toBe('2026-01-05')
   })
 })
