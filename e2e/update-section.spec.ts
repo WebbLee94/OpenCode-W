@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { installTauriStub, type StubPlan } from './helpers/tauri-stub'
 import { IPC_CHANNELS as CH } from '../shared/ipc-channels'
+import { expectContrastAtLeast } from './helpers/contrast'
 
 /**
  * 「设置页 · 版本更新」区 E2E —— 覆盖 e727c1a 的状态化改造。
@@ -388,6 +389,28 @@ test.describe('设置页 · 版本更新（浏览器预览环境）', () => {
     // 键盘路径：原生 title 在 focus 时不显示，自绘 tooltip 必须补上这一条
     await copyBtn.focus()
     await expect(tooltip).toHaveCSS('opacity', '1')
+  })
+
+  test('复制图标静止态对比度 ≥ 3:1（WCAG 1.4.11：图标是按钮唯一的视觉标识）', async ({ page }) => {
+    await page.goto('/#/settings')
+
+    const copyBtn = page.getByRole('button', { name: '复制版本号' })
+    await expect(copyBtn).toBeVisible()
+
+    // 量真实渲染出来的颜色（不是 class 名）：
+    // 弱化一档在肉眼看来毫无差别，却可能直接跌破 3:1。
+    // 测量逻辑见共享 helper（e2e/helpers/contrast.ts）。
+    await expectContrastAtLeast(
+      page,
+      'button[aria-label="复制版本号"]',
+      3,
+      '复制版本号图标',
+    )
+
+    // 顺手钉住颜色本身：text-gray-500（对白底 ≈ 4.8:1）
+    // ⚠️ 不要退回 text-gray-400（≈ 2.5:1，达不到 3:1）
+    await expect(copyBtn).toHaveClass(/text-gray-500/)
+    await expect(copyBtn).not.toHaveClass(/text-gray-400/)
   })
 
   test('复制按钮：连续复制两次都会更新读屏播报区', async ({ page }) => {

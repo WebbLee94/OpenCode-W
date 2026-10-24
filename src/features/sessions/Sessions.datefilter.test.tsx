@@ -1,14 +1,20 @@
 /**
- * 会话浏览页日期筛选口径单测 —— 两个缺陷的回归保护：
+ * 会话浏览页日期筛选口径单测 —— 三个缺陷的回归保护：
  *
  *   1. off-by-one：后端窗口两端都含（start 当天 00:00:00 ~ end 当天 23:59:59），
  *      所以「近3天/近一周/近一月」必须是**含今日在内**的 3/7/30 个自然日，
  *      起点是「今天 − (N−1) 天」，不是「今天 − N 天」。
  *   2. UTC 日期：旧实现用 `toISOString().slice(0,10)`（UTC）。在 UTC+8 的
  *      每天 08:00 之前它返回「昨天」，用户点「今天」实际筛的是昨天。
+ *   3. 夏令时切换日：旧实现用 `Date.now() - n * 86_400_000`（减毫秒）算起点，
+ *      跨过夏令时边界时本地墙钟偏移 ±1 小时 → 本地日期翻转一天
+ *      （春季变 8 天、秋季变 6 天）。见文件末尾的专项 describe。
  *
  * 测试固定「现在」= 2026-10-24 00:30 (+08:00)（UTC 那天还是 10-23），
  * 正好落在这个 8 小时窗口里：旧实现在这里必然算错。
+ *
+ * 期望值一律写成**字面日期串**（时区 + 时钟钉死），
+ * 不是照抄实现公式 —— 照抄的断言在夏令时切换日会跟着实现一起错。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -119,7 +125,6 @@ function dayDiff(from: string, to: string): number {
   const [y2, m2, d2] = to.split('-').map(Number)
   return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000)
 }
-
 /** 打开日期下拉并选中某个预设，返回该次请求实际带的日期条件。 */
 async function selectPreset(label: string): Promise<{ startDate?: string; endDate?: string }> {
   renderSessions()
@@ -170,5 +175,62 @@ describe('会话浏览页日期筛选口径', () => {
     expect(filter.endDate).toBe('2026-10-24')
     // 端点差 29 天 → 区间含 30 个自然日
     expect(dayDiff(filter.startDate!, filter.endDate!)).toBe(29)
+  })
+})
+
+/**
+ * 夏令时切换日专项 —— 预设起点必须按**日历日**算。
+ *
+ * 背景：旧实现用 `Date.now() - n * 86_400_000`（减毫秒）算起点，
+ * 跨过夏令时边界时本地墙钟偏移 ±1 小时 → 本地日期翻转一天：
+ *   - 春季跳表落在窗口内 → 区间变成 8 天（起点早一天）
+ *   - 秋季回拨落在窗口内 → 区间变成 6 天（起点晚一天）
+ *
+ * 期望值写成**字面日期串**：时区与时钟都钉死，断言钉的是日历语义本身，
+ * 不是「照抄实现公式」——那种断言在切换日会跟着实现一起错。
+ */
+describe('会话浏览页日期筛选口径（夏令时切换日）', () => {
+  beforeEach(() => {
+    // 固定到有夏令时的时区（美国东部时间）
+    process.env.TZ = 'America/New_York'
+  })
+
+  afterEach(() => {
+    // 还原给同文件其它用例
+    process.env.TZ = 'Asia/Shanghai'
+  })
+
+  it('春季跳表（2026-03-08）落在窗口内：「近一周」起点是 3/8，不是 3/7', async () => {
+    // 本地 2026-03-14 00:30 (-04:00 EDT) = 2026-03-14T04:30Z
+    vi.setSystemTime(new Date('2026-03-14T04:30:00Z'))
+
+    const filter = await selectPreset('近一周')
+
+    expect(filter.startDate).toBe('2026-03-08')
+    expect(filter.endDate).toBe('2026-03-14')
+    // 端点差恰好 6 天 → 区间含 7 个自然日（不是 8 天）
+    expect(dayDiff(filter.startDate!, filter.endDate!)).toBe(6)
+  })
+
+  it('秋季回拨（2026-11-01）落在窗口内：「近一周」起点是 10/27，不是 10/28', async () => {
+    // 本地 2026-11-02 23:30 (-05:00 EST) = 2026-11-03T04:30Z
+    vi.setSystemTime(new Date('2026-11-03T04:30:00Z'))
+
+    const filter = await selectPreset('近一周')
+
+    expect(filter.startDate).toBe('2026-10-27')
+    expect(filter.endDate).toBe('2026-11-02')
+    // 端点差恰好 6 天 → 区间含 7 个自然日（不是 6 天）
+    expect(dayDiff(filter.startDate!, filter.endDate!)).toBe(6)
+  })
+
+  it('夏令时切换日：「近3天」同样按日历日', async () => {
+    // 本地 2026-03-14 00:30 (-04:00 EDT)
+    vi.setSystemTime(new Date('2026-03-14T04:30:00Z'))
+
+    const three = await selectPreset('近3天')
+    expect(three.startDate).toBe('2026-03-12')
+    expect(three.endDate).toBe('2026-03-14')
+    expect(dayDiff(three.startDate!, three.endDate!)).toBe(2)
   })
 })
