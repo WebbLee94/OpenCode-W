@@ -47,7 +47,7 @@
 //! JSON 路径与表名只来自本模块常量（SEC-003）。
 
 use std::borrow::Cow;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -56,8 +56,9 @@ use serde::Deserialize;
 
 use crate::commands::fork_stats;
 use crate::models::dto::{
-    CostTrendItem, MessageTrendItem, ModelRankingItem, ProjectRankingItem, ProviderStatsItem,
-    SkillUsage, TokenGroupDataPoint, TokenStats, ToolRanking,
+    CostTrendItem, MessageTrendItem, ModelRankingItem, ModelRankingResponse, ProjectRankingItem,
+    ProviderStatsItem, ProviderStatsResponse, RankingCoverageGap, SkillUsage, TokenGroupDataPoint,
+    TokenStats, ToolRanking,
 };
 
 /// v2 统计里被排除的消息类型（Q-03：这些事件不计入消息活跃度趋势）。
@@ -479,6 +480,11 @@ const MODEL_GROUP_KEY_SQL: &str = "CASE WHEN json_valid(s.model)
 /// 同一模型可能以不同 `variant` 存成多行 JSON；这里按 `id + providerID`
 /// 归并。返回的 `model` 仍是可被前端 `JSON.parse` 的 JSON 字符串
 /// （`{"id":...,"providerID":...}`），非 JSON 模型保持原串。
+///
+/// **空串模型不进排行**：`shape::model_key` 把空串视为「没有 model 记录」
+/// （投影路径同样如此），因此这里的过滤条件与投影路径保持一致 ——
+/// 空串会话的 token 全部落到 [`model_ranking_gap`] 的缺口里，不在排行里
+/// 重复出现。真库实测没有任何空串 `session_v2.model`，因此既有数值不变。
 pub fn model_ranking(
     conn: &Connection,
     window: Window,
@@ -498,7 +504,7 @@ pub fn model_ranking(
          FROM main.session_message sm
          JOIN main.session_v2 s ON s.id = sm.session_id
          WHERE sm.type = 'assistant'
-           AND s.model IS NOT NULL"
+           AND s.model IS NOT NULL AND s.model != ''"
     );
     query.push_hidden(&mut sql, hidden_json);
     query.push_window(&mut sql, window);
@@ -524,6 +530,43 @@ pub fn model_ranking(
         items.push(row.map_err(|e| query_error("模型排行", e))?);
     }
     Ok(items)
+}
+
+/// v2 模型排行的**覆盖缺口**：`session_v2.model` 为 NULL / 空串的会话。
+///
+/// 与 [`model_ranking`] 用**同样的过滤**（`push_hidden` + `push_window`），
+/// 但这里用 `LEFT JOIN`：投影路径（[`scan_projection`]）同样是 LEFT JOIN，
+/// `session_v2` 里没有对应行的孤儿消息在投影里落进模型缺口，两条路径必须
+/// 给出同一个数字。
+///
+/// 返回 `None` 表示没有缺口（前端据此整行不显示）。
+pub fn model_ranking_gap(
+    conn: &Connection,
+    window: Window,
+    hidden_json: &str,
+) -> Result<Option<RankingCoverageGap>, String> {
+    let mut query = Query::new();
+    let mut sql = format!(
+        "SELECT COALESCE(SUM({TOKEN_TOTAL_SQL}), 0) AS tokenCount,
+                COUNT(DISTINCT sm.session_id) AS sessionCount
+         FROM main.session_message sm
+         LEFT JOIN main.session_v2 s ON s.id = sm.session_id
+         WHERE sm.type = 'assistant'
+           AND (s.model IS NULL OR s.model = '')"
+    );
+    query.push_hidden(&mut sql, hidden_json);
+    query.push_window(&mut sql, window);
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| query_error("模型排行缺口", e))?;
+    let (token_count, session_count) = stmt
+        .query_row(rusqlite::params_from_iter(query.params.iter()), |row| {
+            let token_count: f64 = row.get(0)?;
+            let session_count: i64 = row.get(1)?;
+            Ok((token_count, session_count))
+        })
+        .map_err(|e| query_error("模型排行缺口", e))?;
+
+    Ok(build_gap(token_count, session_count))
 }
 
 /// v2 供应商统计：按 `session_v2.model.providerID` 分组。
@@ -566,6 +609,65 @@ pub fn provider_stats(
         items.push(row.map_err(|e| query_error("供应商统计", e))?);
     }
     Ok(items)
+}
+
+/// v2 Provider 统计的**覆盖缺口**：有 model、但取不到 `providerID` 的会话。
+///
+/// 与 [`provider_stats`] 的过滤互为补集（同一批 `push_hidden` + `push_window`
+/// 条件）：
+///
+/// - `model` 为 NULL / 空串 → **模型缺口**（不是 Provider 缺口）；
+/// - `model` 非空但不是合法 JSON、或 JSON 里没有 `providerID` → **Provider 缺口**。
+///
+/// 这与投影路径（[`shape::model_key`]）逐字对齐：非 JSON 的 model 字符串在
+/// 投影里是「有 model、但没有 provider」，因此落在 Provider 缺口而不是模型缺口。
+///
+/// `json_extract` 对非法 JSON 会直接报错，所以这里用 `CASE` 包一层：只有
+/// `json_valid` 通过时才求值 `json_extract`。
+pub fn provider_stats_gap(
+    conn: &Connection,
+    window: Window,
+    hidden_json: &str,
+) -> Result<Option<RankingCoverageGap>, String> {
+    let mut query = Query::new();
+    let mut sql = format!(
+        "SELECT COALESCE(SUM({TOKEN_TOTAL_SQL}), 0) AS tokenCount,
+                COUNT(DISTINCT sm.session_id) AS sessionCount
+         FROM main.session_message sm
+         JOIN main.session_v2 s ON s.id = sm.session_id
+         WHERE sm.type = 'assistant'
+           AND s.model IS NOT NULL AND s.model != ''
+           AND (json_valid(s.model) = 0
+                OR CASE WHEN json_valid(s.model) = 1
+                        THEN json_extract(s.model, '$.providerID') END IS NULL)"
+    );
+    query.push_hidden(&mut sql, hidden_json);
+    query.push_window(&mut sql, window);
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| query_error("供应商缺口", e))?;
+    let (token_count, session_count) = stmt
+        .query_row(rusqlite::params_from_iter(query.params.iter()), |row| {
+            let token_count: f64 = row.get(0)?;
+            let session_count: i64 = row.get(1)?;
+            Ok((token_count, session_count))
+        })
+        .map_err(|e| query_error("供应商缺口", e))?;
+
+    Ok(build_gap(token_count, session_count))
+}
+
+/// 缺口数值 → DTO；没有缺口时返回 `None`（前端据此整行不显示）。
+///
+/// 判定标准是 **token 数**：没有 token 可解释时（例如会话只有 0 token 的
+/// 消息）就不展示缺口行，避免出现「缺口 0 token」这种自相矛盾的数字。
+fn build_gap(token_count: f64, session_count: i64) -> Option<RankingCoverageGap> {
+    if token_count <= 0.0 {
+        return None;
+    }
+    Some(RankingCoverageGap {
+        token_count: token_count as i64,
+        session_count,
+    })
 }
 
 /// v2 项目排行：按 `session_v2.directory` 分组，取目录名（末段）。
@@ -719,7 +821,9 @@ pub fn cost_trend(
 // 不能进技能名的回退链——否则技能排行会出现一堆 `call_...`。
 
 /// 投影缓存版本号：实现变更时必须 +1，避免旧投影被复用。
-pub const PROJ_VERSION: u32 = 1;
+///
+/// v2：新增「模型 / Provider 覆盖缺口」统计（投影里多算了缺口 token 与会话）。
+pub const PROJ_VERSION: u32 = 2;
 
 /// 单窗口投影允许的最大消息行数；超过则放弃投影、回退旧查询，避免大库内存风险。
 const PROJ_MAX_ROWS: i64 = 400_000;
@@ -935,6 +1039,20 @@ pub struct Projection {
     pub projects: BTreeMap<String, (f64, f64)>,
     /// 日期 → 消息数（已排除 idle / model-switched / agent-switched）。
     pub messages_by_day: BTreeMap<String, i64>,
+    /// **模型缺口**：没有 model 记录、因而不参与模型排行的 token 合计。
+    ///
+    /// `session_v2.model` 为 NULL / 空串的会话，其 token 会进入概览卡的
+    /// 「Token 合计」，却不进入模型排行。
+    pub unattributed_model_tokens: f64,
+    /// 模型缺口涉及的会话 id（去重；长度 = 缺口会话数）。
+    pub unattributed_model_sessions: BTreeSet<String>,
+    /// **Provider 缺口**：有 model、但没有 `providerID` 的 token 合计。
+    ///
+    /// 与模型缺口是**两组不同的 token**（前者 model 缺失，后者 model 存在
+    /// 但取不到 provider），不能互相替代。
+    pub unattributed_provider_tokens: f64,
+    /// Provider 缺口涉及的会话 id（去重；长度 = 缺口会话数）。
+    pub unattributed_provider_sessions: BTreeSet<String>,
 }
 
 /// 拆出消息级 token 六元组：input, output, reasoning, cache_read, cache_write, cost。
@@ -958,6 +1076,11 @@ fn token_total(data: &MsgData<'_>) -> f64 {
 }
 
 /// 单趟扫描 SQL：只取原始列（含 3 个 `strftime(localtime)`），不含任何 JSON 函数。
+///
+/// `sm.session_id` **追加在最后一列**（下标 7）：覆盖缺口要按会话去重，
+/// 必须拿到消息自己的 `session_id`（`s.id` 在 `LEFT JOIN` 失配时是 NULL，
+/// 孤儿消息就数不出会话）。追加在末尾是为了不改动既有列的下标，
+/// `row.get(0..=6)` 的含义保持不变。
 fn projection_sql(query: &mut Query, window: Window, hidden_json: &str) -> String {
     let mut sql = String::from(
         "SELECT sm.type,
@@ -966,7 +1089,8 @@ fn projection_sql(query: &mut Query, window: Window, hidden_json: &str) -> Strin
                 strftime('%Y-%m', sm.time_created / 1000, 'unixepoch', 'localtime'),
                 sm.data,
                 s.model,
-                s.directory
+                s.directory,
+                sm.session_id
          FROM main.session_message sm
          LEFT JOIN main.session_v2 s ON s.id = sm.session_id
          WHERE 1=1",
@@ -1064,6 +1188,9 @@ pub fn scan_projection(
         let data: String = row.get(4).map_err(|e| query_error("投影", e))?;
         let model_raw: Option<String> = row.get(5).map_err(|e| query_error("投影", e))?;
         let directory: Option<String> = row.get(6).map_err(|e| query_error("投影", e))?;
+        // 消息自己的会话 id：覆盖缺口按会话去重时用它（`s.id` 在孤儿消息上
+        // 是 NULL，数不出会话）。
+        let session_id: Option<String> = row.get(7).map_err(|e| query_error("投影", e))?;
 
         // 消息趋势：与旧 SQL 一致，排除三类事件，其余类型全部计入。
         if !HIDDEN_MESSAGE_TYPES.contains(&kind.as_str()) {
@@ -1106,26 +1233,56 @@ pub fn scan_projection(
             bucket.cost += cost;
 
             // 模型 / 供应商：旧 SQL 用 INNER JOIN + json_valid + providerID NOT NULL。
-            if let Some(key) = shape::model_key(model_raw.as_deref()) {
-                let tokens = token_total(&parsed);
-                let (group_id, group_provider) = key.group_key();
-                let entry = projection
-                    .models
-                    .entry((group_id, group_provider))
-                    .or_insert_with(|| ModelAccum {
-                        output: key.json(),
-                        tokens: 0.0,
-                        cost: 0.0,
-                    });
-                entry.tokens += tokens;
-                entry.cost += cost;
-                if let Some(provider) = key.provider.as_deref() {
+            //
+            // 覆盖缺口的分口径（与 `model_ranking_gap` / `provider_stats_gap`
+            // 逐字对齐，两条路径必须给出同一个数字）：
+            //
+            // - `model_key` 返回 None（model 为 NULL / 空串）→ **模型缺口**；
+            // - `model_key` 返回 Some 但没有 providerID（含非 JSON 的 model
+            //   字符串）→ **Provider 缺口**。
+            match shape::model_key(model_raw.as_deref()) {
+                None => {
+                    // 没有 model 记录：不进模型排行，计入模型缺口。
+                    projection.unattributed_model_tokens += token_total(&parsed);
+                    if let Some(id) = session_id.as_deref() {
+                        projection
+                            .unattributed_model_sessions
+                            .insert(id.to_string());
+                    }
+                }
+                Some(key) => {
+                    let tokens = token_total(&parsed);
+                    let (group_id, group_provider) = key.group_key();
                     let entry = projection
-                        .providers
-                        .entry(provider.to_string())
-                        .or_insert((0.0, 0.0));
-                    entry.0 += tokens;
-                    entry.1 += cost;
+                        .models
+                        .entry((group_id, group_provider))
+                        .or_insert_with(|| ModelAccum {
+                            output: key.json(),
+                            tokens: 0.0,
+                            cost: 0.0,
+                        });
+                    entry.tokens += tokens;
+                    entry.cost += cost;
+                    match key.provider.as_deref() {
+                        Some(provider) => {
+                            let entry = projection
+                                .providers
+                                .entry(provider.to_string())
+                                .or_insert((0.0, 0.0));
+                            entry.0 += tokens;
+                            entry.1 += cost;
+                        }
+                        None => {
+                            // 有 model、但没有 providerID：不进 Provider 统计，
+                            // 计入 Provider 缺口。
+                            projection.unattributed_provider_tokens += tokens;
+                            if let Some(id) = session_id.as_deref() {
+                                projection
+                                    .unattributed_provider_sessions
+                                    .insert(id.to_string());
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1379,6 +1536,19 @@ pub fn derive_model_ranking(projection: &Projection) -> Vec<ModelRankingItem> {
         .collect()
 }
 
+/// 模型排行 + 覆盖缺口。
+///
+/// 缺口 = 没有 model 记录、因而不参与模型排行的 token（与会话数）。
+pub fn derive_model_ranking_response(projection: &Projection) -> ModelRankingResponse {
+    ModelRankingResponse {
+        items: derive_model_ranking(projection),
+        coverage_gap: build_gap(
+            projection.unattributed_model_tokens,
+            projection.unattributed_model_sessions.len() as i64,
+        ),
+    }
+}
+
 pub fn derive_provider_stats(projection: &Projection) -> Vec<ProviderStatsItem> {
     let mut items: Vec<(&String, f64, f64)> = projection
         .providers
@@ -1394,6 +1564,19 @@ pub fn derive_provider_stats(projection: &Projection) -> Vec<ProviderStatsItem> 
             total_cost: cost,
         })
         .collect()
+}
+
+/// Provider 统计 + 覆盖缺口。
+///
+/// 缺口 = 有 model、但没有 `providerID` 的 token（与会话数）。
+pub fn derive_provider_stats_response(projection: &Projection) -> ProviderStatsResponse {
+    ProviderStatsResponse {
+        items: derive_provider_stats(projection),
+        coverage_gap: build_gap(
+            projection.unattributed_provider_tokens,
+            projection.unattributed_provider_sessions.len() as i64,
+        ),
+    }
 }
 
 pub fn derive_project_ranking(projection: &Projection) -> Vec<ProjectRankingItem> {
@@ -2589,6 +2772,27 @@ mod projection_tests {
                 &format!("{days}d 成本趋势"),
             );
 
+            // ── 覆盖缺口：投影与旧 SQL 必须给出同一个数字 ──
+            // （真库有 model 为 NULL 的会话，模型缺口必然非零；Provider 缺口
+            //   取决于有没有「有 model 但没 providerID」的会话。）
+            let gap_key = |gap: Option<super::RankingCoverageGap>| {
+                gap.map(|gap| (gap.token_count, gap.session_count))
+            };
+            assert_eq!(
+                gap_key(super::derive_model_ranking_response(&projection).coverage_gap),
+                gap_key(
+                    super::model_ranking_gap(&conn, window, hidden).expect("旧模型缺口")
+                ),
+                "{days}d 模型覆盖缺口",
+            );
+            assert_eq!(
+                gap_key(super::derive_provider_stats_response(&projection).coverage_gap),
+                gap_key(
+                    super::provider_stats_gap(&conn, window, hidden).expect("旧供应商缺口")
+                ),
+                "{days}d Provider 覆盖缺口",
+            );
+
             // ── 技能：与旧 SQL 严格相等（name → state.input.id → unknown）──
             assert_eq!(
                 debug(&skill_usage(&conn, window, hidden).expect("旧技能")),
@@ -2632,6 +2836,267 @@ mod projection_tests {
             &aggregate(&scan_tokens(&conn, None, "[]").expect("旧 token 扫描")),
             &super::derive_token_stats(&projection),
             "全时间窗口 token 总量",
+        );
+    }
+}
+
+/// 覆盖缺口测试：模型排行 / Provider 统计「没有覆盖到」的 token。
+///
+/// 三类会话必须互不串味：
+///
+/// | 会话 | model | 归类 |
+/// | --- | --- | --- |
+/// | `ses_full` | `{"id":...,"providerID":"opencode"}` | 进模型排行 + Provider 统计 |
+/// | `ses_null` | `NULL` | **模型缺口** |
+/// | `ses_empty` | `''` | **模型缺口** |
+/// | `ses_orphan` | （`session_v2` 里没有这一行） | **模型缺口** |
+/// | `ses_no_provider` | `{"id":"gemini"}` | 进模型排行、**Provider 缺口** |
+/// | `ses_plain` | `claude-sonnet-4-6`（非 JSON） | 进模型排行、**Provider 缺口** |
+///
+/// 投影路径（主路径）与回退路径（旧 SQL）必须给出**同一个数字**。
+#[cfg(test)]
+mod coverage_gap_tests {
+    use super::{
+        derive_model_ranking_response, derive_provider_stats_response, model_ranking,
+        model_ranking_gap, provider_stats, provider_stats_gap, scan_projection, PROJ_VERSION,
+    };
+    use rusqlite::Connection;
+
+    const TS: i64 = 1_789_000_000_000;
+
+    fn db() -> Connection {
+        let conn = Connection::open_in_memory().expect("内存库");
+        conn.execute_batch(
+            "CREATE TABLE main.session_v2 (id TEXT PRIMARY KEY, model TEXT, directory TEXT);
+             CREATE TABLE main.session_message (
+                 id TEXT PRIMARY KEY,
+                 session_id TEXT,
+                 type TEXT,
+                 time_created INTEGER,
+                 data TEXT
+             );",
+        )
+        .expect("建表");
+        conn
+    }
+
+    fn session(conn: &Connection, id: &str, model: Option<&str>) {
+        conn.execute(
+            "INSERT INTO main.session_v2 (id, model, directory) VALUES (?1, ?2, '/repo')",
+            rusqlite::params![id, model],
+        )
+        .expect("插入会话");
+    }
+
+    fn message(conn: &Connection, id: &str, session: &str, input: i64) {
+        let data = format!(r#"{{"tokens":{{"input":{input}}},"cost":0.1}}"#);
+        conn.execute(
+            "INSERT INTO main.session_message (id, session_id, type, time_created, data)
+             VALUES (?1, ?2, 'assistant', ?3, ?4)",
+            rusqlite::params![id, session, TS, data],
+        )
+        .expect("插入消息");
+    }
+
+    /// 六类会话各一条消息（token 数刻意不同，便于定位串味）。
+    fn fixture() -> Connection {
+        let conn = db();
+        session(
+            &conn,
+            "ses_full",
+            Some(r#"{"id":"gpt-5.6-terra","providerID":"opencode"}"#),
+        );
+        session(&conn, "ses_null", None);
+        session(&conn, "ses_empty", Some(""));
+        session(
+            &conn,
+            "ses_no_provider",
+            Some(r#"{"id":"gemini-3-pro"}"#),
+        );
+        session(&conn, "ses_plain", Some("claude-sonnet-4-6"));
+
+        message(&conn, "m_full", "ses_full", 100);
+        message(&conn, "m_null", "ses_null", 200);
+        message(&conn, "m_empty", "ses_empty", 50);
+        message(&conn, "m_no_provider", "ses_no_provider", 30);
+        message(&conn, "m_plain", "ses_plain", 70);
+        // 孤儿消息：`session_v2` 里没有 `ses_orphan` 这一行。
+        message(&conn, "m_orphan", "ses_orphan", 5);
+        conn
+    }
+
+    #[test]
+    fn model_gap_counts_sessions_without_model_only() {
+        let conn = fixture();
+        let projection = scan_projection(&conn, None, "[]").expect("投影");
+        let response = derive_model_ranking_response(&projection);
+
+        // 排行里只有「有 model」的会话（孤儿消息所在会话没有 model，不进排行）。
+        let models: Vec<&str> = response
+            .items
+            .iter()
+            .map(|item| item.model.as_str())
+            .collect();
+        assert_eq!(response.items.len(), 3, "排行应只有 3 个模型：{models:?}");
+        assert!(models.iter().any(|m| m.contains("gpt-5.6-terra")));
+        assert!(models.iter().any(|m| m.contains("gemini-3-pro")));
+        assert!(models.contains(&"claude-sonnet-4-6"));
+        let ranked: i64 = response.items.iter().map(|item| item.token_count).sum();
+        assert_eq!(ranked, 200, "排行合计 = 100 + 30 + 70");
+
+        let gap = response.coverage_gap.expect("模型缺口必须存在");
+        assert_eq!(gap.token_count, 255, "模型缺口 = 200(NULL) + 50(空串) + 5(孤儿)");
+        assert_eq!(gap.session_count, 3, "缺口会话数 = NULL / 空串 / 孤儿");
+    }
+
+    #[test]
+    fn provider_gap_counts_sessions_without_provider_id_only() {
+        let conn = fixture();
+        let projection = scan_projection(&conn, None, "[]").expect("投影");
+        let response = derive_provider_stats_response(&projection);
+
+        // Provider 统计里只有能取到 providerID 的会话。
+        assert_eq!(response.items.len(), 1);
+        assert_eq!(response.items[0].provider, "opencode");
+        assert_eq!(response.items[0].token_count, 100);
+
+        let gap = response.coverage_gap.expect("Provider 缺口必须存在");
+        assert_eq!(
+            gap.token_count, 100,
+            "Provider 缺口 = 30(无 providerID) + 70(非 JSON model)"
+        );
+        assert_eq!(gap.session_count, 2);
+    }
+
+    #[test]
+    fn the_two_gaps_never_cross_contaminate() {
+        let conn = fixture();
+        let projection = scan_projection(&conn, None, "[]").expect("投影");
+
+        let model_response = derive_model_ranking_response(&projection);
+        let provider_response = derive_provider_stats_response(&projection);
+        let model_gap = model_response.coverage_gap.expect("模型缺口");
+        let provider_gap = provider_response.coverage_gap.expect("Provider 缺口");
+
+        // 模型缺口 = 255（NULL 200 / 空串 50 / 孤儿 5），Provider 缺口 = 100。
+        assert_eq!(model_gap.token_count, 255);
+        assert_eq!(provider_gap.token_count, 100);
+
+        // 全部 assistant token = 100 + 200 + 50 + 30 + 70 + 5 = 455。
+        let total = 455;
+        // 不变量 1：模型排行 + 模型缺口 = 全部 token（缺口正好补上差额）。
+        let ranked: i64 = model_response
+            .items
+            .iter()
+            .map(|item| item.token_count)
+            .sum();
+        assert_eq!(ranked + model_gap.token_count, total);
+        // 不变量 2：Provider 统计 + Provider 缺口 + 模型缺口 = 全部 token。
+        let provider_total: i64 = provider_response
+            .items
+            .iter()
+            .map(|item| item.token_count)
+            .sum();
+        assert_eq!(provider_total + provider_gap.token_count + model_gap.token_count, total);
+        // Provider 缺口的 token 仍然**在模型排行里**（它有 model，只是没有 provider）：
+        // 因此两组缺口不是同一批 token，不能互相替代。
+        assert!(ranked >= provider_gap.token_count);
+    }
+
+    #[test]
+    fn no_gap_means_no_coverage_gap_field() {
+        let conn = db();
+        session(
+            &conn,
+            "ses_full",
+            Some(r#"{"id":"gpt-5.6-terra","providerID":"opencode"}"#),
+        );
+        message(&conn, "m_full", "ses_full", 100);
+
+        let projection = scan_projection(&conn, None, "[]").expect("投影");
+        let model_response = derive_model_ranking_response(&projection);
+        let provider_response = derive_provider_stats_response(&projection);
+        assert!(
+            model_response.coverage_gap.is_none(),
+            "没有缺口时不得输出该字段"
+        );
+        assert!(
+            provider_response.coverage_gap.is_none(),
+            "没有缺口时不得输出该字段"
+        );
+        assert_eq!(model_response.items.len(), 1);
+        assert_eq!(provider_response.items.len(), 1);
+    }
+
+    /// 回退路径（旧 SQL）必须与投影路径给出同一个缺口数字。
+    #[test]
+    fn fallback_gap_queries_match_the_projection() {
+        let conn = fixture();
+
+        let projection = scan_projection(&conn, None, "[]").expect("投影");
+        let projected_model = derive_model_ranking_response(&projection)
+            .coverage_gap
+            .expect("模型缺口");
+        let projected_provider = derive_provider_stats_response(&projection)
+            .coverage_gap
+            .expect("Provider 缺口");
+
+        let legacy_model = model_ranking_gap(&conn, None, "[]")
+            .expect("旧 SQL 模型缺口")
+            .expect("模型缺口");
+        let legacy_provider = provider_stats_gap(&conn, None, "[]")
+            .expect("旧 SQL Provider 缺口")
+            .expect("Provider 缺口");
+
+        assert_eq!(legacy_model.token_count, projected_model.token_count);
+        assert_eq!(legacy_model.session_count, projected_model.session_count);
+        assert_eq!(legacy_provider.token_count, projected_provider.token_count);
+        assert_eq!(legacy_provider.session_count, projected_provider.session_count);
+
+        // 排行本身也不受缺口影响：有 model 的会话照常进排行。
+        let legacy_ranking = model_ranking(&conn, None, "[]").expect("旧模型排行");
+        assert_eq!(legacy_ranking.len(), 3);
+        let legacy_providers = provider_stats(&conn, None, "[]").expect("旧供应商统计");
+        assert_eq!(legacy_providers.len(), 1);
+        assert_eq!(legacy_providers[0].provider, "opencode");
+    }
+
+    /// 缺口查询必须与主查询用**同样的过滤**（窗口 / 隐藏集合）。
+    #[test]
+    fn fallback_gap_respects_window_and_hidden_filters() {
+        let conn = fixture();
+
+        // 隐藏掉 `ses_null` 的那条消息：模型缺口应少 200 token、少 1 个会话。
+        let hidden = r#"["m_null"]"#;
+        let gap = model_ranking_gap(&conn, None, hidden)
+            .expect("旧 SQL 模型缺口")
+            .expect("模型缺口");
+        assert_eq!(gap.token_count, 55, "隐藏后缺口 = 50(空串) + 5(孤儿)");
+        assert_eq!(gap.session_count, 2);
+
+        // 窗口之外：没有消息 → 没有缺口。
+        assert!(
+            model_ranking_gap(&conn, Some((TS + 1, TS + 2)), "[]")
+                .expect("窗口外查询")
+                .is_none(),
+            "窗口外不得有缺口"
+        );
+        assert!(
+            provider_stats_gap(&conn, Some((TS + 1, TS + 2)), "[]")
+                .expect("窗口外查询")
+                .is_none(),
+            "窗口外不得有缺口"
+        );
+    }
+
+    /// 投影缓存键含 `PROJ_VERSION`：实现变更必须 bump，否则复用旧缓存。
+    #[test]
+    fn projection_version_is_bumped_for_the_coverage_gap() {
+        // `black_box` 让比较在运行时发生（常量断言会被 clippy 拦下）。
+        let version = std::hint::black_box(PROJ_VERSION);
+        assert!(
+            version >= 2,
+            "覆盖缺口改变了投影内容，PROJ_VERSION 必须 bump（当前 {version}）"
         );
     }
 }

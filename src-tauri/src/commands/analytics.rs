@@ -8,8 +8,9 @@ use chrono::TimeZone;
 use crate::db::{self, DbState};
 use crate::commands::fork_stats::{self, DedupSet};
 use crate::models::dto::{
-    CostTrendItem, DatabaseStats, IpcResult, MessageTrendItem, ModelRankingItem, ProjectRankingItem,
-    ProviderStatsItem, SessionTrendItem, SkillUsage, TokenGroupDataPoint, TokenStats, ToolRanking,
+    CostTrendItem, DatabaseStats, IpcResult, MessageTrendItem, ModelRankingItem,
+    ModelRankingResponse, ProjectRankingItem, ProviderStatsItem, ProviderStatsResponse,
+    SessionTrendItem, SkillUsage, TokenGroupDataPoint, TokenStats, ToolRanking,
 };
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -783,12 +784,16 @@ pub async fn dashboard_skill_usage(
 // ─── 5. dashboard_model_ranking ─────────────────────────────────────────
 
 /// Model ranking — top 10 models by session count, with token/cost totals.
+///
+/// 返回体是 `{ items, coverageGap? }`：`coverageGap` 是「没有 model 记录、
+/// 因而不参与排行」的 token 合计与会话数（真库里确实存在 model 为 NULL 的
+/// 会话，它们的 token 会进概览合计、却不进排行）。没有缺口时**不输出该字段**。
 #[tauri::command]
 pub async fn dashboard_model_ranking(
     app: AppHandle,
     start_date: Option<String>,
     end_date: Option<String>,
-) -> IpcResult<Vec<ModelRankingItem>> {
+) -> IpcResult<ModelRankingResponse> {
     let v2 = is_v2_database(&app);
     run_db_task(app, move |db| {
         let conn = match db::get_db(db) {
@@ -802,16 +807,25 @@ pub async fn dashboard_model_ranking(
         let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref(), true);
         let hidden_json = set.message_ids_json();
         let window = window_of(start_date.as_deref(), end_date.as_deref());
-        if let Some(result) =
-            try_projection(&conn, window, &hidden_json, stats_v2::derive_model_ranking)
-        {
+        if let Some(result) = try_projection(
+            &conn,
+            window,
+            &hidden_json,
+            stats_v2::derive_model_ranking_response,
+        ) {
             return result;
         }
         return match stats_v2::model_ranking(&conn, window, &hidden_json) {
             Ok(items) => {
+                // 回退路径：缺口单独跑一条查询（与主查询同样的过滤条件）。
+                let coverage_gap =
+                    match stats_v2::model_ranking_gap(&conn, window, &hidden_json) {
+                        Ok(gap) => gap,
+                        Err(e) => return IpcResult::err(e),
+                    };
                 #[cfg(debug_assertions)]
                 eprintln!("[perf] dashboard_model_ranking::v2: {}ms", _t_model.elapsed().as_millis());
-                IpcResult::ok(items)
+                IpcResult::ok(ModelRankingResponse { items, coverage_gap })
             }
             Err(e) => IpcResult::err(e),
         };
@@ -865,19 +879,25 @@ pub async fn dashboard_model_ranking(
     }
     #[cfg(debug_assertions)]
     eprintln!("[perf] dashboard_model_ranking: {}ms", _t_model.elapsed().as_millis());
-    IpcResult::ok(items)
+    // v1 库不统计覆盖缺口（旧表 `session.model` 的缺失口径与 v2 不同），
+    // 因此 `coverage_gap` 恒为 `None`（前端整行不显示）。
+    IpcResult::ok(ModelRankingResponse { items, coverage_gap: None })
     }).await
 }
 
 // ─── 6. dashboard_provider_stats ────────────────────────────────────────
 
 /// Provider stats — token/cost totals grouped by provider ID (extracted from session.model JSON).
+///
+/// 返回体是 `{ items, coverageGap? }`：`coverageGap` 是「有 model、但没有
+/// `providerID`，因而不参与 Provider 统计」的 token 合计与会话数。
+/// 没有缺口时**不输出该字段**。
 #[tauri::command]
 pub async fn dashboard_provider_stats(
     app: AppHandle,
     start_date: Option<String>,
     end_date: Option<String>,
-) -> IpcResult<Vec<ProviderStatsItem>> {
+) -> IpcResult<ProviderStatsResponse> {
     let v2 = is_v2_database(&app);
     run_db_task(app, move |db| {
         let conn = match db::get_db(db) {
@@ -891,16 +911,25 @@ pub async fn dashboard_provider_stats(
         let set = fork_set(&conn, start_date.as_deref(), end_date.as_deref(), true);
         let hidden_json = set.message_ids_json();
         let window = window_of(start_date.as_deref(), end_date.as_deref());
-        if let Some(result) =
-            try_projection(&conn, window, &hidden_json, stats_v2::derive_provider_stats)
-        {
+        if let Some(result) = try_projection(
+            &conn,
+            window,
+            &hidden_json,
+            stats_v2::derive_provider_stats_response,
+        ) {
             return result;
         }
         return match stats_v2::provider_stats(&conn, window, &hidden_json) {
             Ok(items) => {
+                // 回退路径：缺口单独跑一条查询（与主查询同样的过滤条件）。
+                let coverage_gap =
+                    match stats_v2::provider_stats_gap(&conn, window, &hidden_json) {
+                        Ok(gap) => gap,
+                        Err(e) => return IpcResult::err(e),
+                    };
                 #[cfg(debug_assertions)]
                 eprintln!("[perf] dashboard_provider_stats::v2: {}ms", _t_prov.elapsed().as_millis());
-                IpcResult::ok(items)
+                IpcResult::ok(ProviderStatsResponse { items, coverage_gap })
             }
             Err(e) => IpcResult::err(e),
         };
@@ -954,7 +983,8 @@ pub async fn dashboard_provider_stats(
     }
     #[cfg(debug_assertions)]
     eprintln!("[perf] dashboard_provider_stats: {}ms", _t_prov.elapsed().as_millis());
-    IpcResult::ok(items)
+    // v1 库不统计覆盖缺口（同模型排行的取舍）。
+    IpcResult::ok(ProviderStatsResponse { items, coverage_gap: None })
     }).await
 }
 

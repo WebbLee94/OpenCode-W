@@ -215,6 +215,46 @@ pub struct ProviderStatsItem {
     pub total_cost: f64,
 }
 
+/// 排行未覆盖到的 token（没有归属到任何模型 / Provider）。
+///
+/// 真库里存在**没有 model 字段**的会话（`session_v2.model` 为 NULL）：
+/// 它们的 token 会进入概览卡的「Token 合计」，却不进入模型 / Provider 排行。
+/// 用户把排行合计与概览合计对比时对不上、又无从解释，因此后端把这段差额
+/// **如实算出来**交给前端展示，而不是让前端用减法估算（排行是 TOP 10，
+/// 减法会把第 11 名及以后也算进「缺口」，数值不真实）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RankingCoverageGap {
+    /// 没有归属到任何模型（或 Provider）的 token 合计
+    pub token_count: i64,
+    /// 涉及的会话数
+    pub session_count: i64,
+}
+
+/// 模型排行的返回体：排行条目 + 覆盖缺口。
+///
+/// `coverage_gap` 为 `None` 时**不输出该字段**（前端据此整行不显示）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelRankingResponse {
+    pub items: Vec<ModelRankingItem>,
+    /// 没有 model 记录、因而不参与排行的会话
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coverage_gap: Option<RankingCoverageGap>,
+}
+
+/// Provider 统计的返回体：统计条目 + 覆盖缺口。
+///
+/// `coverage_gap` 为 `None` 时**不输出该字段**（前端据此整行不显示）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderStatsResponse {
+    pub items: Vec<ProviderStatsItem>,
+    /// 有 model 但没有 providerID、因而不参与 Provider 统计的会话
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coverage_gap: Option<RankingCoverageGap>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectRankingItem {
