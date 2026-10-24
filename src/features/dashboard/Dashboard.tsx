@@ -128,6 +128,20 @@ type TimePreset = 'all' | 7 | 30 | 90 | 'custom'
 type GroupBy = 'day' | 'week' | 'month'
 type DashboardTab = 'overview' | 'stats' | 'trends'
 
+// ── 时间分桶口径 ────────────────────────────────────────────────────────
+
+/**
+ * 趋势 tooltip 里那个合计行的口径词。
+ *
+ * 「Token 总计」在中文里会被读成「整个所选范围的总量」，而这里给出的是
+ * 单个分桶（当日 / 本周 / 本月）的合计，必须说清楚。
+ */
+const GROUP_BY_TOTAL_LABEL: Record<GroupBy, string> = {
+  day: '当日合计',
+  week: '本周合计',
+  month: '本月合计',
+}
+
 const DASHBOARD_TABS: { key: DashboardTab; label: string; icon: string }[] = [
   { key: 'overview', label: '概览', icon: '📋' },
   { key: 'stats', label: '统计', icon: '📊' },
@@ -1237,7 +1251,7 @@ function Dashboard() {
                     </div>
                     <div className="flex-1 space-y-3 min-w-0">
                       <div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-1">
-                        <span className="text-xs font-semibold text-gray-700">Token 总计</span>
+                        <span className="text-xs font-semibold text-gray-700">所选范围 Token 合计</span>
                         <span className="text-sm font-semibold text-gray-900">{formatNumber(sumTokenTotal(tokenStats))}</span>
                       </div>
                       <TokenMetricRow
@@ -1441,22 +1455,25 @@ function Dashboard() {
                       <XAxis dataKey="period" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
                       <YAxis tick={{ fontSize: 10 }} />
                        <Tooltip
-                         content={({ active, payload }) => {
+                         content={({ active, payload, label }) => {
                            if (!active || !payload || !payload.length) return null
                            const data = payload[0].payload as TokenGroupDataPoint
                            const totalAttempts = data.cacheRead + data.inputTokens
                            const hitRate = totalAttempts > 0
                              ? (data.cacheRead / totalAttempts * 100).toFixed(1)
                              : '—'
+                           // label 就是这个桶的 period（day: 2026-10-24 / week: 2026-W43 / month: 2026-10）
+                           const bucket = label ?? data.period
                            return (
                              <div style={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fff', padding: '8px 12px' }}>
+                               <div style={{ fontWeight: 600, marginBottom: 4 }}>{bucket}</div>
                                {payload.map((entry, i) => (
                                  <div key={i} style={{ color: entry.color, marginBottom: 2 }}>
                                    {entry.name}: {formatNumber(entry.value as number)}
                                  </div>
                                ))}
                                <div style={{ color: '#111827', fontWeight: 600, marginTop: 4, paddingTop: 4, borderTop: '1px solid #f0f0f0' }}>
-                                 Token 总计: {formatNumber(sumTokenTotal(data))}
+                                 {GROUP_BY_TOTAL_LABEL[groupBy]}: {formatNumber(sumTokenTotal(data))}
                                </div>
                                <div style={{ color: '#6b7280', marginTop: 4, paddingTop: 4, borderTop: '1px solid #f0f0f0' }}>
                                  缓存命中率: {hitRate}%
@@ -1813,7 +1830,7 @@ function Dashboard() {
                               return (
                                 <div style={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fff', padding: '8px 12px' }}>
                                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{data.name}</div>
-                                  <div>Token 总计: {formatLargeNumber(data.tokens ?? 0)}</div>
+                                  <div>所选范围合计: {formatLargeNumber(data.tokens ?? 0)}</div>
                                 </div>
                               )
                             }}
@@ -1872,7 +1889,7 @@ function Dashboard() {
                         return (
                           <div style={{ fontSize: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fff', padding: '8px 12px' }}>
                             <div style={{ fontWeight: 600, marginBottom: 4 }}>{data.name}</div>
-                            <div>Token 总计: {formatLargeNumber(data.tokens ?? 0)}</div>
+                            <div>所选范围合计: {formatLargeNumber(data.tokens ?? 0)}</div>
                             <div>费用: ${(data.cost ?? 0).toFixed(2)}</div>
                           </div>
                         )

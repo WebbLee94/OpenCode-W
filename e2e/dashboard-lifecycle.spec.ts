@@ -454,4 +454,51 @@ test.describe('请求生命周期（真实浏览器）', () => {
     await expect(page).toHaveURL(/#\/backup/)
     expect(external, '动作 Link 不得引入网络请求').toEqual([])
   })
+
+  test('9 tooltip 口径词：趋势首行给日期、合计行说清是分桶合计', async ({ page }) => {
+    await page.goto('/#/')
+    await expect(page.getByText('30/0')).toBeVisible()
+
+    // 概览：总计行标签说明这是「所选范围」合计
+    await expect(page.getByText('所选范围 Token 合计')).toBeVisible()
+    await expect(page.getByText('Token 总计', { exact: true })).toHaveCount(0)
+
+    // 让「按分组」的 token 请求返回数组：趋势折线图才有数据可 hover。
+    // stub 是按 channel 应答的，分组与总量共用同一个 channel，这里按 payload 分流。
+    await page.evaluate(() => {
+      const internals = (window as unknown as {
+        __TAURI_INTERNALS__: { invoke: (cmd: string, payload?: unknown) => Promise<unknown> }
+      }).__TAURI_INTERNALS__
+      const original = internals.invoke.bind(internals)
+      internals.invoke = (cmd: string, payload?: unknown) => {
+        const groupBy = (payload as { groupBy?: string } | undefined)?.groupBy
+        if (cmd === 'dashboard_tokens' && groupBy) {
+          return Promise.resolve({
+            success: true,
+            data: [
+              { period: '2026-10-24', inputTokens: 1, outputTokens: 2, reasoningTokens: 3, cacheRead: 4, cacheWrite: 5, estimatedCost: 0.5 },
+            ],
+          })
+        }
+        return original(cmd, payload)
+      }
+    })
+
+    await page.getByRole('button', { name: /趋势/ }).click()
+    // 切一次分桶粒度 → 重新拉分组数据 → 折线图渲染出来
+    await page.getByRole('button', { name: '周' }).click()
+    const chart = page.locator('.recharts-wrapper').first()
+    await expect(chart).toBeVisible()
+
+    const box = await chart.boundingBox()
+    if (!box) throw new Error('趋势图没有布局盒，无法 hover')
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.move(box.x + box.width / 2 + 1, box.y + box.height / 2)
+
+    const tooltip = page.locator('.recharts-tooltip-wrapper').first()
+    await expect(tooltip).toContainText('2026-10-24')
+    // 分桶粒度切到「周」→ 合计行说「本周合计」，不再是含糊的「Token 总计」
+    await expect(tooltip).toContainText('本周合计')
+    await expect(tooltip).not.toContainText('Token 总计')
+  })
 })
