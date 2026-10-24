@@ -112,3 +112,17 @@ export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text
   return text.slice(0, maxLength) + '...'
 }
+
+/**
+ * 本地日期格式 YYYY-MM-DD。
+ *
+ * ⚠️ **不要**用 `toISOString().slice(0, 10)` 代替：那是 **UTC** 日期。
+ * 在 UTC+8 的每天 08:00 之前它返回的是「昨天」，用户点「今天」实际筛的是昨天；
+ * 负时区则会快一天。日期筛选必须按**本地日历**算。
+ */
+export function toLocalDateString(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}

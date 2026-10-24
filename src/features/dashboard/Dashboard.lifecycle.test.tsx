@@ -83,10 +83,16 @@ function toLocalDateString(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-/** 与 Dashboard 的默认 30 天范围保持一致。 */
+/**
+ * 与 Dashboard 的默认 30 天范围保持一致。
+ *
+ * ⚠️ 预设区间**含今日**：「30 天」= [今天−29, 今天]（30 个自然日）。
+ * 后端窗口两端都含（start 00:00:00 ~ end 23:59:59），起点若按「今天−30」
+ * 算就会变成 31 天。
+ */
 function currentRange() {
   return {
-    startDate: toLocalDateString(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
+    startDate: toLocalDateString(new Date(Date.now() - 29 * 24 * 60 * 60 * 1000)),
     endDate: toLocalDateString(new Date()),
   }
 }
