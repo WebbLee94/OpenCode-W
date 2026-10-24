@@ -167,6 +167,11 @@ jobs:
             ${{ env.BUNDLE_ROOT }}/**/*.deb
             ${{ env.BUNDLE_ROOT }}/**/*.tar.gz
             ${{ env.BUNDLE_ROOT }}/**/*.sig
+            # deb 内部的 control/data tarball 不是给用户下载的安装包，别混进 Release 资产
+            !${{ env.BUNDLE_ROOT }}/**/control.tar.gz
+            !${{ env.BUNDLE_ROOT }}/**/data.tar.gz
+            # `.rpm.sig` 是 deb→rpm 转换的副产物，`.rpm` 本身没上传，会变成孤儿签名
+            !${{ env.BUNDLE_ROOT }}/**/*.rpm.sig
           if-no-files-found: error
           retention-days: 14
 
@@ -215,5 +220,10 @@ jobs:
             artifacts/**/*.tar.gz
             artifacts/**/*.sig
             latest.json
+            # deb 内部的 control/data tarball 不是给用户下载的安装包
+            !artifacts/**/control.tar.gz
+            !artifacts/**/data.tar.gz
+            # `.rpm.sig` 是 deb→rpm 转换的副产物，`.rpm` 本身没上传，会变成孤儿签名
+            !artifacts/**/*.rpm.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
