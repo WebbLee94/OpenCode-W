@@ -24,19 +24,25 @@ import { IPC_CHANNELS as CH } from '../shared/ipc-channels'
  *      **前端发出的参数**；后端窗口语义由 `cargo test` 覆盖。
  */
 
-// ── 本地日期工具（与 src/lib/format.ts 的 toLocalDateString 同口径）──────
+// ── 日期工具（**纯日历运算**：与宿主时区 / 夏令时都无关）────────────────
+//
+// ⚠️ 这里**故意没有** `localDate(new Date())` 这种「在 Node 里取今天」的写法：
+// 那取到的是 **Node 宿主机**的时区，而产品算的是**浏览器**的本地日历日
+// （`src/lib/format.ts` 的 `toLocalDateString` 用 getFullYear/getMonth/getDate）。
+// 两者一旦不同 —— CI 的 Ubuntu runner 是 UTC、本机是 UTC+8，或者某个
+// describe 用 `test.use({ timezoneId })` 把浏览器钉到别的时区 —— 同一个瞬间
+// 就是两个日历日，断言整整错一天。这正是 B3 在 Ubuntu CI 上挂掉的原因。
+//
+// 「今天」只有一个权威来源：**页面自己**（见 `localTodayInPage`）。
+// Node 侧只做**不含时区**的日历算术。
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
-/** 本地日历日 YYYY-MM-DD（**不是** UTC 日期） */
-function localDate(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-/** 在本地日历上加减天数（走 Date 构造器，跨月 / 跨年都正确） */
+/** 在 YYYY-MM-DD 上加减天数（走 UTC → 纯日历运算，跨月 / 跨年都正确） */
 function addDays(iso: string, n: number): string {
   const [y, m, d] = iso.split('-').map(Number)
-  return localDate(new Date(y, m - 1, d + n))
+  const t = new Date(Date.UTC(y, m - 1, d) + n * 86_400_000)
+  return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`
 }
 
 /** 两个 YYYY-MM-DD 之间的天数差（b − a），按**纯日历日**算 */
@@ -45,6 +51,28 @@ function daysBetween(a: string, b: string): number {
   const [y2, m2, d2] = b.split('-').map(Number)
   // 两端按 UTC 解析 → 与夏令时 / 本地时区无关（本地午夜相减会带 ±1 小时偏移）
   return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000)
+}
+
+/**
+ * 页面里的「今天」——**浏览器本地**日历日，也就是产品眼里的「今天」。
+ *
+ * 这是全文件「今天」的唯一权威来源：
+ *   - 产品侧：`src/lib/format.ts` 的 `toLocalDateString`（浏览器本地时区）
+ *   - 测试侧：本函数（在**浏览器里**取当前时刻）
+ * 两者同源 → 断言与「跑测试的机器在哪个时区」彻底无关。
+ *
+ * ⚠️ 不要改回 `localDate(new Date())`（Node 宿主机时区）：宿主机与浏览器
+ * 时区不同时（Ubuntu CI = UTC，本机 = UTC+8），同一瞬间会差一个日历日。
+ *
+ * 页面还没加载也能调用：浏览器上下文的时区（含 `test.use({ timezoneId })`）
+ * 对 `about:blank` 同样生效，所以可以在导航前就读。
+ */
+async function localTodayInPage(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const d = new Date()
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  })
 }
 
 // ── 夹具 ────────────────────────────────────────────────────────────────
@@ -255,7 +283,8 @@ async function tooltipLines(page: Page, scope: Locator): Promise<string[]> {
 
 test.describe('A. 用户报的原场景：口径误读是否已消除', () => {
   test('A1 7天 → 趋势 → Token 趋势 hover 今日点：首行是日期、合计行是「当日合计」，不出现「Token 总计」', async ({ page }) => {
-    const today = localDate(new Date())
+    // 「今天」从页面读（浏览器本地日 = 产品口径）→ 与宿主机时区无关
+    const today = await localTodayInPage(page)
     // 7 个自然日，最后一个就是今天
     const groupPoints = Array.from({ length: 7 }, (_, i) => ({
       period: addDays(today, i - 6),
@@ -318,7 +347,8 @@ test.describe('A. 用户报的原场景：口径误读是否已消除', () => {
   })
 
   test('A3 并排核对：趋势「当日合计」与排行「所选范围合计」口径词不同、趋势带日期 → 不再看起来矛盾', async ({ page }) => {
-    const today = localDate(new Date())
+    // 「今天」从页面读（浏览器本地日 = 产品口径）→ 与宿主机时区无关
+    const today = await localTodayInPage(page)
     const groupPoints = Array.from({ length: 7 }, (_, i) => ({
       period: addDays(today, i - 6),
       inputTokens: 1,
@@ -386,7 +416,7 @@ test.describe('B. 时间范围口径', () => {
     await page.goto('/#/')
     await expect(page.getByText('30/0')).toBeVisible()
 
-    const today = localDate(new Date())
+    const today = await localTodayInPage(page)
     for (const [label, days] of [['7天', 7], ['30天', 30], ['90天', 90]] as const) {
       const before = await stub.callCount(CH.DASHBOARD_OVERVIEW)
       await page.getByRole('button', { name: label }).click()
@@ -437,7 +467,8 @@ test.describe('B. 时间范围口径', () => {
       .map(p => ({ start: p.startDate!, end: p.endDate! }))
     expect(ranges.length, '没有拿到成本趋势的区间请求').toBeGreaterThan(0)
 
-    const today = localDate(new Date())
+    // 「今天」从页面读（浏览器本地日 = 产品口径）→ 与宿主机时区无关
+    const today = await localTodayInPage(page)
     // 本期 = 以今天结尾的那个区间；其余的另一个就是上期
     const current = ranges.find(r => r.end === today)
     expect(current, `没有看到本期区间：${JSON.stringify(ranges)}`).toBeTruthy()
@@ -457,52 +488,74 @@ test.describe('B. 时间范围口径', () => {
     ).toBe(1)
   })
 
-  test('B3 会话页「今天 / 近3天 / 近一周 / 近一月」：请求区间正确，「今天」= 本地当天（UTC+8 早 8 点窗口）', async ({ page }) => {
-    // 固定时钟到 **UTC+8 的 2026-10-24 00:30**（UTC 那一天还是 10-23）——
-    // 这正是用户报的「早 8 点把今天筛成昨天」的窗口。
-    // 用 UTC 日期实现的话，这里会得到 2026-10-23（错一天）。
-    await page.clock.setFixedTime(new Date('2026-10-23T16:30:00Z'))
+  /**
+   * B3 —— **固定时区 + 固定时钟**。
+   *
+   * 时区钉死（Asia/Shanghai）+ 时钟钉死（2026-10-23T16:30Z = 本地 2026-10-24 00:30）
+   * → 期望值能写成**字面日期串**，且与「跑测试的机器在哪个时区」彻底无关。
+   *
+   * ⚠️ 之前这条用例**没有钉时区**：Playwright 的浏览器上下文默认继承
+   * **宿主机**时区，于是同一个瞬间在 UTC+8 是 10-24、在 UTC（Ubuntu CI）是 10-23
+   * → 「今天」整天差一天，CI 挂、本机过。根因在测试，不在产品：
+   * 产品用 `getFullYear/getMonth/getDate` 取浏览器本地日，在 UTC 下返回
+   * 2026-10-23 是**完全正确**的行为。
+   */
+  test.describe('B3 会话页日期筛选（固定时区 + 固定时钟）', () => {
+    // 时区钉死 → 期望值可以写成字面日期串
+    test.use({ timezoneId: 'Asia/Shanghai' })
 
-    const stub = await installTauriStub(page, {
-      respond: {
-        [CH.DATABASE_INFO]: SCHEMA,
-        [CH.DATABASE_HEALTH]: HEALTH,
-        [CH.SESSIONS_PROJECTS]: [],
-        [CH.SESSIONS_LIST]: { data: [], total: 0, page: 1, pageSize: 20 },
-      },
-    })
+    test('B3 会话页「今天 / 近3天 / 近一周 / 近一月」：请求区间正确，「今天」= 本地当天（UTC+8 早 8 点窗口）', async ({ page }) => {
+      // 固定时钟到 **UTC+8 的 2026-10-24 00:30**（UTC 那一天还是 10-23）——
+      // 这正是用户报的「早 8 点把今天筛成昨天」的窗口。
+      // 用 UTC 日期实现的话，这里会得到 2026-10-23（错一天）。
+      await page.clock.setFixedTime(new Date('2026-10-23T16:30:00Z'))
 
-    await page.goto('/#/sessions')
-    // ⚠️ 触发器的可访问名会随预设变化（未选时是「日期范围」，选中后变成预设名），
-    // 所以按**日历图标**定位，不能按文案定位。
-    const dropdown = page.locator('button:has(svg.lucide-calendar)')
-    await expect(dropdown).toBeVisible()
+      const stub = await installTauriStub(page, {
+        respond: {
+          [CH.DATABASE_INFO]: SCHEMA,
+          [CH.DATABASE_HEALTH]: HEALTH,
+          [CH.SESSIONS_PROJECTS]: [],
+          [CH.SESSIONS_LIST]: { data: [], total: 0, page: 1, pageSize: 20 },
+        },
+      })
 
-    const today = '2026-10-24' // UTC+8 本地日历日
-    const cases: Array<{ label: string; start: string; end: string; days: number }> = [
-      { label: '今天', start: today, end: today, days: 1 },
-      { label: '近3天', start: '2026-10-22', end: today, days: 3 },
-      { label: '近一周', start: '2026-10-18', end: today, days: 7 },
-      { label: '近一月', start: '2026-09-25', end: today, days: 30 },
-    ]
+      await page.goto('/#/sessions')
+      // ⚠️ 触发器的可访问名会随预设变化（未选时是「日期范围」，选中后变成预设名），
+      // 所以按**日历图标**定位，不能按文案定位。
+      const dropdown = page.locator('button:has(svg.lucide-calendar)')
+      await expect(dropdown).toBeVisible()
 
-    for (const c of cases) {
-      const before = await stub.callCount(CH.SESSIONS_LIST)
-      await dropdown.click()
-      await page.getByRole('button', { name: c.label, exact: true }).click()
-      await expect
-        .poll(() => stub.callCount(CH.SESSIONS_LIST), { timeout: 5_000 })
-        .toBeGreaterThan(before)
+      // 前提自检：页面里的「今天」确实是预期的本地日历日。
+      // 时区模拟 / 固定时钟任一失效，这里先炸 —— 失败信息直指「时钟没落在
+      // 预期的本地日」，而不是一个费解的「日期不等」。
+      expect(await localTodayInPage(page), '固定时钟没有落在预期的本地日历日').toBe('2026-10-24')
 
-      const last = (await stub.payloads(CH.SESSIONS_LIST)).pop() as {
-        startDate?: string
-        endDate?: string
+      const today = '2026-10-24' // Asia/Shanghai 本地日历日
+      const cases: Array<{ label: string; start: string; end: string; days: number }> = [
+        { label: '今天', start: today, end: today, days: 1 },
+        { label: '近3天', start: '2026-10-22', end: today, days: 3 },
+        { label: '近一周', start: '2026-10-18', end: today, days: 7 },
+        { label: '近一月', start: '2026-09-25', end: today, days: 30 },
+      ]
+
+      for (const c of cases) {
+        const before = await stub.callCount(CH.SESSIONS_LIST)
+        await dropdown.click()
+        await page.getByRole('button', { name: c.label, exact: true }).click()
+        await expect
+          .poll(() => stub.callCount(CH.SESSIONS_LIST), { timeout: 5_000 })
+          .toBeGreaterThan(before)
+
+        const last = (await stub.payloads(CH.SESSIONS_LIST)).pop() as {
+          startDate?: string
+          endDate?: string
+        }
+        expect(last?.startDate, `${c.label} 的 startDate`).toBe(c.start)
+        expect(last?.endDate, `${c.label} 的 endDate`).toBe(c.end)
+        // 含端点的自然日数量
+        expect(daysBetween(last!.startDate!, last!.endDate!) + 1, `${c.label} 的自然日数量`).toBe(c.days)
       }
-      expect(last?.startDate, `${c.label} 的 startDate`).toBe(c.start)
-      expect(last?.endDate, `${c.label} 的 endDate`).toBe(c.end)
-      // 含端点的自然日数量
-      expect(daysBetween(last!.startDate!, last!.endDate!) + 1, `${c.label} 的自然日数量`).toBe(c.days)
-    }
+    })
   })
 
   test('B4 切预设后数据不串：旧区间的缓存没被复用', async ({ page }) => {
@@ -761,7 +814,8 @@ test.describe('E. 通用回归', () => {
 
   test('E1 仪表盘三个 tab（概览 / 统计 / 趋势）都走一遍：无控制台错误、无未捕获异常', async ({ page }) => {
     const errors = collectErrors(page)
-    const today = localDate(new Date())
+    // 「今天」从页面读（浏览器本地日 = 产品口径）→ 与宿主机时区无关
+    const today = await localTodayInPage(page)
     await installDashboardStub(page, {
       groupPoints: [
         {
@@ -837,10 +891,12 @@ test.describe('E. 通用回归', () => {
 
   test('E3 768px 窄屏：设置页、仪表盘三个 tab、会话浏览页都不横向滚动', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 800 })
+    // 「今天」从页面读（浏览器本地日 = 产品口径）→ 与宿主机时区无关
+    const today = await localTodayInPage(page)
     await installDashboardStub(page, {
       groupPoints: [
         {
-          period: localDate(new Date()),
+          period: today,
           inputTokens: 1,
           outputTokens: 2,
           reasoningTokens: 3,
@@ -917,15 +973,6 @@ test.describe('F. 夏令时切换日（America/New_York）', () => {
         startDate?: string
         endDate?: string
       }
-    })
-  }
-
-  /** 页面里的「今天」（本地日历日）——用来确认固定时钟落在预期的日子 */
-  async function localTodayInPage(page: Page): Promise<string> {
-    return page.evaluate(() => {
-      const d = new Date()
-      const p = (n: number) => String(n).padStart(2, '0')
-      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
     })
   }
 
