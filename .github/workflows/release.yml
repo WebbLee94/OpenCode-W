@@ -11,13 +11,39 @@ permissions:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
+    name: Build ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        include:
+          # Apple Silicon：macos-latest 本身就是 arm64，原生构建
+          - platform: darwin-aarch64
+            os: macos-latest
+            rust-target: aarch64-apple-darwin
+            bundle-arch: arm64
+          # Intel：在 arm64 runner 上交叉编译。GitHub 已下线免费的标准 Intel runner
+          # （macos-13 已退役，Intel 镜像只剩 macos-15-intel / macos-26-intel 这类
+          # 需要单独开通的 larger runner），因此不依赖 Intel runner 的可用性。
+          - platform: darwin-x86_64
+            os: macos-latest
+            rust-target: x86_64-apple-darwin
+            bundle-arch: x86_64
+          - platform: windows-x86_64
+            os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            bundle-arch: ''
+          - platform: linux-x86_64
+            os: ubuntu-latest
+            rust-target: x86_64-unknown-linux-gnu
+            bundle-arch: ''
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      # 使用 --target 构建时产物落在 target/<triple>/release/bundle，而不是 target/release/bundle
+      BUNDLE_ROOT: src-tauri/target/${{ matrix.rust-target }}/release/bundle
     steps:
       - uses: actions/checkout@v4
 
@@ -38,6 +64,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+          # 交叉编译目标的标准库：x86_64-apple-darwin 需要额外安装
+          targets: ${{ matrix.rust-target }}
 
       - name: Typecheck
         run: npx tsc --noEmit
@@ -52,28 +80,94 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.bundle.createUpdaterArtifacts=true;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
 
+      - name: Build frontend
+        run: npm run build
+
       - name: Build (Tauri)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri:build
+        run: npx tauri build --target ${{ matrix.rust-target }}
+
+      - name: Verify macOS bundle architecture
+        if: matrix.bundle-arch != ''
+        run: |
+          set -euo pipefail
+          macos_dir="$BUNDLE_ROOT/macos"
+          if [ ! -d "$macos_dir" ]; then
+            echo "::error::未找到 macOS 产物目录 $macos_dir"
+            exit 1
+          fi
+          app_dir="$(find "$macos_dir" -maxdepth 1 -name '*.app' -type d | head -n 1)"
+          if [ -z "$app_dir" ]; then
+            echo "::error::$macos_dir 下没有 .app 产物"
+            exit 1
+          fi
+          if [ ! -d "$app_dir/Contents/MacOS" ]; then
+            echo "::error::.app 产物结构异常，缺少 Contents/MacOS: $app_dir"
+            exit 1
+          fi
+          exe="$(find "$app_dir/Contents/MacOS" -maxdepth 1 -type f | head -n 1)"
+          if [ -z "$exe" ]; then
+            echo "::error::.app 产物内没有可执行文件: $app_dir"
+            exit 1
+          fi
+          archs="$(lipo -archs "$exe")"
+          echo "bundle executable: $exe"
+          echo "lipo -archs: $archs"
+          case "$archs" in
+            *"${{ matrix.bundle-arch }}"*) ;;
+            *)
+              echo "::error::架构不符：期望 ${{ matrix.bundle-arch }}，实际 $archs"
+              exit 1
+              ;;
+          esac
+
+      - name: Normalize macOS updater artifact name
+        if: matrix.bundle-arch != ''
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          UPDATER_ENABLED: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          set -euo pipefail
+          # macOS 的 updater 产物名固定是 <product>.app.tar.gz，不含架构信息，
+          # arm64 与 x86_64 完全同名。直接作为 Release 资产上传会互相覆盖，
+          # 因此按平台 key 重命名，保证每个平台在 Release 里有唯一资产。
+          version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          macos_dir="$BUNDLE_ROOT/macos"
+          shopt -s nullglob
+          renamed=0
+          for f in "$macos_dir"/*.app.tar.gz.sig; do
+            mv "$f" "${f%.app.tar.gz.sig}_${version}_${PLATFORM}.app.tar.gz.sig"
+            renamed=$((renamed + 1))
+          done
+          for f in "$macos_dir"/*.app.tar.gz; do
+            mv "$f" "${f%.app.tar.gz}_${version}_${PLATFORM}.app.tar.gz"
+            renamed=$((renamed + 1))
+          done
+          if [ "$renamed" -eq 0 ] && [ "$UPDATER_ENABLED" = "true" ]; then
+            echo "::error::$macos_dir 下没有 *.app.tar.gz，无法生成平台唯一的资产名"
+            exit 1
+          fi
+          ls -1 "$macos_dir"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: bundle-${{ matrix.os }}
+          # 产物按平台 key 分目录上传，release job 据此确定 latest.json 的平台 key
+          name: ${{ matrix.platform }}
           path: |
-            src-tauri/target/release/bundle/**/*.dmg
-            src-tauri/target/release/bundle/**/*.app
-            src-tauri/target/release/bundle/**/*.exe
-            src-tauri/target/release/bundle/**/*.msi
-            src-tauri/target/release/bundle/**/*.zip
-            src-tauri/target/release/bundle/**/*.AppImage
-            src-tauri/target/release/bundle/**/*.deb
-            src-tauri/target/release/bundle/**/*.tar.gz
-            src-tauri/target/release/bundle/**/*.sig
-          if-no-files-found: warn
+            ${{ env.BUNDLE_ROOT }}/**/*.dmg
+            ${{ env.BUNDLE_ROOT }}/**/*.app
+            ${{ env.BUNDLE_ROOT }}/**/*.exe
+            ${{ env.BUNDLE_ROOT }}/**/*.msi
+            ${{ env.BUNDLE_ROOT }}/**/*.zip
+            ${{ env.BUNDLE_ROOT }}/**/*.AppImage
+            ${{ env.BUNDLE_ROOT }}/**/*.deb
+            ${{ env.BUNDLE_ROOT }}/**/*.tar.gz
+            ${{ env.BUNDLE_ROOT }}/**/*.sig
+          if-no-files-found: error
           retention-days: 14
 
   release:
@@ -99,6 +193,9 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node scripts/generate-latest-json.mjs "${{ github.ref_name }}" artifacts
+
+      - name: Verify latest.json
+        run: node scripts/verify-latest-json.mjs latest.json "${{ github.ref_name }}"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
