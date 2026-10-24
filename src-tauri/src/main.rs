@@ -9,7 +9,6 @@ mod schema;
 mod search;
 mod security;
 
-use commands::update::UpdateStateMgr;
 use db::DbState;
 use tauri::Manager;
 
@@ -18,7 +17,6 @@ pub fn run() {
     tauri::Builder::default()
         .manage(DbState::new())
         .manage(search::SearchIndex::new())
-        .manage(UpdateStateMgr::default())
         .invoke_handler(tauri::generate_handler![
             // health
             commands::database_health,
@@ -74,11 +72,6 @@ pub fn run() {
             commands::backup_restore,
             commands::backup_delete,
             commands::backup_preview,
-            // update
-            commands::update_check,
-            commands::update_download,
-            commands::update_install,
-            commands::update_get_state,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
