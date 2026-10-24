@@ -1,75 +1,116 @@
 /**
  * 错误分类器
- * 把任意错误归类为 UpdateErrorCode,供 UI 决定 Toast 文案 / 重试策略
+ * 把任意错误归类为 UpdateErrorCode，供 UI 决定状态文案 / 重试策略。
+ *
+ * ⚠️ 关键约定：
+ *   tauri-plugin-updater 的 `Error` 在 Rust 侧被 `serialize_str(self.to_string())`
+ *   序列化，因此 JS 侧拿到的**是纯字符串**，`err.message` 为 undefined。
+ *   所以这里必须读 `String(err)`，不能只读 `err.message`。
+ *
+ * ⚠️ 另一条硬约束：**兜底分支只能是 unknown**。
+ *   「当前已是最新版本」是 `check()` 返回 null 的**成功**结果，绝不能出现在错误文案里，
+ *   否则网络失败 / 清单 404 / 平台无产物 / 签名失败都会骗用户「你已经是最新了」。
  */
-import type { UpdateErrorPayload } from '@shared/types'
+import type { UpdateErrorCode, UpdateErrorPayload } from '@shared/types'
 
-type NodeError = Error & { code?: string }
+/**
+ * 把任意抛出值压平成一段可检索的文本。
+ *
+ * 优先使用 `String(err)`：插件抛出的纯字符串、Error 实例、带 code 的
+ * Node 风格错误都能落到同一段文本上；再补齐 `message` / `code`，
+ * 兼容那些把信息放在字段里而不是字符串里的包装对象。
+ */
+export function errorText(err: unknown): string {
+  if (err === null || err === undefined) return ''
+  if (typeof err === 'string') return err
+  if (typeof err === 'object') {
+    const e = err as { message?: unknown; code?: unknown; name?: unknown }
+    const parts = [String(err)]
+    if (typeof e.message === 'string' && e.message) parts.push(e.message)
+    if (typeof e.code === 'string' && e.code) parts.push(e.code)
+    if (typeof e.name === 'string' && e.name) parts.push(e.name)
+    return parts.join(' ')
+  }
+  return String(err)
+}
 
-const RULES: Array<{
-  test: (err: NodeError | unknown) => boolean
-  payload: UpdateErrorPayload
-}> = [
+/**
+ * 每个错误码对应的**唯一**用户可见文案。
+ * 设置页状态区、Toast、更新弹窗共用同一份字符串，避免同一错误出现两种说法。
+ */
+export const UPDATE_ERROR_COPY: Record<UpdateErrorCode, string> = {
+  network: '网络连接失败，请检查网络后重试。',
+  ratelimit: '请求过于频繁，请稍后再试。',
+  'manifest-missing': '尚未发布正式版本，暂无可用更新。',
+  'no-platform-asset': '官方暂未提供适用于本平台的更新包，可前往发布页手动下载。',
+  'signature-failed': '更新包签名校验未通过，已拒绝安装。请从官方发布页手动下载安装。',
+  'download-failed': '更新包下载失败，请检查网络后重试。',
+  'install-failed': '更新安装失败，请从官方发布页手动下载安装。',
+  unknown: '检查更新失败，请稍后重试。',
+}
+
+interface Rule {
+  code: UpdateErrorCode
+  test: RegExp
+}
+
+/**
+ * 规则顺序即优先级：越具体的规则越靠前。
+ *
+ * 例子：`Download request failed with status: 404 Not Found` 必须先命中
+ * download-failed 再轮到 404 规则，否则会被误判成「清单不可用」。
+ * 再如：清单 URL 本身含 `download` 字样（.../releases/latest/download/latest.json），
+ * 所以下载相关规则不能用裸 `/download/`。
+ */
+const RULES: Rule[] = [
   {
-    test: (err) => {
-      const e = err as NodeError
-      return e?.code === 'ENOTFOUND' || e?.code === 'ECONNREFUSED' || e?.code === 'ETIMEDOUT' || e?.code === 'EHOSTUNREACH' || e?.code === 'ENETUNREACH'
-    },
-    payload: { code: 'network', message: '网络异常，请检查网络连接后重试' },
+    // minisign / base64 签名错误：更新包与公钥不匹配
+    code: 'signature-failed',
+    test: /minisign|signature|pubkey|public key|verify|verification failed|签名/i,
   },
   {
-    test: (err) => /403|rate.?limit|too.?many.?requests/i.test(String((err as Error)?.message ?? '')),
-    payload: { code: 'ratelimit', message: '请求过于频繁，请稍后再试' },
+    // 限流
+    code: 'ratelimit',
+    test: /\b429\b|too many requests|rate.?limit|请求过于频繁/i,
   },
   {
-    test: (err) => /download.?fail|download.?error/i.test(String((err as Error)?.message ?? '')),
-    payload: { code: 'download-failed', message: '下载失败，请检查网络后重试' },
+    // 下载阶段失败（状态码 / 传输中断 / 连接被重置）
+    code: 'download-failed',
+    test: /download request failed|failed to download|download failed|error downloading|download error/i,
   },
   {
-    test: (err) => /install|cancel/i.test(String((err as Error)?.message ?? '')),
-    payload: { code: 'install-failed', message: '安装被取消' },
+    // 安装阶段失败
+    code: 'install-failed',
+    test: /failed to install|install failed|installing failed|package install|deb install|invalid updater binary format|extract path|temp dir|installation/i,
   },
   {
-    test: (err) => /no.?asset|no.?update|up.?to.?date|latest.?version|already.?latest/i.test(String((err as Error)?.message ?? '')),
-    payload: { code: 'no-asset', message: '当前已是最新版本' },
+    // 清单里没有当前平台的产物
+    code: 'no-platform-asset',
+    test: /was not found in the response|fallback platforms|target ?not ?found|targets ?not ?found|unsupported application architecture|unsupported os|unsupported target|no asset|binary for the current target not found/i,
   },
   {
-    test: (err) => /endpoint.?did.?not.?respond|unsuccessful.?status|404|not.?found/i.test(String((err as Error)?.message ?? '')),
-    payload: { code: 'no-asset', message: '当前已是最新版本' },
+    // 远端更新清单不可用（404 / 非 JSON / 端点未配置 / 非 HTTPS）
+    code: 'manifest-missing',
+    test: /could not fetch a valid release json|release ?not ?found|failed to deserialize update response|update endpoint did not respond|endpoints? set|not found|\b404\b|forbidden|\b5\d\d\b|server error/i,
   },
   {
-    test: (err) => /signature|pubkey|verify|invalid.?signature/i.test(String((err as Error)?.message ?? '')),
-    payload: { code: 'no-asset', message: '当前已是最新版本' },
-  },
-  {
-    test: (err) => /timed.?out|timeout|connection.?reset/i.test(String((err as Error)?.message ?? '')),
-    payload: { code: 'network', message: '网络连接超时，请检查网络后重试' },
-  },
-  {
-    test: (err) => /dns.?resolve|getaddrinfo/i.test(String((err as Error)?.message ?? '')),
-    payload: { code: 'network', message: 'DNS解析失败，请检查网络连接' },
-  },
-  {
-    test: (err) => /tls|ssl|certificate/i.test(String((err as Error)?.message ?? '')),
-    payload: { code: 'network', message: 'SSL证书验证失败，请检查网络环境' },
-  },
-  {
-    test: (err) => /error.?sending.?request|error.?connecting|request.?failed|failed.?to.?fetch/i.test(String((err as Error)?.message ?? '')),
-    payload: { code: 'network', message: '网络请求失败，请检查网络连接后重试' },
-  },
-  {
-    test: (err) => /network/i.test(String((err as Error)?.message ?? '')),
-    payload: { code: 'network', message: '网络异常，请检查网络连接后重试' },
+    // 网络层失败：超时 / DNS / TLS / 连接被拒
+    code: 'network',
+    test: /timed.?out|timeout|connection reset|connection refused|connection aborted|network|dns|getaddrinfo|tls|ssl|certificate|error sending request|error connecting|request failed|failed to fetch|unable to resolve|no route to host|econnreset|econnrefused|enotfound|etimedout|ehostunreach|enetunreach|epipe/i,
   },
 ]
 
+/**
+ * 把任意错误归类为一个明确的错误码 + 用户可见文案。
+ *
+ * 兜底返回 `unknown`，绝不返回「当前已是最新版本」。
+ */
 export function classifyUpdateError(err: unknown): UpdateErrorPayload {
-  console.error('更新错误分类:', err)
+  const text = errorText(err)
   for (const rule of RULES) {
-    if (rule.test(err)) return rule.payload
+    if (rule.test.test(text)) {
+      return { code: rule.code, message: UPDATE_ERROR_COPY[rule.code] }
+    }
   }
-  return {
-    code: 'no-asset',
-    message: '当前已是最新版本',
-  }
+  return { code: 'unknown', message: UPDATE_ERROR_COPY.unknown }
 }

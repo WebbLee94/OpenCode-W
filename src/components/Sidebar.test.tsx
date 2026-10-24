@@ -20,13 +20,17 @@ afterEach(() => {
 function renderWithContext(state: UseUpdateStatus['state']) {
   const mock: UseUpdateStatus = {
     state,
+    checkStatus: state === 'available' ? 'available' : 'idle',
     info: null,
     progress: null,
     error: null,
     isChecking: false,
+    lastCheckedAt: null,
+    dialogOpen: false,
     check: vi.fn(),
     download: vi.fn(),
     install: vi.fn(),
+    dismissDialog: vi.fn(),
   }
   return render(
     <UpdateContext.Provider value={mock}>
