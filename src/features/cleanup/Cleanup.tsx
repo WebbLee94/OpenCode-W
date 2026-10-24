@@ -1,9 +1,12 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import type { CleanupPreviewDTO, CleanupFilter, CleanupResultDTO, CleanupStrategy } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe } from '../../lib/ipc'
 import { formatBytes, formatNumber } from '../../lib/format'
 import PageHeader from '../../components/PageHeader'
+import SchemaBlockedState from '../datasource/SchemaBlockedState'
+import { useSchemaStatus, useOptionalDataSource } from '../datasource/useDataSource'
+import { invalidateDashboardCache } from '../dashboard/Dashboard'
 import { Shield, AlertTriangle, Check, Clock, HardDrive, FolderOpen, ChevronRight, ChevronLeft, Trash2, RotateCcw } from 'lucide-react'
 
 type WizardStep = 1 | 2 | 3
@@ -27,6 +30,11 @@ function sanitizeProjectPath(p: string): string {
 }
 
 function Cleanup() {
+  // Schema 状态（格式不受支持时的降级）
+  const { derived: schema, refreshing: schemaRefreshing, refresh: refreshSchema } = useSchemaStatus()
+  const { dbPath, refresh: refreshDataSource } = useOptionalDataSource()
+  const schemaBlocked = schema.key === 'unsupported'
+
   // Wizard step
   const [step, setStep] = useState<WizardStep>(1)
 
@@ -41,6 +49,77 @@ function Cleanup() {
   const [preview, setPreview] = useState<CleanupPreviewDTO | null>(null)
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set())
   const [loadingPreview, setLoadingPreview] = useState(false)
+  // 预览请求在途标记：防止连点重复发起（大库统计很慢）
+  const previewPendingRef = useRef(false)
+
+  /**
+   * 随父会话一起删除的子会话 id（v2 递归删除时；v1 为空数组）。
+   *
+   * 语义：子会话**不可单独排除** —— 父会话被删时整棵子树都会删掉，
+   * 只留子会话会留下 parent_id 悬空的孤儿。前端据此把子行置灰锁定。
+   * 后端字段尚未落地 / 旧后端缺失时按空数组处理。
+   */
+  const childSessionIdSet = useMemo(
+    () => new Set(preview?.childSessionIds ?? []),
+    [preview]
+  )
+
+  /** 预览集合里的会话 id（用来判断某行的父是否也在集合内） */
+  const previewIdSet = useMemo(
+    () => new Set((preview?.sessions ?? []).map(s => s.id)),
+    [preview]
+  )
+
+  /**
+   * 根行：父会话不在预览集合里的行。
+   *
+   * 删除是按根会话展开的（父不在集合里 → 它自己就是删除的根），
+   * 因此「全不选」只该作用于根行；子行由父行连带决定。
+   */
+  const rootSessions = useMemo(
+    () => (preview?.sessions ?? []).filter(s => !s.parentId || !previewIdSet.has(s.parentId)),
+    [preview, previewIdSet]
+  )
+
+  /**
+   * 父会话 id 映射：会话 id → parentId（v1 / 旧后端缺失时为空，不影响行为）。
+   */
+  const parentMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const s of preview?.sessions ?? []) {
+      if (s.parentId) map.set(s.id, s.parentId)
+    }
+    return map
+  }, [preview])
+
+  /**
+   * 是否被**有效排除**：自身或任一祖先在 excludedIds 中。
+   *
+   * v2 删除父会话会连带删掉整棵子树，所以取消父行时子树里的每一行都算被排除
+   * （否则预览摘要会高于后端实际执行的范围）。沿 parentMap 向上找，
+   * 层数上限取会话数 —— 正常树不可能更深，同时能防住数据成环。
+   */
+  const isEffectivelyExcluded = useCallback((id: string): boolean => {
+    if (excludedIds.has(id)) return true
+    const maxDepth = (preview?.sessions.length ?? 0) + 1
+    let current = id
+    for (let depth = 0; depth < maxDepth; depth++) {
+      const parent = parentMap.get(current)
+      if (!parent) return false
+      if (excludedIds.has(parent)) return true
+      current = parent
+    }
+    return false
+  }, [excludedIds, parentMap, preview])
+
+  /** 实际被排除的会话集合（自身被排除 + 被祖先连带） */
+  const excludedTree = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of preview?.sessions ?? []) {
+      if (isEffectivelyExcluded(s.id)) set.add(s.id)
+    }
+    return set
+  }, [preview, isEffectivelyExcluded])
 
   // Execute state
   const [executing, setExecuting] = useState(false)
@@ -96,6 +175,10 @@ function Cleanup() {
   // Step 1 -> Step 2: Load preview
   const handleNextToPreview = async () => {
     if (!isStrategyValid()) return
+    // 预览统计在大型数据库上可能耗时数十秒：用 ref 兜住重复触发
+    // （disabled 属性要等下一次渲染才生效，连点两下会重复发起请求）
+    if (previewPendingRef.current) return
+    previewPendingRef.current = true
     setLoadingPreview(true)
     setActionError(null)
     setExcludedIds(new Set())
@@ -110,12 +193,36 @@ function Cleanup() {
       console.error('Failed to load preview:', err)
       setActionError((err as Error).message || '加载预览失败')
     } finally {
+      previewPendingRef.current = false
       setLoadingPreview(false)
+    }
+  }
+
+  // ─── 切换数据源（unsupported 占位里唯一的出路）─────────────────────
+  const handleSwitchDataSource = async () => {
+    try {
+      const filePath = await invokeSafe<string | null>(IPC_CHANNELS.DIALOG_OPEN_FILE)
+      if (!filePath) return
+      await invokeSafe<string>(IPC_CHANNELS.DATABASE_OPEN, filePath)
+      window.location.reload()
+    } catch {
+      /* 切换失败保持当前占位 */
+    }
+  }
+
+  // ─── 打开数据库所在目录（unsupported 占位里的取证入口）────────────
+  const handleRevealDirectory = async () => {
+    try {
+      await invokeSafe<boolean>(IPC_CHANNELS.SHELL_REVEAL_DATABASE_DIRECTORY)
+    } catch {
+      /* 打开目录失败不打断页面 */
     }
   }
 
   // Toggle session exclusion
   const toggleExclusion = (sessionId: string) => {
+    // 子会话随父会话一起删除，不能单独排除
+    if (childSessionIdSet.has(sessionId)) return
     setExcludedIds(prev => {
       const next = new Set(prev)
       if (next.has(sessionId)) {
@@ -130,13 +237,17 @@ function Cleanup() {
   // Recalculate summary when exclusions change
   const getAdjustedSummary = () => {
     if (!preview) return null
-    const includedSessions = preview.sessions.filter(s => !excludedIds.has(s.id))
+    // 被排除的会话 = 显式排除的根行 + 它们的整棵子树（父被删 → 子树一起没）
+    const includedSessions = preview.sessions.filter(s => !excludedTree.has(s.id))
     const sessionCount = includedSessions.length
     const messageCount = includedSessions.reduce((sum, s) => sum + s.msg_count, 0)
     const estimatedSize = includedSessions.reduce((sum, s) => sum + s.data_size, 0)
-    // Part count is not directly available per session, estimate proportionally
-    const partRatio = preview.sessionCount > 0 ? preview.partCount / preview.sessionCount : 0
-    const partCount = Math.round(sessionCount * partRatio)
+    // 内容块数：part 行数无法按会话精确求和，沿用 v1.3.5 的
+    // 按会话数比例估算；后端保证顶层 partCount 的口径（v2 为消息行数）。
+    const partCount =
+      preview.sessionCount > 0
+        ? Math.round(sessionCount * (preview.partCount / preview.sessionCount))
+        : 0
     return { sessionCount, messageCount, partCount, estimatedSize }
   }
 
@@ -175,6 +286,11 @@ function Cleanup() {
       const filter = buildFilter()
       const res = await invokeSafe<CleanupResultDTO>(IPC_CHANNELS.CLEANUP_EXECUTE, filter)
       setResult(res)
+      // 清理已改动数据库：让仪表盘模块缓存、schema 派生状态与侧边栏库大小一起失效，
+      // 否则用户回到仪表盘仍会看到清理前的统计。
+      invalidateDashboardCache()
+      void refreshSchema()
+      void refreshDataSource?.()
     } catch (err) {
       console.error('Cleanup failed:', err)
       setActionError((err as Error).message || '清理操作失败')
@@ -276,19 +392,26 @@ function Cleanup() {
         ))}
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-end items-center">
         {actionError && step === 1 && (
           <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 mr-4">
             <AlertTriangle size={16} className="shrink-0" />
             {actionError}
           </div>
         )}
+        {/* 大型数据库的预览统计可能耗时数十秒，明确告诉用户在等什么 */}
+        {loadingPreview && (
+          <span role="status" className="text-xs text-gray-500 mr-3">
+            正在统计数据库，大型数据库可能需要数十秒。
+          </span>
+        )}
         <button
           onClick={handleNextToPreview}
           disabled={!isStrategyValid() || loadingPreview}
+          aria-busy={loadingPreview || undefined}
           className="flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loadingPreview ? '加载中...' : (
+          {loadingPreview ? '正在统计…' : (
             <>
               下一步: 预览
               <ChevronRight size={16} />
@@ -341,19 +464,27 @@ function Cleanup() {
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-6">
             <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
               <span className="text-sm font-medium text-gray-700">
-                会话列表 ({preview.sessions.length - excludedIds.size} / {preview.sessions.length} 已选中)
+                会话列表 ({summary?.sessionCount ?? 0} / {preview.sessions.length} 已选中)
               </span>
               <button
                 onClick={() => {
-                  if (excludedIds.size === preview.sessions.length) {
-                    setExcludedIds(new Set())
-                  } else {
-                    setExcludedIds(new Set(preview.sessions.map(s => s.id)))
-                  }
+                  // 只作用于根行：子会话随父会话一起删除，由父行的取舍决定
+                  const rootIds = rootSessions
+                    .filter(s => !childSessionIdSet.has(s.id))
+                    .map(s => s.id)
+                  const allExcluded = rootIds.length > 0 && rootIds.every(id => excludedIds.has(id))
+                  setExcludedIds(prev => {
+                    const next = new Set(prev)
+                    rootIds.forEach(id => (allExcluded ? next.delete(id) : next.add(id)))
+                    return next
+                  })
                 }}
                 className="text-xs text-brand-600 hover:text-brand-800"
               >
-                {excludedIds.size === preview.sessions.length ? '全选' : '全不选'}
+                {rootSessions.length > 0 &&
+                rootSessions.filter(s => !childSessionIdSet.has(s.id)).every(s => excludedIds.has(s.id))
+                  ? '全选'
+                  : '全不选'}
               </button>
             </div>
             <div className="max-h-80 overflow-y-auto">
@@ -367,7 +498,20 @@ function Cleanup() {
                 </thead>
                 <tbody>
                   {preview.sessions.map(session => {
-                    const excluded = excludedIds.has(session.id)
+                    const isChild = childSessionIdSet.has(session.id)
+                    // 自身或祖先被排除 → 这行不会被删除
+                    const excluded = excludedTree.has(session.id)
+                    // 被祖先连带排除（自己没被点掉，但父/祖被排除了）
+                    const ancestorExcluded = excluded && !excludedIds.has(session.id)
+                    const title = session.title || '无标题'
+                    const childTag = isChild
+                      ? (ancestorExcluded ? '随父会话保留' : '子会话')
+                      : null
+                    const childTagTitle = isChild
+                      ? (ancestorExcluded
+                          ? '父会话已被排除，子会话随父会话一起保留'
+                          : '子会话随父会话一起删除，不可单独保留')
+                      : undefined
                     return (
                       <tr
                         key={session.id}
@@ -377,11 +521,22 @@ function Cleanup() {
                           <input
                             type="checkbox"
                             checked={!excluded}
+                            disabled={isChild}
                             onChange={() => toggleExclusion(session.id)}
+                            title={isChild ? childTagTitle : undefined}
+                            aria-label={isChild ? `子会话 ${title}：${childTagTitle}` : undefined}
                           />
                         </td>
-                        <td className="px-4 py-2 text-gray-900 max-w-md truncate">
-                          {session.title || '无标题'}
+                        <td className={`px-4 py-2 text-gray-900 max-w-md truncate ${isChild ? 'pl-8 text-gray-500' : ''}`}>
+                          {title}
+                          {childTag && (
+                            <span
+                              title={childTagTitle}
+                              className="ml-2 inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500 align-middle"
+                            >
+                              {childTag}
+                            </span>
+                          )}
                           {session.project_id && (
                             <span className="ml-2 text-xs text-gray-400">({session.project_id})</span>
                           )}
@@ -614,55 +769,70 @@ function Cleanup() {
         title="清理向导"
       />
 
-      {/* Step indicator */}
-      {!result && (
-        <div className="flex items-center justify-center mb-8">
-          {stepLabels.map((label, idx) => {
-            const stepNum = (idx + 1) as WizardStep
-            const StepIcon = stepIcons[idx]
-            const isActive = step === stepNum
-            const isCompleted = step > stepNum
-            return (
-              <div key={label} className="flex items-center">
-                <div className="flex flex-col items-center">
-                  <div
-                    className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${
-                      isCompleted
-                        ? 'bg-brand-600 border-brand-600 text-white'
-                        : isActive
-                          ? 'bg-brand-50 border-brand-500 text-brand-600'
-                          : 'bg-gray-100 border-gray-300 text-gray-400'
-                    }`}
-                  >
-                    {isCompleted ? <Check size={18} /> : <StepIcon size={18} />}
+      {/* unsupported：整块受限占位，隐藏步骤条与三步内容 */}
+      {schemaBlocked ? (
+        <SchemaBlockedState
+          reason={schema.reason}
+          path={schema.path || dbPath}
+          refreshing={schemaRefreshing}
+          onRetry={() => { void refreshSchema() }}
+          // 「打开所在目录」只对已打开的库有效
+          onReveal={dbPath ? handleRevealDirectory : undefined}
+          onSwitch={handleSwitchDataSource}
+        />
+      ) : (
+        <>
+          {/* Step indicator */}
+          {!result && (
+            <div className="flex items-center justify-center mb-8">
+              {stepLabels.map((label, idx) => {
+                const stepNum = (idx + 1) as WizardStep
+                const StepIcon = stepIcons[idx]
+                const isActive = step === stepNum
+                const isCompleted = step > stepNum
+                return (
+                  <div key={label} className="flex items-center">
+                    <div className="flex flex-col items-center">
+                      <div
+                        className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${
+                          isCompleted
+                            ? 'bg-brand-600 border-brand-600 text-white'
+                            : isActive
+                              ? 'bg-brand-50 border-brand-500 text-brand-600'
+                              : 'bg-gray-100 border-gray-300 text-gray-400'
+                        }`}
+                      >
+                        {isCompleted ? <Check size={18} /> : <StepIcon size={18} />}
+                      </div>
+                      <span
+                        className={`mt-1.5 text-xs font-medium ${
+                          isActive ? 'text-brand-600' : isCompleted ? 'text-brand-600' : 'text-gray-400'
+                        }`}
+                      >
+                        {label}
+                      </span>
+                    </div>
+                    {idx < stepLabels.length - 1 && (
+                      <div
+                        className={`w-20 h-0.5 mx-2 mb-5 ${
+                          isCompleted ? 'bg-brand-600' : 'bg-gray-300'
+                        }`}
+                      />
+                    )}
                   </div>
-                  <span
-                    className={`mt-1.5 text-xs font-medium ${
-                      isActive ? 'text-brand-600' : isCompleted ? 'text-brand-600' : 'text-gray-400'
-                    }`}
-                  >
-                    {label}
-                  </span>
-                </div>
-                {idx < stepLabels.length - 1 && (
-                  <div
-                    className={`w-20 h-0.5 mx-2 mb-5 ${
-                      isCompleted ? 'bg-brand-600' : 'bg-gray-300'
-                    }`}
-                  />
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
+                )
+              })}
+            </div>
+          )}
 
-      {/* Step content */}
-      <div className="flex-1 overflow-auto">
-        {step === 1 && renderStep1()}
-        {step === 2 && renderStep2()}
-        {step === 3 && renderStep3()}
-      </div>
+          {/* Step content */}
+          <div className="flex-1 overflow-auto">
+            {step === 1 && renderStep1()}
+            {step === 2 && renderStep2()}
+            {step === 3 && renderStep3()}
+          </div>
+        </>
+      )}
     </div>
   )
 }

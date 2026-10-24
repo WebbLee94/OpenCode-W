@@ -2,7 +2,7 @@ import { NavLink } from 'react-router'
 import logoSvg from '/brand/logo.svg'
 import SidebarGroup from './SidebarGroup'
 import { UpdateBadge } from '@/features/update/UpdateBadge'
-import { useDataSource } from '@/features/datasource/useDataSource'
+import { useDataSource, useSchemaStatus } from '@/features/datasource/useDataSource'
 import {
   LayoutDashboard, MessageSquare, Trash2, HardDrive, Settings as SettingsIcon,
   type LucideIcon,
@@ -36,8 +36,23 @@ const navGroups: { label: string; items: NavItemDef[] }[] = [
   },
 ]
 
+/**
+ * 异常态（unsupported）才替换底部状态点；迁移态不再在导航栏显示。
+ * 正常态（v1 / v2 / 未连接）逐字保持原样，不加任何 role/aria/图标。
+ */
+const ABNORMAL_STATUS: Record<string, { dot: string; text: string; label: string; ariaLabel: string }> = {
+  unsupported: {
+    dot: 'bg-red-500',
+    text: 'text-red-700',
+    label: '数据库异常',
+    ariaLabel: '数据库：无法识别的数据库格式',
+  },
+}
+
 export function Sidebar() {
   const { connected: dbConnected } = useDataSource()
+  const { derived: schema } = useSchemaStatus()
+  const abnormal = ABNORMAL_STATUS[schema.key]
 
   return (
     <nav className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0 overflow-visible">
@@ -75,9 +90,21 @@ export function Sidebar() {
       </div>
       <div className="min-h-14 p-3 border-t border-gray-200 flex items-center">
         <div className="flex items-center gap-2 w-full">
-          <div className="flex-1 flex items-center gap-2 px-3 py-2 text-xs text-gray-700 min-w-0">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${dbConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
-            <span className="truncate">{dbConnected ? '已连接' : '未连接'}</span>
+          <div
+            className={abnormal
+              ? `flex-1 flex items-center gap-2 px-3 py-2 text-xs min-w-0 ${abnormal.text}`
+              : 'flex-1 flex items-center gap-2 px-3 py-2 text-xs text-gray-700 min-w-0'}
+            {...(abnormal
+              ? { role: 'status', 'aria-live': 'polite', 'aria-label': abnormal.ariaLabel }
+              : {})}
+          >
+            <span
+              {...(abnormal ? { 'aria-hidden': 'true' } : {})}
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                abnormal ? abnormal.dot : (dbConnected ? 'bg-green-500' : 'bg-gray-400')
+              }`}
+            />
+            <span className="truncate">{abnormal ? abnormal.label : (dbConnected ? '已连接' : '未连接')}</span>
           </div>
           <NavLink
             to="/settings"

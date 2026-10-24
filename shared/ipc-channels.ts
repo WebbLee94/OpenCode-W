@@ -40,6 +40,7 @@ export const IPC_CHANNELS = {
   DATABASE_VACUUM: 'database:vacuum',
   DATABASE_CHECKPOINT: 'database:checkpoint',
   DATABASE_OPEN: 'database:open',
+  DATABASE_INFO: 'database:info',
   DATABASE_HEALTH: 'database:health',
   DATABASE_INTEGRITY_CHECK: 'database:integrityCheck',
 
