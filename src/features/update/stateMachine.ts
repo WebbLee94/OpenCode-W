@@ -9,7 +9,8 @@ const ALLOWED: Record<UpdateState, UpdateState[]> = {
   available:   ['downloading', 'idle'],
   downloading: ['downloaded', 'idle'],
   downloaded:  ['installing', 'idle'],
-  installing:  ['idle'],
+  // installing → downloaded：重启失败时回到「已下载待安装」，允许用户再点一次安装
+  installing:  ['downloaded', 'idle'],
 }
 
 export function isValidTransition(from: UpdateState, to: UpdateState): boolean {

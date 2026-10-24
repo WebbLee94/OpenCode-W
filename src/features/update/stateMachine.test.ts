@@ -26,6 +26,10 @@ describe('isValidTransition', () => {
     expect(isValidTransition('downloading', 'idle')).toBe(true)
   })
 
+  it('allows installing → downloaded (重启失败后允许再次安装)', () => {
+    expect(isValidTransition('installing', 'downloaded')).toBe(true)
+  })
+
   it('rejects downloading → installing (跳过 downloaded 状态)', () => {
     expect(isValidTransition('downloading', 'installing')).toBe(false)
   })
