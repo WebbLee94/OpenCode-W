@@ -62,7 +62,7 @@ fn backup_timestamp_metadata(now: DateTime<Utc>) -> (String, String) {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use chrono::{DateTime, TimeZone, Utc};
     use rusqlite::Connection;
@@ -77,7 +77,9 @@ mod tests {
     /// 备份预览的计数按方言分支（TASK-025）。
     #[test]
     fn backup_content_counts_follow_the_database_dialect() {
-        let fixture = |file: &str| -> Option<Connection> {
+        // 返回连接与临时目录：连接打开着夹具文件，Windows 上必须先关掉连接
+        // 才能删掉目录，因此清理放到断言之后单独做。
+        let fixture = |file: &str| -> Option<(Connection, PathBuf)> {
             let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../test-data")
                 .join(file);
@@ -97,25 +99,30 @@ mod tests {
             let path = dir.join("fixture.db");
             fs::copy(&source, &path).expect("fixture is copied");
             let conn = Connection::open(&path).expect("fixture opens");
-            let _ = fs::remove_dir_all(&dir);
-            Some(conn)
+            Some((conn, dir))
         };
 
         // v1：会话 / 消息 / part 行数，is_v2 = false。
-        let Some(conn) = fixture("test.db") else { return };
+        let Some((conn, dir)) = fixture("test.db") else { return };
         assert_eq!(backup_content_counts(&conn), (5, 20, 80, false));
+        drop(conn);
+        crate::db::remove_fixture_dir(&dir);
 
         // v2-fresh：没有旧表，part 计数为 0，is_v2 = true。
-        let Some(conn) = fixture("v2-fresh.db") else { return };
+        let Some((conn, dir)) = fixture("v2-fresh.db") else { return };
         assert_eq!(backup_content_counts(&conn), (6, 20, 0, true));
+        drop(conn);
+        crate::db::remove_fixture_dir(&dir);
 
         // v2-mixed：与 v2-fresh 同口径，只统计 v2 表，is_v2 = true。
-        let Some(conn) = fixture("v2-mixed.db") else { return };
+        let Some((conn, dir)) = fixture("v2-mixed.db") else { return };
         assert_eq!(
             backup_content_counts(&conn),
             (6, 20, 0, true),
             "6 个 v2 会话；20 条 v2 消息；旧表冻结副本不计入"
         );
+        drop(conn);
+        crate::db::remove_fixture_dir(&dir);
     }
 
     fn remove_database_files(path: &Path) {
@@ -125,7 +132,7 @@ mod tests {
             } else {
                 Path::new(&format!("{}{}", path.display(), suffix)).to_path_buf()
             };
-            let _ = fs::remove_file(candidate);
+            crate::db::remove_fixture_file_if_exists(&candidate);
         }
     }
 
@@ -200,7 +207,12 @@ mod tests {
         fs::write(&fallback, []).unwrap();
         let modified =
             std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_705_406_400);
-        fs::File::open(&fallback)
+        // 必须以**可写**方式打开：Windows 上 `SetFileTime` 需要
+        // FILE_WRITE_ATTRIBUTES 权限，只读句柄会得到 PermissionDenied。
+        // `write(true)` 不带 truncate，不会清空文件内容。
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&fallback)
             .unwrap()
             .set_times(fs::FileTimes::new().set_modified(modified))
             .unwrap();
@@ -212,7 +224,7 @@ mod tests {
         assert_eq!(backups[1].created_at, "2024-01-15T10:30:00.250Z");
         assert_eq!(backups[2].created_at, "2024-01-15T10:30:00.000Z");
 
-        fs::remove_dir_all(dir).unwrap();
+        db::remove_fixture_dir(&dir);
     }
 
     #[test]
@@ -297,7 +309,7 @@ mod tests {
         remove_database_files(&original);
         remove_database_files(&backup);
         remove_database_files(&outside);
-        fs::remove_dir_all(root).unwrap();
+        db::remove_fixture_dir(&root);
     }
 }
 
