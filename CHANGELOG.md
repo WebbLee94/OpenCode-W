@@ -5,11 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### v1.4.0 - 未发布
+### v1.4.0 - 2026-10-24
 
 > **开启数据库后自动识别并兼容 OpenCode v1 / v2 / 混合库**。兼容逻辑在后台完成，不需要用户手动切换模式、迁移数据库或清理旧格式数据；应用不会修改 OpenCode 数据库结构，删除类操作仍按「预览 → 确认」执行。
->
-> 📌 发布日期由发布 PR 确认后回填。
 
 #### 🧩 兼容与读取
 - 📚 自动识别 v1 / v2 / 混合库，直接读取会话、消息、内容块、待办与分享信息
