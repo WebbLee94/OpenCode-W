@@ -85,4 +85,56 @@ describe('Modal', () => {
 
     expect(first).toBeTruthy()
   })
+
+  describe('closeDisabled（由调用方决定是否允许关闭）', () => {
+    it('关闭按钮被禁用，并用 aria-disabled 表达', () => {
+      render(
+        <Modal isOpen onClose={() => {}} title="版本更新" closeDisabled>
+          内容
+        </Modal>,
+      )
+      const close = screen.getByRole('button', { name: '关闭' }) as HTMLButtonElement
+      expect(close.disabled).toBe(true)
+      expect(close.getAttribute('aria-disabled')).toBe('true')
+    })
+
+    it('禁用时点击关闭按钮不触发 onClose', () => {
+      const onClose = vi.fn()
+      render(
+        <Modal isOpen onClose={onClose} title="版本更新" closeDisabled>
+          内容
+        </Modal>,
+      )
+      fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+      expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('禁用时 Esc 与遮罩点击都不关闭', () => {
+      const onClose = vi.fn()
+      render(
+        <Modal isOpen onClose={onClose} title="版本更新" closeDisabled>
+          内容
+        </Modal>,
+      )
+      fireEvent.keyDown(document, { key: 'Escape' })
+      fireEvent.click(document.querySelector('.fixed') as HTMLElement)
+      expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('未禁用时行为不变（× / Esc / 遮罩都能关）', () => {
+      const onClose = vi.fn()
+      render(
+        <Modal isOpen onClose={onClose} title="版本更新">
+          内容
+        </Modal>,
+      )
+      const close = screen.getByRole('button', { name: '关闭' }) as HTMLButtonElement
+      expect(close.disabled).toBe(false)
+      expect(close.getAttribute('aria-disabled')).toBeNull()
+      fireEvent.click(close)
+      fireEvent.keyDown(document, { key: 'Escape' })
+      fireEvent.click(document.querySelector('.fixed') as HTMLElement)
+      expect(onClose).toHaveBeenCalledTimes(3)
+    })
+  })
 })

@@ -118,6 +118,37 @@ describe('UpdateProvider.check', () => {
     expect(checkMock).not.toHaveBeenCalled()
     expect(latest.checkStatus).toBe('idle')
   })
+
+  it('并发调用只发出一次 check()（双击守卫）', async () => {
+    // 模拟按钮双击：两次 check() 在同一个 tick 内发起
+    let resolveCheck!: (v: unknown) => void
+    checkMock.mockImplementation(() => new Promise(resolve => { resolveCheck = resolve }))
+
+    renderProvider()
+    await act(async () => {
+      void latest.check()
+      void latest.check()
+      void latest.check()
+    })
+
+    // 守卫是同步生效的：只有第一次真的发出了请求
+    expect(checkMock).toHaveBeenCalledTimes(1)
+
+    await act(async () => { resolveCheck(null) })
+
+    expect(checkMock).toHaveBeenCalledTimes(1)
+    expect(latest.checkStatus).toBe('up-to-date')
+  })
+
+  it('上一次检查结束后可以再次检查（守卫不会永久卡死）', async () => {
+    checkMock.mockResolvedValue(null)
+    renderProvider()
+    await act(async () => { await latest.check() })
+    await act(async () => { await latest.check() })
+
+    expect(checkMock).toHaveBeenCalledTimes(2)
+    expect(latest.isChecking).toBe(false)
+  })
 })
 
 describe('UpdateProvider.download', () => {

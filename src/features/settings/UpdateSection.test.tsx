@@ -13,15 +13,17 @@ import type { UseUpdateStatus } from '@/features/update/useUpdateStatus'
 import type { UpdateErrorCode, UpdateInfo } from '@shared/types'
 import { UPDATE_ERROR_COPY } from '@/features/update/errorClassifier'
 
-const { isTauriMock, getVersionMock, addToast, writeText } = vi.hoisted(() => ({
+const { isTauriMock, getVersionMock, addToast, writeText, openExternalMock } = vi.hoisted(() => ({
   isTauriMock: vi.fn(() => true),
   getVersionMock: vi.fn(() => Promise.resolve('1.4.0')),
   addToast: vi.fn(),
   writeText: vi.fn(() => Promise.resolve()),
+  openExternalMock: vi.fn<(url: string) => Promise<'system' | 'builtin'>>(),
 }))
 
 vi.mock('@/lib/ipc', () => ({
   isTauri: isTauriMock,
+  openExternal: openExternalMock,
 }))
 
 vi.mock('@tauri-apps/api/app', () => ({
@@ -74,6 +76,7 @@ function statusText(): string {
 beforeEach(() => {
   isTauriMock.mockReturnValue(true)
   getVersionMock.mockResolvedValue('1.4.0')
+  openExternalMock.mockResolvedValue('system')
   Object.defineProperty(navigator, 'clipboard', {
     value: { writeText },
     configurable: true,
@@ -234,6 +237,65 @@ describe('UpdateSection 可访问性与交互', () => {
     renderSection()
     const btn = screen.getByRole('button', { name: '检查更新' })
     expect((btn as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('UpdateSection 版本号措辞', () => {
+  it('浏览器预览：版本号旁标注「构建版本」并给出说明', () => {
+    isTauriMock.mockReturnValue(false)
+    renderSection()
+    expect(screen.getByTestId('update-current-version').textContent).toBe('v1.4.0')
+    expect(screen.getByTestId('update-version-source').textContent).toBe('构建版本')
+    expect(screen.getByTestId('update-version-note').textContent).toContain('构建版本')
+  })
+
+  it('桌面端（Tauri）：不出现「构建版本」标注', async () => {
+    renderSection()
+    await waitFor(() => expect(screen.getByTestId('update-current-version').textContent).toBe('v1.4.0'))
+    expect(screen.queryByTestId('update-version-source')).toBeNull()
+    expect(screen.queryByTestId('update-version-note')).toBeNull()
+  })
+})
+
+describe('UpdateSection 重试入口', () => {
+  it('签名失败：不提供「立即更新」，只给「打开发布页」', () => {
+    renderSection({
+      state: 'available',
+      checkStatus: 'available',
+      info: INFO,
+      error: { code: 'signature-failed', message: UPDATE_ERROR_COPY['signature-failed'] },
+    })
+
+    // 失败原因仍然可见
+    expect(statusText()).toBe(UPDATE_ERROR_COPY['signature-failed'])
+    // 再点一次必然同样失败 → 不给重试入口
+    expect(screen.queryByRole('button', { name: '立即更新' })).toBeNull()
+    // 给出的下一步是可执行的动作
+    const releaseBtn = screen.getByRole('button', { name: '打开发布页' })
+    fireEvent.click(releaseBtn)
+    expect(openExternalMock).toHaveBeenCalledTimes(1)
+    expect(String(openExternalMock.mock.calls[0][0])).toContain('/releases/latest')
+  })
+
+  it('本平台无产物：同样不给「立即更新」，改给发布页入口', () => {
+    renderSection({
+      checkStatus: 'failed',
+      error: { code: 'no-platform-asset', message: UPDATE_ERROR_COPY['no-platform-asset'] },
+    })
+    expect(statusText()).toBe(UPDATE_ERROR_COPY['no-platform-asset'])
+    expect(screen.queryByRole('button', { name: '立即更新' })).toBeNull()
+    expect(screen.getByRole('button', { name: '打开发布页' })).toBeTruthy()
+  })
+
+  it('网络类失败：保留「立即更新」重试入口', () => {
+    renderSection({
+      state: 'available',
+      checkStatus: 'available',
+      info: INFO,
+      error: { code: 'download-failed', message: UPDATE_ERROR_COPY['download-failed'] },
+    })
+    expect(screen.getByRole('button', { name: '立即更新' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '打开发布页' })).toBeNull()
   })
 })
 

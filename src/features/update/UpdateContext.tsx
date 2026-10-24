@@ -43,12 +43,26 @@ export function UpdateProvider({ children }: UpdateProviderProps) {
   const stateRef = useRef<UpdateState>('idle')
   /** 复用 check() 拿到的 Update 实例，避免下载时再发一次检查请求。 */
   const updateRef = useRef<Update | null>(null)
+  /**
+   * 「检查中」的**同步**守卫。
+   *
+   * `isChecking` 是 state，要等 React 重渲染后才变成 true，
+   * 按钮的 `disabled={busy}` 同样要等重渲染才生效 ——
+   * 双击会在重渲染前连发两次 check()。
+   * 最坏组合：第一次拿到更新、第二次返回 null → 界面显示「已是最新」，
+   * 而 updateRef 里仍留着更新实例。
+   * ref 在任何 await 之前同步置位，因此同一时刻只可能有一次检查在途。
+   */
+  const checkingRef = useRef(false)
   const { addToast } = useToast()
 
   useEffect(() => { stateRef.current = state }, [state])
 
   const handleCheck = useCallback(async () => {
     if (!isTauri()) return
+    // 同步守卫：isChecking 是 state，重渲染前仍是 false，双击会发出两次 check()。
+    if (checkingRef.current) return
+    checkingRef.current = true
     setIsChecking(true)
     setError(null)
     setCheckStatus('checking')
@@ -91,6 +105,7 @@ export function UpdateProvider({ children }: UpdateProviderProps) {
       setState('idle')
       setLastCheckedAt(Date.now())
     } finally {
+      checkingRef.current = false
       setIsChecking(false)
     }
   }, [])

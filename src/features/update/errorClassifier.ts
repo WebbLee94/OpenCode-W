@@ -52,6 +52,11 @@ export const UPDATE_ERROR_COPY: Record<UpdateErrorCode, string> = {
 interface Rule {
   code: UpdateErrorCode
   test: RegExp
+  /**
+   * 覆盖该错误码的默认文案。
+   * 只在「同一错误码下有更具体的场景」时使用（例如更新源端点非 HTTPS）。
+   */
+  message?: string
 }
 
 /**
@@ -64,9 +69,19 @@ interface Rule {
  */
 const RULES: Rule[] = [
   {
-    // minisign / base64 签名错误：更新包与公钥不匹配
+    // 更新源端点不是 https（插件抛 InsecureTransportProtocol）：属于**配置错误**，
+    // 必须说清原因，否则用户只会看到笼统的「检查更新失败」。
+    // 仍归到 unknown 兜底码 —— 新增错误码要改 shared/types.ts，超出本次改动范围。
+    code: 'unknown',
+    test: /InsecureTransportProtocol|insecure transport|url scheme is not allowed/i,
+    message: '更新源配置异常：更新地址不是安全连接（HTTPS），请检查网络环境后重试。',
+  },
+  {
+    // minisign / base64 签名错误：更新包与公钥不匹配。
+    // `Invalid symbol 45, offset 3.` 是 base64 解码失败，插件不带任何上下文，
+    // 所以要单独匹配，否则会掉进 unknown 兜底。
     code: 'signature-failed',
-    test: /minisign|signature|pubkey|public key|verify|verification failed|签名/i,
+    test: /minisign|signature|pubkey|public key|verify|verification failed|invalid symbol \d+, offset \d+|base64|签名/i,
   },
   {
     // 限流
@@ -79,17 +94,21 @@ const RULES: Rule[] = [
     test: /download request failed|failed to download|download failed|error downloading|download error/i,
   },
   {
-    // 安装阶段失败
+    // 安装阶段失败。
+    // `binary for the current target not found in the archive` 是**压缩包里缺少
+    // 本平台可执行文件**（包坏了），属于安装期问题 —— 不能说成「官方没提供本平台包」。
     code: 'install-failed',
-    test: /failed to install|install failed|installing failed|package install|deb install|invalid updater binary format|extract path|temp dir|installation/i,
+    test: /failed to install|install failed|installing failed|package install|deb install|invalid updater binary format|extract path|temp dir|installation|binary for the current target not found|not found in the archive/i,
   },
   {
-    // 清单里没有当前平台的产物
+    // 清单里没有当前平台的产物。
+    // 负向断言排除「压缩包内缺少可执行文件」那一句（安装期问题，见上一条规则）。
     code: 'no-platform-asset',
-    test: /was not found in the response|fallback platforms|target ?not ?found|targets ?not ?found|unsupported application architecture|unsupported os|unsupported target|no asset|binary for the current target not found/i,
+    test: /was not found in the response|fallback platforms|targets? ?not ?found(?! in the archive)|unsupported application architecture|unsupported os|unsupported target|no asset/i,
   },
   {
-    // 远端更新清单不可用（404 / 非 JSON / 端点未配置 / 非 HTTPS）
+    // 远端更新清单不可用（404 / 非 JSON / 端点未配置）
+    // 注：端点**非 HTTPS** 由上面的 InsecureTransportProtocol 规则先命中。
     code: 'manifest-missing',
     test: /could not fetch a valid release json|release ?not ?found|failed to deserialize update response|update endpoint did not respond|endpoints? set|not found|\b404\b|forbidden|\b5\d\d\b|server error/i,
   },
@@ -109,8 +128,21 @@ export function classifyUpdateError(err: unknown): UpdateErrorPayload {
   const text = errorText(err)
   for (const rule of RULES) {
     if (rule.test.test(text)) {
-      return { code: rule.code, message: UPDATE_ERROR_COPY[rule.code] }
+      return { code: rule.code, message: rule.message ?? UPDATE_ERROR_COPY[rule.code] }
     }
   }
   return { code: 'unknown', message: UPDATE_ERROR_COPY.unknown }
+}
+
+/**
+ * 这两类错误**重试也不会成功**，UI 不应再提供「立即更新 / 重试」入口：
+ *   - signature-failed：更新包与公钥不匹配，再点一次必然同样失败
+ *   - no-platform-asset：清单里根本没有本平台产物，重试毫无意义
+ *
+ * 命中时应改为引导用户去官方发布页手动下载安装，
+ * 同时**必须保留**失败原因文案（用户仍要知道出了什么事）。
+ */
+export function canRetryUpdate(error: UpdateErrorPayload | null): boolean {
+  if (!error) return true
+  return error.code !== 'signature-failed' && error.code !== 'no-platform-asset'
 }

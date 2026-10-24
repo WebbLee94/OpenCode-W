@@ -6,6 +6,14 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg';
+  /**
+   * 是否**禁止**关闭 —— 由调用方决定，通用组件不内置任何业务语义。
+   *
+   * 用于「下载 / 安装进行中」这类中途不能打断的流程：
+   * 关闭按钮置灰（并从 Tab 序列中移除），Esc 与遮罩点击也不再关闭，
+   * 避免用户点了却毫无反应、以为按钮坏了。
+   */
+  closeDisabled?: boolean;
 }
 
 const sizeStyles = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' };
@@ -20,18 +28,22 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
-export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, size = 'md', closeDisabled = false }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
 
-  // Esc 关闭
+  // Esc 关闭（禁止关闭时按 Esc 无效）
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (closeDisabled) return;
+      onClose();
+    };
     if (isOpen) document.addEventListener('keydown', handleEsc);
     return () => document.removeEventListener('keydown', handleEsc);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, closeDisabled]);
 
   // 打开时把焦点移进弹窗，关闭时归还给打开弹窗的元素
   useEffect(() => {
@@ -81,7 +93,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
 
   return (
     <div ref={overlayRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}>
+      onClick={(e) => { if (e.target === overlayRef.current && !closeDisabled) onClose(); }}>
       <div
         ref={panelRef}
         role="dialog"
@@ -95,8 +107,11 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
           <button
             type="button"
             onClick={onClose}
+            disabled={closeDisabled}
+            aria-disabled={closeDisabled || undefined}
             aria-label="关闭"
-            className="text-gray-400 hover:text-gray-600 text-xl leading-none rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+            title={closeDisabled ? '当前状态不允许关闭' : undefined}
+            className="text-gray-400 hover:text-gray-600 text-xl leading-none rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-gray-400"
           >&times;</button>
         </div>
         <div className="px-4 py-4">{children}</div>

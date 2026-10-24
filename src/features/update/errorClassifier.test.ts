@@ -9,7 +9,7 @@
  * 这里逐条锁定修复后的映射，并显式断言：**任何错误都不得**报「当前已是最新版本」。
  */
 import { describe, it, expect } from 'vitest'
-import { classifyUpdateError, errorText, UPDATE_ERROR_COPY } from './errorClassifier'
+import { classifyUpdateError, canRetryUpdate, errorText, UPDATE_ERROR_COPY } from './errorClassifier'
 
 describe('errorText', () => {
   it('读取纯字符串错误本身', () => {
@@ -92,6 +92,33 @@ describe('classifyUpdateError', () => {
     expect(classifyUpdateError(err).code).toBe('signature-failed')
   })
 
+  it('签名 base64 解码失败（插件只抛 Invalid symbol N, offset M）→ signature-failed', () => {
+    // 插件把错误序列化成纯字符串，且不带任何上下文：
+    // 既没有 "signature" 也没有 "minisign"，旧实现会掉进 unknown。
+    const err = 'Invalid symbol 45, offset 3.'
+    const result = classifyUpdateError(err)
+    expect(result.code).toBe('signature-failed')
+    expect(result.message).toBe(UPDATE_ERROR_COPY['signature-failed'])
+    expect(result.message).not.toContain('已是最新')
+  })
+
+  it('压缩包里没有本平台可执行文件 → install-failed（不是「官方没提供本平台包」）', () => {
+    const err = 'binary for the current target not found in the archive'
+    const result = classifyUpdateError(err)
+    expect(result.code).toBe('install-failed')
+    expect(result.message).toBe(UPDATE_ERROR_COPY['install-failed'])
+    expect(result.message).not.toContain('官方暂未提供')
+  })
+
+  it('更新源端点非 HTTPS → 文案要说明原因（不得笼统报「检查更新失败」）', () => {
+    const err = 'InsecureTransportProtocol'
+    const result = classifyUpdateError(err)
+    // 端点非 https 属于配置错误，暂无独立错误码，先归 unknown 兜底
+    expect(result.code).toBe('unknown')
+    expect(result.message).toContain('更新源配置异常')
+    expect(result.message).not.toContain('已是最新')
+  })
+
   it('下载阶段 404 → download-failed（不是 manifest-missing）', () => {
     const err = 'Download request failed with status: 404 Not Found'
     expect(classifyUpdateError(err).code).toBe('download-failed')
@@ -131,9 +158,28 @@ describe('classifyUpdateError', () => {
       'minisign error: signature verification failed',
       'error sending request for url (https://example.com)',
       'HTTP 429 Too Many Requests',
+      'Invalid symbol 45, offset 3.',
+      'binary for the current target not found in the archive',
+      'InsecureTransportProtocol',
     ]
     for (const sample of samples) {
       expect(classifyUpdateError(sample).message).not.toContain('已是最新')
     }
+  })
+})
+
+describe('canRetryUpdate', () => {
+  it('无错误 → 允许重试', () => {
+    expect(canRetryUpdate(null)).toBe(true)
+  })
+
+  it('网络等临时故障 → 允许重试', () => {
+    expect(canRetryUpdate({ code: 'network', message: UPDATE_ERROR_COPY.network })).toBe(true)
+    expect(canRetryUpdate({ code: 'download-failed', message: UPDATE_ERROR_COPY['download-failed'] })).toBe(true)
+  })
+
+  it('签名失败 / 本平台无产物 → 不允许重试（再点一次必然同样失败）', () => {
+    expect(canRetryUpdate({ code: 'signature-failed', message: UPDATE_ERROR_COPY['signature-failed'] })).toBe(false)
+    expect(canRetryUpdate({ code: 'no-platform-asset', message: UPDATE_ERROR_COPY['no-platform-asset'] })).toBe(false)
   })
 })

@@ -10,18 +10,28 @@ import { useCallback, useEffect, useState } from 'react'
 import { getVersion } from '@tauri-apps/api/app'
 import { isTauri } from '@/lib/ipc'
 import { useUpdateStatus } from '@/features/update/useUpdateStatus'
+import { canRetryUpdate } from '@/features/update/errorClassifier'
+import { useOpenReleasePage } from '@/features/update/releasePage'
 import { formatCheckedAt, resolveUpdateStatus, TONE_TEXT_CLASS } from '@/features/update/updateStatus'
 import { useToast } from '@/hooks/useToast'
-import { Check, Copy, Download, Loader2, RefreshCw } from 'lucide-react'
+import { Check, Copy, Download, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
 import pkg from '../../../package.json'
 
-/** 浏览器预览环境下没有 Tauri 版本号，回落到仓库版本（仅用于预览） */
+/**
+ * 浏览器预览环境下没有 Tauri 版本号，回落到仓库版本。
+ *
+ * ⚠️ 这**不是**用户安装的版本，而是仓库构建版本 —— 界面上必须如实标注，
+ * 不能让用户把仓库版本当成自己装的那个。
+ */
 const FALLBACK_VERSION = `v${pkg.version}`
 
 export function UpdateSection() {
   const { state, checkStatus, info, error, isChecking, lastCheckedAt, check, download, install } = useUpdateStatus()
   const { addToast } = useToast()
+  const openReleasePage = useOpenReleasePage()
   const tauri = isTauri()
+  /** 浏览器预览态：没有真实的桌面端版本号，只能显示仓库构建版本 */
+  const browserPreview = !tauri
 
   const [currentVersion, setCurrentVersion] = useState<string | null>(null)
   const [versionFailed, setVersionFailed] = useState(false)
@@ -68,6 +78,14 @@ export function UpdateSection() {
   const hasUpdate = state === 'available' || state === 'downloading' || state === 'downloaded' || state === 'installing'
   const busy = isChecking || state === 'downloading' || state === 'installing'
 
+  /**
+   * 签名不匹配 / 本平台无产物时，再点「立即更新」必然同样失败：
+   * 不给重试入口，改为引导用户去发布页手动下载（失败原因仍由状态区展示）。
+   */
+  const retryAllowed = canRetryUpdate(error)
+  const showRetryEntry = state === 'available' && retryAllowed
+  const showReleaseEntry = !!error && !retryAllowed
+
   const primaryBtn = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-brand-800 text-white hover:bg-brand-900 disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2'
   const secondaryBtn = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2'
 
@@ -90,6 +108,14 @@ export function UpdateSection() {
               <span data-testid="update-current-version" className="whitespace-nowrap tabular-nums">
                 {displayVersion ?? '获取失败'}
               </span>
+              {browserPreview && (
+                <span
+                  data-testid="update-version-source"
+                  className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-600 whitespace-nowrap"
+                >
+                  构建版本
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => { void handleCopyVersion() }}
@@ -126,6 +152,12 @@ export function UpdateSection() {
           )}
         </dl>
 
+        {browserPreview && (
+          <p data-testid="update-version-note" className="text-xs text-gray-500">
+            浏览器预览显示的是仓库构建版本，并非桌面端已安装的版本。
+          </p>
+        )}
+
         {versionFailed && (
           <p role="alert" className="text-xs text-red-700">获取当前版本失败，请重启应用后重试。</p>
         )}
@@ -159,7 +191,7 @@ export function UpdateSection() {
             {isChecking ? '检查中…' : '检查更新'}
           </button>
 
-          {state === 'available' && (
+          {showRetryEntry && (
             <button
               type="button"
               onClick={() => { void download() }}
@@ -167,6 +199,18 @@ export function UpdateSection() {
             >
               <Download size={14} aria-hidden="true" />
               立即更新
+            </button>
+          )}
+
+          {/* 重试无意义时只给发布页入口，避免用户再点一次必然失败的更新 */}
+          {showReleaseEntry && (
+            <button
+              type="button"
+              onClick={() => { void openReleasePage() }}
+              className={primaryBtn}
+            >
+              <ExternalLink size={14} aria-hidden="true" />
+              打开发布页
             </button>
           )}
 

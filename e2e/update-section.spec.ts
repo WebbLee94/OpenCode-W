@@ -16,7 +16,8 @@ import { IPC_CHANNELS as CH } from '../shared/ipc-channels'
  *
  * 环境约定（与实现一致，见 `src/features/settings/UpdateSection.tsx`）：
  *   - 纯浏览器（无 `window.__TAURI_INTERNALS__`）→ `isTauri()` 为 false，
- *     「当前版本」回落到 `package.json` 的 `v1.4.0`，「可更新版本」行不渲染，
+ *     「当前版本」回落到 `package.json` 的 `v1.4.0`（并明确标注为**构建版本**，
+ *     因为那不是用户装的那个版本），「可更新版本」行不渲染，
  *     状态区提示「浏览器预览环境不支持检查更新……」。
  *   - 注入 Tauri IPC stub → 可触达「检查中 / 有更新 / 失败」等真实分支。
  *
@@ -27,6 +28,9 @@ import { IPC_CHANNELS as CH } from '../shared/ipc-channels'
 /** `package.json` 的 version = 1.4.0 → 非 Tauri 回落到 `v1.4.0` */
 const BROWSER_PREVIEW_VERSION = 'v1.4.0'
 
+/** 非 Tauri 环境下版本号旁的来源标注（不能把仓库构建版本说成已安装版本） */
+const BUILD_VERSION_LABEL = '构建版本'
+
 /** 非 Tauri 环境的状态区文案（与 `UPDATE_STATUS_COPY.browserUnsupported` 一致） */
 const BROWSER_PREVIEW_HINT = '浏览器预览环境不支持检查更新，请在桌面应用中查看版本信息。'
 
@@ -35,6 +39,9 @@ const AVAILABLE_HINT = '发现新版本 v1.4.1，可立即更新。'
 
 /** 模拟 Tauri 环境下「检查失败（网络）」的状态文案 */
 const NETWORK_FAIL_HINT = '网络连接失败，请检查网络后重试。'
+
+/** 模拟 Tauri 环境下「签名校验失败」的状态文案 */
+const SIGNATURE_FAIL_HINT = '更新包签名校验未通过，已拒绝安装。请从官方发布页手动下载安装。'
 
 const SCHEMA = {
   mode: 'v2',
@@ -168,6 +175,26 @@ async function clipboardWrites(page: Page): Promise<string[]> {
   )
 }
 
+/**
+ * 「打开发布页」实际发出的 shell open IPC 目标地址。
+ *
+ * 桌面端走 `@tauri-apps/plugin-shell` 的 open()，在 stub 环境里表现为
+ * `plugin:shell|open` 调用 —— 用它断言用户拿到的是真正的发布页地址。
+ */
+async function shellOpenTargets(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const qa = (
+      window as unknown as {
+        __qa?: { log: Array<{ channel: string; payload: unknown }> }
+      }
+    ).__qa
+    if (!qa) return []
+    return qa.log
+      .filter(c => c.channel === 'plugin:shell|open')
+      .map(c => String((c.payload as { path?: unknown } | null)?.path ?? ''))
+  })
+}
+
 interface CollectedErrors {
   consoleErrors: string[]
   pageErrors: string[]
@@ -205,7 +232,7 @@ test.describe('设置页 · 版本更新（浏览器预览环境）', () => {
     await installClipboardStub(page)
   })
 
-  test('「版本更新」区渲染，当前版本回落到 package.json 的 v1.4.0', async ({ page }) => {
+  test('「版本更新」区渲染：当前版本回落到 package.json 的 v1.4.0（标注为构建版本）', async ({ page }) => {
     await page.goto('/#/settings')
 
     const section = page.getByTestId('update-section')
@@ -215,6 +242,10 @@ test.describe('设置页 · 版本更新（浏览器预览环境）', () => {
     // 当前版本：非 Tauri 回落到 package.json（version = 1.4.0）
     await expect(page.getByTestId('update-current-version')).toHaveText(BROWSER_PREVIEW_VERSION)
     await expect(section.getByText('当前版本')).toBeVisible()
+
+    // ⚠️ 回落值是**仓库构建版本**，不是用户装的那个版本 —— 措辞必须如实标注
+    await expect(page.getByTestId('update-version-source')).toHaveText(BUILD_VERSION_LABEL)
+    await expect(page.getByTestId('update-version-note')).toContainText('构建版本')
   })
 
   test('无更新时不渲染「可更新版本」行（无更新时整行不渲染，不是 `—`）', async ({ page }) => {
@@ -386,5 +417,28 @@ test.describe('设置页 · 版本更新（模拟 Tauri 环境）', () => {
     await expect(status).toHaveText('已是最新版本，无需更新。')
     await expect(page.getByTestId('update-available-version')).toHaveCount(0)
     await expect(page.getByRole('dialog')).toHaveCount(0)
+  })
+
+  test('签名校验失败：不提供重试入口，只给「打开发布页」', async ({ page }) => {
+    await page.goto('/#/settings')
+    await installUpdaterGate(page)
+
+    await page.getByRole('button', { name: '检查更新' }).click()
+    await rejectUpdaterCheck(page, 'minisign error: signature verification failed')
+
+    const status = page.getByTestId('update-status')
+    await expect(status).toHaveText(SIGNATURE_FAIL_HINT)
+    // 失败原因可见，且绝不伪装成「已是最新」
+    await expect(status).not.toContainText('已是最新')
+
+    // 再点一次必然同样失败 → 不给重试入口
+    await expect(page.getByRole('button', { name: '立即更新' })).toHaveCount(0)
+
+    // 替代动作：打开发布页
+    const releaseBtn = page.getByRole('button', { name: '打开发布页' })
+    await expect(releaseBtn).toBeVisible()
+    await releaseBtn.click()
+    await expect.poll(() => shellOpenTargets(page)).toHaveLength(1)
+    expect((await shellOpenTargets(page))[0]).toContain('/releases/latest')
   })
 })

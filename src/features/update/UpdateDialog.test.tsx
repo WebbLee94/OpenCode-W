@@ -10,6 +10,19 @@ import { UpdateContext } from './UpdateContext'
 import type { UseUpdateStatus } from './useUpdateStatus'
 import type { UpdateInfo } from '@shared/types'
 
+const { openExternalMock, addToast } = vi.hoisted(() => ({
+  openExternalMock: vi.fn<(url: string) => Promise<'system' | 'builtin'>>(),
+  addToast: vi.fn(),
+}))
+
+vi.mock('@/lib/ipc', () => ({
+  openExternal: openExternalMock,
+}))
+
+vi.mock('@/hooks/useToast', () => ({
+  useToast: () => ({ addToast }),
+}))
+
 const INFO: UpdateInfo = {
   version: '1.4.1',
   releaseDate: '2026-10-01T00:00:00Z',
@@ -108,5 +121,48 @@ describe('UpdateDialog', () => {
       error: { code: 'signature-failed', message: '更新包签名校验未通过，已拒绝安装。请从官方发布页手动下载安装。' },
     })
     expect(screen.getByText(/签名校验未通过/)).toBeTruthy()
+  })
+
+  it('下载中：× 按钮禁用（点了也关不掉，给出明确反馈）', () => {
+    renderDialog({ state: 'downloading' })
+    const close = screen.getByRole('button', { name: '关闭' }) as HTMLButtonElement
+    expect(close.disabled).toBe(true)
+    expect(close.getAttribute('aria-disabled')).toBe('true')
+  })
+
+  it('安装中：× 按钮禁用', () => {
+    renderDialog({ state: 'installing' })
+    const close = screen.getByRole('button', { name: '关闭' }) as HTMLButtonElement
+    expect(close.disabled).toBe(true)
+  })
+
+  it('可下载状态：× 按钮仍可点', () => {
+    renderDialog({ state: 'available' })
+    const close = screen.getByRole('button', { name: '关闭' }) as HTMLButtonElement
+    expect(close.disabled).toBe(false)
+  })
+
+  it('签名失败：不给「立即下载」重试入口，只给「打开发布页」', () => {
+    const value = renderDialog({
+      state: 'available',
+      error: { code: 'signature-failed', message: '更新包签名校验未通过，已拒绝安装。请从官方发布页手动下载安装。' },
+    })
+
+    expect(screen.queryByRole('button', { name: '立即下载' })).toBeNull()
+    const releaseBtn = screen.getByRole('button', { name: '打开发布页' })
+    fireEvent.click(releaseBtn)
+    expect(openExternalMock).toHaveBeenCalledTimes(1)
+    expect(String(openExternalMock.mock.calls[0][0])).toContain('/releases/latest')
+    // 重试入口确实不可达
+    expect(value.download).not.toHaveBeenCalled()
+  })
+
+  it('网络类失败：保留「立即下载」重试入口', () => {
+    renderDialog({
+      state: 'available',
+      error: { code: 'download-failed', message: '更新包下载失败，请检查网络后重试。' },
+    })
+    expect(screen.getByRole('button', { name: '立即下载' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '打开发布页' })).toBeNull()
   })
 })
