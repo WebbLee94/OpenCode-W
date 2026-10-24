@@ -161,6 +161,12 @@ export function UpdateSection() {
                 控制显隐 —— 触屏没有 hover，藏起来等于按钮不存在；
                 opacity-0 还会把焦点环一起藏掉（违反 WCAG 2.4.7）。
                 命中区 28×28（size-7），保证触屏可用。
+
+                ⚠️ 静止态用 text-gray-500（对白底 #ffffff = 4.84:1，真实浏览器实测），
+                **不要**退回 text-gray-400（#99a1af = 2.60:1）：
+                这个图标是按钮唯一的视觉标识（无文字、无边框），
+                WCAG 1.4.11 要求非文本对比度 ≥ 3:1，gray-400 达不到。
+                hover/focus 态 text-gray-700 已合规。
               */}
               <span className="relative group inline-flex shrink-0">
                 <button
@@ -168,7 +174,7 @@ export function UpdateSection() {
                   onClick={() => { void handleCopyVersion() }}
                   disabled={!displayVersion}
                   aria-label="复制版本号"
-                  className="inline-flex size-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+                  className="inline-flex size-7 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
                 >
                   {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
                 </button>

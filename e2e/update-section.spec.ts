@@ -38,6 +38,80 @@ const BROWSER_PREVIEW_HINT = '浏览器预览环境不支持检查更新，请�
 /** 模拟 Tauri 环境下「发现新版本」的状态文案 */
 const AVAILABLE_HINT = '发现新版本 v1.4.1，可立即更新。'
 
+/**
+ * 复制图标的**实际**对比度（WCAG 相对亮度公式）。
+ *
+ * 读的是真实渲染出来的颜色，不是 class 名 —— 「再弱化一档」就可能跌破 3:1，
+ * 而弱化本身看起来毫无差别，只有量出来才知道。
+ *
+ * 这个图标是按钮**唯一**的视觉标识（无文字、无边框），
+ * 所以适用 WCAG 1.4.11（非文本内容）：对比度必须 ≥ 3:1。
+ */
+async function copyIconContrast(page: Page): Promise<{ ratio: number; fg: string; bg: string }> {
+  return page.evaluate(() => {
+    const btn = document.querySelector('button[aria-label="复制版本号"]') as HTMLElement | null
+    if (!btn) throw new Error('找不到复制版本号按钮')
+
+    // Tailwind v4 的调色板是 oklch()，浏览器的 computed style 也可能保留 oklch 写法。
+    // 用 canvas 把任意 CSS 颜色解析成 sRGB 的 RGBA（getImageData 一定是 8bit sRGB）。
+    const canvas = document.createElement('canvas')
+    canvas.width = 1
+    canvas.height = 1
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+    const resolve = (css: string) => {
+      if (!CSS.supports('color', css)) return null
+      ctx.clearRect(0, 0, 1, 1)
+      ctx.fillStyle = css
+      ctx.fillRect(0, 0, 1, 1)
+      const d = ctx.getImageData(0, 0, 1, 1).data
+      return { r: d[0], g: d[1], b: d[2], a: d[3] / 255 }
+    }
+    const over = (
+      fg: { r: number; g: number; b: number; a: number },
+      bg: { r: number; g: number; b: number },
+    ) => ({
+      r: fg.r * fg.a + bg.r * (1 - fg.a),
+      g: fg.g * fg.a + bg.g * (1 - fg.a),
+      b: fg.b * fg.a + bg.b * (1 - fg.a),
+      a: 1,
+    })
+
+    // 前景：按钮的 color（Lucide 图标用 currentColor 描边）
+    const fgRaw = resolve(getComputedStyle(btn).color)
+    if (!fgRaw) {
+      throw new Error(`读不到复制图标的颜色：${getComputedStyle(btn).color}`)
+    }
+
+    // 背景：从按钮往上找第一个不透明背景层，逐层向下合成
+    const layers: Array<{ r: number; g: number; b: number; a: number }> = []
+    let node: HTMLElement | null = btn
+    while (node) {
+      const c = resolve(getComputedStyle(node).backgroundColor)
+      if (c && c.a > 0) {
+        layers.push(c)
+        if (c.a >= 1) break
+      }
+      node = node.parentElement
+    }
+    let bg = { r: 255, g: 255, b: 255, a: 1 } // 页面底色兜底：白
+    for (let i = layers.length - 1; i >= 0; i -= 1) bg = over(layers[i], bg)
+
+    const fg = over(fgRaw, bg)
+    const lum = (c: { r: number; g: number; b: number }) => {
+      const f = (v: number) => {
+        const s = v / 255
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+      }
+      return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b)
+    }
+    const l1 = lum(fg)
+    const l2 = lum(bg)
+    const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)
+    const rgb = (c: { r: number; g: number; b: number }) =>
+      `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`
+    return { ratio: Math.round(ratio * 100) / 100, fg: rgb(fg), bg: rgb(bg) }
+  })
+}
 /** 模拟 Tauri 环境下「检查失败（网络）」的状态文案 */
 const NETWORK_FAIL_HINT = '网络连接失败，请检查网络后重试。'
 
@@ -388,6 +462,26 @@ test.describe('设置页 · 版本更新（浏览器预览环境）', () => {
     // 键盘路径：原生 title 在 focus 时不显示，自绘 tooltip 必须补上这一条
     await copyBtn.focus()
     await expect(tooltip).toHaveCSS('opacity', '1')
+  })
+
+  test('复制图标静止态对比度 ≥ 3:1（WCAG 1.4.11：图标是按钮唯一的视觉标识）', async ({ page }) => {
+    await page.goto('/#/settings')
+
+    const copyBtn = page.getByRole('button', { name: '复制版本号' })
+    await expect(copyBtn).toBeVisible()
+
+    // 量真实渲染出来的颜色（不是 class 名）：
+    // 弱化一档在肉眼看来毫无差别，却可能直接跌破 3:1。
+    const contrast = await copyIconContrast(page)
+    expect(
+      contrast.ratio,
+      `复制图标对比度只有 ${contrast.ratio}:1（前景 ${contrast.fg} / 背景 ${contrast.bg}），低于 WCAG 1.4.11 的 3:1`,
+    ).toBeGreaterThanOrEqual(3)
+
+    // 顺手钉住颜色本身：text-gray-500（对白底 ≈ 4.8:1）
+    // ⚠️ 不要退回 text-gray-400（≈ 2.5:1，达不到 3:1）
+    await expect(copyBtn).toHaveClass(/text-gray-500/)
+    await expect(copyBtn).not.toHaveClass(/text-gray-400/)
   })
 
   test('复制按钮：连续复制两次都会更新读屏播报区', async ({ page }) => {
