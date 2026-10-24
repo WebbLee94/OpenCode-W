@@ -16,6 +16,9 @@ target/
 src-tauri/gen/schemas/
 test-results/
 
+# updater 静态清单：本地跑 `npm run release:manifest` 会生成，属构建产物不入库
+latest.json
+
 # Environment files
 .env
 .env.local

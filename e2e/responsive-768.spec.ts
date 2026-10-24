@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
+import { installTauriStub } from './helpers/tauri-stub'
+import { IPC_CHANNELS as CH } from '../shared/ipc-channels'
 
 /**
  * 窄屏（768px）布局巡检 —— 对应 TEST-014「768px 无横向滚动」
@@ -54,6 +56,70 @@ const ROUTES = [
   { name: '设置', hash: '#/settings' },
 ]
 
+/**
+ * 「设置 · 版本更新」区在 768px 下的布局测量。
+ *
+ * 为什么要单独测（而不是靠上面的「文档级横向滚动」兜底）：
+ *   - `main` 上有 `overflow-x-hidden`，**子容器横向溢出不会撑大文档**，
+ *     所以「文档不横向滚动」这条断言发现不了「复制按钮被挤出卡片」这类问题；
+ *   - 「当前版本」行新增了「复制」按钮、「上次检查」行是条件渲染，
+ *     二者都可能把 `dl` 里的行撑破 —— 必须直接量 `update-section` 内部。
+ */
+interface UpdateSectionMetrics {
+  sectionScrollWidth: number
+  sectionClientWidth: number
+  /** 区内部产生横向溢出的元素 */
+  offenders: Array<{ tag: string; testid: string; cls: string; scrollWidth: number; clientWidth: number }>
+  sectionLeft: number
+  sectionRight: number
+  versionLeft: number
+  versionRight: number
+  copyLeft: number
+  copyRight: number
+  copyVisible: boolean
+  docScrollWidth: number
+  docClientWidth: number
+}
+
+async function measureUpdateSection(page: Page): Promise<UpdateSectionMetrics> {
+  return page.evaluate(() => {
+    const section = document.querySelector('[data-testid="update-section"]') as HTMLElement
+    const offenders: UpdateSectionMetrics['offenders'] = []
+    for (const node of Array.from(section.querySelectorAll('*'))) {
+      const e = node as HTMLElement
+      if (e.scrollWidth > e.clientWidth + 1) {
+        offenders.push({
+          tag: e.tagName,
+          testid: e.getAttribute('data-testid') ?? '',
+          cls: (e.getAttribute('class') || '').slice(0, 80),
+          scrollWidth: e.scrollWidth,
+          clientWidth: e.clientWidth,
+        })
+      }
+    }
+    const sectionRect = section.getBoundingClientRect()
+    const version = section.querySelector('[data-testid="update-current-version"]') as HTMLElement
+    const versionRect = version.getBoundingClientRect()
+    const copy = section.querySelector('[aria-label="复制版本号"]') as HTMLElement
+    const copyRect = copy.getBoundingClientRect()
+    const scroller = document.scrollingElement as HTMLElement
+    return {
+      sectionScrollWidth: section.scrollWidth,
+      sectionClientWidth: section.clientWidth,
+      offenders,
+      sectionLeft: sectionRect.left,
+      sectionRight: sectionRect.right,
+      versionLeft: versionRect.left,
+      versionRight: versionRect.right,
+      copyLeft: copyRect.left,
+      copyRight: copyRect.right,
+      copyVisible: copyRect.width > 0 && copyRect.height > 0,
+      docScrollWidth: scroller.scrollWidth,
+      docClientWidth: scroller.clientWidth,
+    }
+  })
+}
+
 test.describe('768px 窄屏', () => {
   for (const route of ROUTES) {
     test(`无文档级横向滚动: ${route.name}`, async ({ page }) => {
@@ -99,5 +165,88 @@ test.describe('768px 窄屏', () => {
     expect(widths.nav).toBeGreaterThanOrEqual(200)
     // 主区应落在 544px 左右（768 - 224）
     expect(widths.main).toBeLessThanOrEqual(widths.innerWidth)
+  })
+
+  test('768px 下「版本更新」区不溢出（当前版本 + 复制按钮 + 上次检查行）', async ({ page }) => {
+    // 模拟 Tauri：只有这样才能让「上次检查」行与「可更新版本」行渲染出来，
+    // 否则测到的只是「当前版本」一行，漏掉条件渲染行的布局。
+    await installTauriStub(page, {
+      respond: {
+        [CH.DATABASE_INFO]: {
+          mode: 'v2',
+          migrationPhase: 'none',
+          hasLegacyTables: false,
+          v2SessionCount: 3,
+          unsupportedReason: null,
+        },
+        [CH.DATABASE_HEALTH]: {
+          ok: true,
+          pageCount: 1,
+          freelistPages: 0,
+          walSize: 0,
+          dbSize: 4096,
+          currentPath: '/tmp/opencode.db',
+        },
+        [CH.SESSIONS_PROJECTS]: [],
+      },
+      respondRaw: {
+        'plugin:app|version': '1.4.0',
+        'plugin:path|home_dir': '/Users/tester',
+        'plugin:updater|check': {
+          rid: 1,
+          currentVersion: '1.4.0',
+          version: '1.4.1',
+          date: '2026-10-01T00:00:00Z',
+          body: '修复若干问题',
+          rawJson: {},
+        },
+      },
+    })
+
+    await page.setViewportSize({ width: 768, height: 800 })
+    await page.goto('/#/settings')
+    await page.waitForLoadState('networkidle')
+
+    const section = page.getByTestId('update-section')
+    await expect(section).toBeVisible()
+
+    // 检查一次，让「上次检查」行与「可更新版本」行都渲染出来
+    await page.getByRole('button', { name: '检查更新' }).click()
+    await expect(page.getByTestId('update-status')).toHaveText(/发现新版本 v1\.4\.1/)
+    await expect(page.getByTestId('update-available-version')).toBeVisible()
+    await expect(section.getByText('上次检查')).toBeVisible()
+
+    // 弹窗是 fixed 定位的遮罩，会盖住设置页；先关掉再量布局
+    const dialog = page.getByRole('dialog')
+    if (await dialog.count()) {
+      await dialog.getByRole('button', { name: '关闭' }).click()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+    }
+
+    const m = await measureUpdateSection(page)
+
+    // 区本身不横向溢出
+    expect(
+      m.sectionScrollWidth,
+      `「版本更新」区在 768px 下横向溢出：scrollWidth=${m.sectionScrollWidth} clientWidth=${m.sectionClientWidth}`,
+    ).toBeLessThanOrEqual(m.sectionClientWidth + 1)
+
+    // 区内部没有任何子元素被撑破（复制按钮 / 版本号 / 上次检查时间）
+    expect(m.offenders, `「版本更新」区内部存在横向溢出元素：${JSON.stringify(m.offenders)}`).toEqual([])
+
+    // 复制按钮完整落在卡片内，没有被挤到卡片外或被裁掉
+    expect(m.copyVisible, '「复制版本号」按钮在 768px 下不可见').toBe(true)
+    expect(m.copyRight, '「复制版本号」按钮超出「版本更新」区右边界').toBeLessThanOrEqual(m.sectionRight + 0.5)
+    expect(m.copyLeft, '「复制版本号」按钮超出「版本更新」区左边界').toBeGreaterThanOrEqual(m.sectionLeft - 0.5)
+
+    // 版本号本身也不越界
+    expect(m.versionRight, '「当前版本」数值超出「版本更新」区右边界').toBeLessThanOrEqual(m.sectionRight + 0.5)
+    expect(m.versionLeft, '「当前版本」数值超出「版本更新」区左边界').toBeGreaterThanOrEqual(m.sectionLeft - 0.5)
+
+    // 文档级也没有横向滚动
+    expect(
+      m.docScrollWidth,
+      `「设置」在 768px 下出现文档级横向滚动：scrollWidth=${m.docScrollWidth} clientWidth=${m.docClientWidth}`,
+    ).toBeLessThanOrEqual(m.docClientWidth)
   })
 })

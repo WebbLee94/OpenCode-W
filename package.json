@@ -24,6 +24,10 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 100",
     "preview": "vite preview",
     "test": "vitest",
+    "release:manifest": "node scripts/generate-latest-json.mjs",
+    "release:verify": "node scripts/verify-latest-json.mjs",
+    "release:verify-version": "node scripts/verify-release-version.mjs",
+    "release:selftest": "node scripts/selftest-latest-json.mjs",
     "generate-fixture": "node --experimental-sqlite --import tsx test-data/generate-fixture.ts",
     "generate-fixture:v2": "node --experimental-sqlite --import tsx test-data/generate-v2-fixtures.ts"
   },
