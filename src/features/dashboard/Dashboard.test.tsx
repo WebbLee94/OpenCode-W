@@ -360,6 +360,117 @@ function mockDashboardIpc() {
   })
 }
 
+// ── 时间范围口径 ────────────────────────────────────────────────────────
+
+function toLocalDateString(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/** 今天往前推 N 天的本地日期串。 */
+function daysAgo(n: number): string {
+  return toLocalDateString(new Date(Date.now() - n * 24 * 60 * 60 * 1000))
+}
+
+/** 两个 YYYY-MM-DD 之间的天数差（后者 − 前者）。 */
+function dayDiff(from: string, to: string): number {
+  const [y1, m1, d1] = from.split('-').map(Number)
+  const [y2, m2, d2] = to.split('-').map(Number)
+  return Math.round(
+    (new Date(y2, m2 - 1, d2).getTime() - new Date(y1, m1 - 1, d1).getTime()) / 86_400_000,
+  )
+}
+
+/** 最近一次「区间型」请求带的时间范围（统计类 IPC 的 payload 就是区间本身）。 */
+function lastRequestedRange(): { startDate: string; endDate: string } | null {
+  for (let i = invokeSafe.mock.calls.length - 1; i >= 0; i -= 1) {
+    const [channel, payload] = invokeSafe.mock.calls[i]
+    if (channel !== IPC_CHANNELS.DASHBOARD_TOKENS) continue
+    const range = payload as { startDate?: string; endDate?: string } | undefined
+    if (range?.startDate && range?.endDate) {
+      return { startDate: range.startDate, endDate: range.endDate }
+    }
+  }
+  return null
+}
+
+describe('Dashboard 时间范围口径', () => {
+  it('「7 天」预设覆盖含今日在内的 7 个自然日（起点 = 今天 − 6 天）', async () => {
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '7天' }))
+
+    await waitFor(() => {
+      const range = lastRequestedRange()
+      expect(range?.startDate).toBe(daysAgo(6))
+      expect(range?.endDate).toBe(daysAgo(0))
+    })
+
+    // 端点相差 6 天 → 区间含 7 个自然日（含今日）
+    const range = lastRequestedRange()!
+    expect(dayDiff(range.startDate, range.endDate)).toBe(6)
+  })
+
+  it('「30 天」「90 天」同样按「含今日」计算', async () => {
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '30天' }))
+    await waitFor(() => {
+      const range = lastRequestedRange()
+      expect(range?.startDate).toBe(daysAgo(29))
+      expect(range?.endDate).toBe(daysAgo(0))
+    })
+    expect(dayDiff(lastRequestedRange()!.startDate, lastRequestedRange()!.endDate)).toBe(29)
+
+    fireEvent.click(screen.getByRole('button', { name: '90天' }))
+    await waitFor(() => {
+      const range = lastRequestedRange()
+      expect(range?.startDate).toBe(daysAgo(89))
+      expect(range?.endDate).toBe(daysAgo(0))
+    })
+    expect(dayDiff(lastRequestedRange()!.startDate, lastRequestedRange()!.endDate)).toBe(89)
+  })
+
+  it('「对比上期」的上期区间与当前区间等长且紧邻其前', async () => {
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /趋势/ }))
+
+    // 趋势页会同时发「当前区间」和「上期区间」两次请求
+    await waitFor(() => {
+      const ranges = invokeSafe.mock.calls
+        .filter(([channel]) => channel === IPC_CHANNELS.DASHBOARD_SESSION_TREND)
+        .map(([, payload]) => payload as { startDate?: string; endDate?: string })
+        .filter((p) => p.startDate && p.endDate)
+      expect(ranges.length).toBeGreaterThanOrEqual(2)
+    })
+
+    const ranges = invokeSafe.mock.calls
+      .filter(([channel]) => channel === IPC_CHANNELS.DASHBOARD_SESSION_TREND)
+      .map(([, payload]) => payload as { startDate: string; endDate: string })
+      .filter((p) => p.startDate && p.endDate)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))
+
+    const prev = ranges[0]
+    const current = ranges[ranges.length - 1]
+
+    // 当前区间含今日
+    expect(current.endDate).toBe(daysAgo(0))
+    // 上期与当前**等长**（端点差相同 → 自然日数量相同）
+    expect(dayDiff(prev.startDate, prev.endDate)).toBe(dayDiff(current.startDate, current.endDate))
+    // 上期紧邻当前区间之前（不重叠、不留空档）
+    expect(dayDiff(prev.endDate, current.startDate)).toBe(1)
+  })
+})
+
 describe('Dashboard tooltip 口径词', () => {
   it('趋势 tooltip 首行是分桶日期，合计行是「当日合计」而不是「Token 总计」', async () => {
     mockDashboardIpc()

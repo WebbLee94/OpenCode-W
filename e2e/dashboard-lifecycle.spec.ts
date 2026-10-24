@@ -501,4 +501,29 @@ test.describe('请求生命周期（真实浏览器）', () => {
     await expect(tooltip).toContainText('本周合计')
     await expect(tooltip).not.toContainText('Token 总计')
   })
+
+  test('11 时间范围预设：7 天 = 含今日在内的 7 个自然日', async ({ page }) => {
+    await page.goto('/#/')
+    await expect(page.getByText('30/0')).toBeVisible()
+
+    const before = await stub.callCount(CH.DASHBOARD_OVERVIEW)
+    await page.getByRole('button', { name: '7天' }).click()
+    await expect
+      .poll(() => stub.callCount(CH.DASHBOARD_OVERVIEW), { timeout: 5_000 })
+      .toBeGreaterThan(before)
+
+    // 后端窗口两端都含（start 00:00:00 ~ end 23:59:59），所以「7 天」
+    // 必须是 [今天−6, 今天]（7 个自然日），不能是 [今天−7, 今天]（8 天）。
+    const range = await page.evaluate(() => {
+      const bridge = (window as unknown as { __qa?: QaBridge }).__qa
+      const calls = (bridge?.log ?? []).filter(c => c.channel === 'dashboard_overview')
+      const last = calls[calls.length - 1]
+      return (last?.payload ?? {}) as { startDate?: string; endDate?: string }
+    })
+
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    expect(range.startDate).toBe(fmt(new Date(Date.now() - 6 * 86_400_000)))
+    expect(range.endDate).toBe(fmt(new Date()))
+  })
 })

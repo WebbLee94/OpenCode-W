@@ -156,27 +156,51 @@ function toLocalDateString(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+/**
+ * 预设时间范围：**含今日**在内的 N 个自然日。
+ *
+ * ⚠️ 端点必须算准：后端窗口是
+ * `date_to_epoch_ms(start, true) ~ date_to_epoch_ms(end, false)` + `BETWEEN`，
+ * 即 start 当天 00:00:00 到 end 当天 23:59:59，**两端都含**。
+ * 所以「7 天」= `[今天−6, 今天]`（7 个自然日），而不是 `[今天−7, 今天]`
+ * ——后者是 8 天，会让按钮文案与实际口径对不上。
+ */
 function computeTimeRange(days: TimePreset, start?: string, end?: string): TimeRange | undefined {
   if (days === 'all') return undefined
   if (days === 'custom' && start && end) return { startDate: start, endDate: end }
   if (days === 'custom') return undefined
   const endDate = toLocalDateString(new Date())
-  const startDate = toLocalDateString(new Date(Date.now() - days * 24 * 60 * 60 * 1000))
+  // 含今日 → 起点是「今天 − (N−1) 天」
+  const startDate = toLocalDateString(new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000))
   return { startDate, endDate }
 }
 
-// 计算"上期"时间范围 — 与当前 timeRange 等长且紧邻的前一个区间
-// 例如：当前 5/14 ~ 6/13（30 天）→ 上期 4/14 ~ 5/13（30 天）
+/**
+ * 计算"上期"时间范围 — 与当前 timeRange **等长**且紧邻的前一个区间。
+ *
+ * 例如：当前 5/14 ~ 6/12（30 天）→ 上期 4/14 ~ 5/13（30 天）。
+ *
+ * 按**日历日**推（`new Date(y, m, d - n)`），不用毫秒差：
+ * 毫秒差在夏令时切换的区间里会差 1 小时，可能把上期算成少一天 / 多一天，
+ * 「等长」就不成立了。
+ */
 function computePrevTimeRange(current: TimeRange | undefined): TimeRange | undefined {
   if (!current) return undefined
   const [y1, m1, d1] = current.startDate.split('-').map(Number)
   const [y2, m2, d2] = current.endDate.split('-').map(Number)
   const start = new Date(y1, m1 - 1, d1)
   const end = new Date(y2, m2 - 1, d2)
-  const ms = end.getTime() - start.getTime()
-  if (ms <= 0) return undefined
-  const prevEnd = new Date(start.getTime() - 24 * 60 * 60 * 1000) // 上期 endDate = 当前 startDate - 1 天
-  const prevStart = new Date(prevEnd.getTime() - ms)
+  if (end.getTime() <= start.getTime()) return undefined
+  // 当前区间含端点的自然日数量（上期必须与它等长）
+  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1
+  // 上期 endDate = 当前 startDate - 1 天（紧邻，不重叠）
+  const prevEnd = new Date(start.getFullYear(), start.getMonth(), start.getDate() - 1)
+  // 上期 startDate = 上期 endDate 再往前推 (天数 − 1) 天
+  const prevStart = new Date(
+    prevEnd.getFullYear(),
+    prevEnd.getMonth(),
+    prevEnd.getDate() - (days - 1),
+  )
   return {
     startDate: toLocalDateString(prevStart),
     endDate: toLocalDateString(prevEnd),
