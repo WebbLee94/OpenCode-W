@@ -456,6 +456,48 @@ export interface ProviderStatsItem {
   totalCost: number
 }
 
+/**
+ * 排行未覆盖到的 token（没有归属到任何模型 / 服务商）。
+ *
+ * 真库里存在**没有 model 字段**的会话（`session_v2.model` 为 NULL）：它们的
+ * token 会进入概览卡的「Token 合计」，却不进入模型排行，用户对比排行与
+ * 概览合计时对不上又无从解释。后端把这段差额**如实算出来**交给前端展示。
+ *
+ * ⚠️ 它**不是**「总数 − 排行合计」：排行是 TOP 10，模型超过 10 个时排行
+ * 合计不含第 11 名及以后。所以「排行合计 + 缺口」≠ 概览 Token 合计，
+ * 文案不能写成「排行未覆盖的全部 token」。
+ *
+ * ⚠️ 模型缺口与服务商缺口是**两组不相交**的 token，不能相加、不能互相替代：
+ *   - 模型缺口 = 完全没有 model 记录的会话（不进模型排行）
+ *   - 服务商缺口 = 有 model、但取不到 providerID 的会话（进模型排行、不进服务商统计）
+ */
+export interface RankingCoverageGap {
+  /** 没有归属到任何模型（或服务商）的 token 合计 */
+  tokenCount: number
+  /** 涉及的会话数 */
+  sessionCount: number
+}
+
+/**
+ * `dashboard:modelRanking` 的返回体。
+ *
+ * 向后兼容：旧后端直接返回 `ModelRankingItem[]`（数组），前端两种形态都接受
+ * （见 Dashboard.tsx 的 normalizeModelRanking）→ 新前端配旧后端不会崩，
+ * 只是没有缺口说明。
+ */
+export interface ModelRankingResponse {
+  items: ModelRankingItem[]
+  /** 覆盖缺口；后端没有缺口（或旧库路径）时不返回该字段 → 前端整行不显示 */
+  coverageGap?: RankingCoverageGap
+}
+
+/** `dashboard:providerStats` 的返回体（兼容说明同 ModelRankingResponse）。 */
+export interface ProviderStatsResponse {
+  items: ProviderStatsItem[]
+  /** 覆盖缺口；后端没有缺口（或旧库路径）时不返回该字段 → 前端整行不显示 */
+  coverageGap?: RankingCoverageGap
+}
+
 // ─── Route B: Project Ranking ──────────────────────────────────────────────
 
 export interface ProjectRankingItem {

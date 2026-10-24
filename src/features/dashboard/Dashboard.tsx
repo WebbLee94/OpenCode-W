@@ -8,7 +8,10 @@ import type {
   TimeRange,
   TokenGroupDataPoint,
   ModelRankingItem,
+  ModelRankingResponse,
   ProviderStatsItem,
+  ProviderStatsResponse,
+  RankingCoverageGap,
   ProjectRankingItem,
   SessionTrendItem,
   CostTrendItem,
@@ -152,6 +155,33 @@ const DASHBOARD_TABS: { key: DashboardTab; label: string; icon: string }[] = [
 // 会话浏览页的日期筛选也用它，避免两页出现两套日期口径。
 
 /**
+ * 模型排行返回体归一化：**同时兼容旧数组与新对象**。
+ *
+ * - 旧后端：直接是 `ModelRankingItem[]`（没有缺口信息）
+ * - 新后端：`{ items, coverageGap? }`（`coverageGap` 缺省 = 没有缺口）
+ *
+ * 新前端配旧后端必须照常工作（只是不显示缺口说明），所以按形态分流。
+ */
+function normalizeModelRanking(
+  data: ModelRankingItem[] | ModelRankingResponse,
+): { items: ModelRankingItem[]; coverageGap?: RankingCoverageGap } {
+  if (Array.isArray(data)) {
+    return { items: data }
+  }
+  return { items: data.items ?? [], coverageGap: data.coverageGap }
+}
+
+/** 服务商统计返回体归一化（同 normalizeModelRanking）。 */
+function normalizeProviderStats(
+  data: ProviderStatsItem[] | ProviderStatsResponse,
+): { items: ProviderStatsItem[]; coverageGap?: RankingCoverageGap } {
+  if (Array.isArray(data)) {
+    return { items: data }
+  }
+  return { items: data.items ?? [], coverageGap: data.coverageGap }
+}
+
+/**
  * 预设时间范围：**含今日**在内的 N 个自然日。
  *
  * ⚠️ 端点必须算准：后端窗口是
@@ -228,6 +258,10 @@ interface StatsCacheSlice {
   modelRanking: ModelRankingItem[]
   providerStats: ProviderStatsItem[]
   projectRanking: ProjectRankingItem[]
+  /** 模型排行的覆盖缺口（没有 model 记录的会话） */
+  modelCoverageGap?: RankingCoverageGap
+  /** 服务商统计的覆盖缺口（有 model、但没有 providerID 的会话） */
+  providerCoverageGap?: RankingCoverageGap
 }
 
 interface TrendsCacheSlice {
@@ -326,6 +360,9 @@ function Dashboard() {
   const [modelRanking, setModelRanking] = useState<ModelRankingItem[]>([])
   const [providerStats, setProviderStats] = useState<ProviderStatsItem[]>([])
   const [projectRanking, setProjectRanking] = useState<ProjectRankingItem[]>([])
+  // 排行的覆盖缺口（后端没有缺口时不返回字段 → undefined → 整行不显示）
+  const [modelCoverageGap, setModelCoverageGap] = useState<RankingCoverageGap | undefined>(undefined)
+  const [providerCoverageGap, setProviderCoverageGap] = useState<RankingCoverageGap | undefined>(undefined)
   const [sessionTrend, setSessionTrend] = useState<SessionTrendItem[]>([])
   const [costTrend, setCostTrend] = useState<CostTrendItem[]>([])
   const [messageTrend, setMessageTrend] = useState<MessageTrendItem[]>([])
@@ -512,17 +549,27 @@ function Dashboard() {
       const [toolsR, skillsR, modelsR, providersR, projectsR] = await Promise.all([
         settle(invokeSafe<ToolRanking[]>(IPC_CHANNELS.DASHBOARD_TOOL_RANKING, tr)),
         settle(invokeSafe<SkillUsage[]>(IPC_CHANNELS.DASHBOARD_SKILL_USAGE, tr)),
-        settle(invokeSafe<ModelRankingItem[]>(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, tr)),
-        settle(invokeSafe<ProviderStatsItem[]>(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, tr)),
+        settle(invokeSafe<ModelRankingItem[] | ModelRankingResponse>(IPC_CHANNELS.DASHBOARD_MODEL_RANKING, tr)),
+        settle(invokeSafe<ProviderStatsItem[] | ProviderStatsResponse>(IPC_CHANNELS.DASHBOARD_PROVIDER_STATS, tr)),
         settle(invokeSafe<ProjectRankingItem[]>(IPC_CHANNELS.DASHBOARD_PROJECT_RANKING, tr)),
       ])
       if (gen !== slowGenRef.current) return null
 
+      // 排行返回体有两种形态（数组 / { items, coverageGap }），统一归一化
+      const modelPayload = modelsR.ok ? normalizeModelRanking(modelsR.data) : null
+      const providerPayload = providersR.ok ? normalizeProviderStats(providersR.data) : null
+
       // 只写成功段；失败段保留上一次的结果。
       if (toolsR.ok) setToolRanking(toolsR.data ?? [])
       if (skillsR.ok) setSkillUsage(skillsR.data ?? [])
-      if (modelsR.ok) setModelRanking(modelsR.data ?? [])
-      if (providersR.ok) setProviderStats(providersR.data ?? [])
+      if (modelPayload) {
+        setModelRanking(modelPayload.items)
+        setModelCoverageGap(modelPayload.coverageGap)
+      }
+      if (providerPayload) {
+        setProviderStats(providerPayload.items)
+        setProviderCoverageGap(providerPayload.coverageGap)
+      }
       if (projectsR.ok) setProjectRanking(projectsR.data ?? [])
 
       const firstError = [toolsR, skillsR, modelsR, providersR, projectsR].find(r => !r.ok)
@@ -535,9 +582,11 @@ function Dashboard() {
       const nextStats: StatsCacheSlice = {
         toolRanking: toolsR.ok ? (toolsR.data ?? []) : previous?.toolRanking ?? [],
         skillUsage: skillsR.ok ? (skillsR.data ?? []) : previous?.skillUsage ?? [],
-        modelRanking: modelsR.ok ? (modelsR.data ?? []) : previous?.modelRanking ?? [],
-        providerStats: providersR.ok ? (providersR.data ?? []) : previous?.providerStats ?? [],
+        modelRanking: modelPayload ? modelPayload.items : previous?.modelRanking ?? [],
+        providerStats: providerPayload ? providerPayload.items : previous?.providerStats ?? [],
         projectRanking: projectsR.ok ? (projectsR.data ?? []) : previous?.projectRanking ?? [],
+        modelCoverageGap: modelPayload ? modelPayload.coverageGap : previous?.modelCoverageGap,
+        providerCoverageGap: providerPayload ? providerPayload.coverageGap : previous?.providerCoverageGap,
       }
       dashboardCache = {
         ...(dashboardCache ?? emptyDashboardCache()),
@@ -683,6 +732,8 @@ function Dashboard() {
         setModelRanking(statsKeyMatches ? cached.stats?.modelRanking ?? [] : [])
         setProviderStats(statsKeyMatches ? cached.stats?.providerStats ?? [] : [])
         setProjectRanking(statsKeyMatches ? cached.stats?.projectRanking ?? [] : [])
+        setModelCoverageGap(statsKeyMatches ? cached.stats?.modelCoverageGap : undefined)
+        setProviderCoverageGap(statsKeyMatches ? cached.stats?.providerCoverageGap : undefined)
         setSessionTrend(trendsKeyMatches ? cached.trends?.sessionTrend ?? [] : [])
         setCostTrend(trendsKeyMatches ? cached.trends?.costTrend ?? [] : [])
         setMessageTrend(trendsKeyMatches ? cached.trends?.messageTrend ?? [] : [])
@@ -1048,6 +1099,16 @@ function Dashboard() {
   const isV2Schema = schema.mode === 'v2' || schema.mode === 'v2-mixed'
   // Token 统计占位：失败时给统一文案，不显示「暂无Token数据」误导用户
   const tokenPlaceholder = tokenError ? TOKEN_STATS_UNAVAILABLE : '暂无Token数据'
+
+  // ── 排行覆盖缺口 ───────────────────────────────────────────────────
+  // 没有缺口（后端不返回该字段 / token 数为 0）时整行不显示，不占位。
+  //
+  // ⚠️ 两组缺口**不相交**：模型缺口 = 没有 model 记录的会话；服务商缺口 =
+  // 有 model 但取不到 providerID 的会话。不可相加、不可互相替代。
+  // ⚠️ 缺口**不是**「总数 − 排行合计」（排行是 TOP 10），文案不能写成
+  // 「排行未覆盖的全部 token」。
+  const modelGap = modelCoverageGap && modelCoverageGap.tokenCount > 0 ? modelCoverageGap : null
+  const providerGap = providerCoverageGap && providerCoverageGap.tokenCount > 0 ? providerCoverageGap : null
 
   // ── 数据块状态机 ─────────────────────────────────────────────────
   const fastStatus = deriveSliceStatus({
@@ -1875,6 +1936,19 @@ function Dashboard() {
                 </div>
               ) : (
                 <p className="text-sm text-gray-400 text-center py-8">暂无模型数据</p>
+              )}
+              {/* 覆盖缺口说明：浅灰小字，不进图表。
+                  缺口 = 没有任何模型 / 服务商归属的那部分会话（后端如实聚合），
+                  不是「总数 − 排行合计」（排行是 TOP 10）。 */}
+              {modelGap && (
+                <p className="mt-3 text-xs text-gray-400">
+                  另有 {formatNumber(modelGap.sessionCount)} 个会话未记录模型，合计 {formatLargeNumber(modelGap.tokenCount)} tokens 未计入上方排行
+                </p>
+              )}
+              {providerGap && (
+                <p className="mt-1 text-xs text-gray-400">
+                  另有 {formatNumber(providerGap.sessionCount)} 个会话未记录服务商，合计 {formatLargeNumber(providerGap.tokenCount)} tokens 未计入上方统计
+                </p>
               )}
               </SliceSurface>
             </div>

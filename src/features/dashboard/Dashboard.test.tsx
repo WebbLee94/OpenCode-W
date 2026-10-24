@@ -330,8 +330,10 @@ function findTooltipContent(match: (text: string) => boolean, label: string): To
 /**
  * 默认 mock：health / overview / tokens 正常，且**趋势分组数据非空**
  * （否则趋势折线图不渲染，抓不到它的 tooltip）。
+ *
+ * `overrides` 按 channel 覆盖返回体（用来模拟后端的新对象返回体）。
  */
-function mockDashboardIpc() {
+function mockDashboardIpc(overrides: Record<string, unknown> = {}) {
   invokeSafe.mockImplementation((channel: string, payload?: { groupBy?: string }) => {
     if (channel === IPC_CHANNELS.DATABASE_HEALTH) {
       return Promise.resolve({ ok: true, pageCount: 1, freelistPages: 0, walSize: 0 })
@@ -347,6 +349,7 @@ function mockDashboardIpc() {
       }
       return Promise.resolve({ inputTokens: 10, outputTokens: 20, reasoningTokens: 30, cacheRead: 40, cacheWrite: 50, estimatedCost: 0.3, cacheHitRate: 80 })
     }
+    if (channel in overrides) return Promise.resolve(overrides[channel])
     if (channel === IPC_CHANNELS.DASHBOARD_MODEL_RANKING) {
       return Promise.resolve([{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }])
     }
@@ -468,6 +471,130 @@ describe('Dashboard 时间范围口径', () => {
     expect(dayDiff(prev.startDate, prev.endDate)).toBe(dayDiff(current.startDate, current.endDate))
     // 上期紧邻当前区间之前（不重叠、不留空档）
     expect(dayDiff(prev.endDate, current.startDate)).toBe(1)
+  })
+})
+
+describe('Dashboard 模型 / Provider 排行覆盖缺口', () => {
+  /** 切到统计 tab 并等 stats 段加载完（Provider 徽标出现即已加载）。 */
+  async function openStatsTab() {
+    fireEvent.click(screen.getByRole('button', { name: /统计/ }))
+    await waitFor(() => expect(screen.getByText(/openai: 900\.00 tokens/)).toBeTruthy())
+  }
+
+  it('后端返回新对象时，模型缺口行按预期文案渲染、数值正确', async () => {
+    mockDashboardIpc({
+      [IPC_CHANNELS.DASHBOARD_MODEL_RANKING]: {
+        items: [{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }],
+        coverageGap: { tokenCount: 681_728_091, sessionCount: 43 },
+      },
+    })
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    await openStatsTab()
+
+    expect(screen.getByText(/另有 43 个会话未记录模型/)).toBeTruthy()
+    expect(screen.getByText(/681\.73 M tokens 未计入上方排行/)).toBeTruthy()
+    // 缺口行不进图表：模型条目照常渲染
+    expect(screen.getByText(/模型 & Provider 统计/)).toBeTruthy()
+  })
+
+  it('模型缺口与服务商缺口分别渲染自己的文案与数值（不可混用）', async () => {
+    mockDashboardIpc({
+      [IPC_CHANNELS.DASHBOARD_MODEL_RANKING]: {
+        items: [{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }],
+        coverageGap: { tokenCount: 681_728_091, sessionCount: 43 },
+      },
+      [IPC_CHANNELS.DASHBOARD_PROVIDER_STATS]: {
+        items: [{ provider: 'openai', tokenCount: 900, totalCost: 1 }],
+        coverageGap: { tokenCount: 12_345, sessionCount: 7 },
+      },
+    })
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    await openStatsTab()
+
+    const modelLine = screen.getByText(/未记录模型/)
+    const providerLine = screen.getByText(/未记录服务商/)
+
+    expect(modelLine.textContent).toContain('另有 43 个会话未记录模型')
+    expect(modelLine.textContent).toContain('681.73 M')
+    expect(modelLine.textContent).not.toContain('12.35 K')
+    expect(modelLine.textContent).not.toContain('7 个会话')
+
+    expect(providerLine.textContent).toContain('另有 7 个会话未记录服务商')
+    expect(providerLine.textContent).toContain('12.35 K')
+    expect(providerLine.textContent).not.toContain('681.73 M')
+    expect(providerLine.textContent).not.toContain('43 个会话')
+  })
+
+  it('缺口文案不含「排行未覆盖」这类错误表述，也不出现字段名', async () => {
+    mockDashboardIpc({
+      [IPC_CHANNELS.DASHBOARD_MODEL_RANKING]: {
+        items: [{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }],
+        coverageGap: { tokenCount: 681_728_091, sessionCount: 43 },
+      },
+    })
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    await openStatsTab()
+
+    const line = screen.getByText(/未记录模型/)
+    // 缺口 ≠ 「总数 − 排行合计」（排行是 TOP 10），不能这么写
+    expect(line.textContent).not.toMatch(/排行未覆盖|未覆盖|全部未覆盖|剩余/)
+    // 面向用户：不出现字段名
+    expect(line.textContent).not.toMatch(/coverageGap|providerID|model|tokenCount|sessionCount/i)
+    // 不显示百分比
+    expect(line.textContent).not.toMatch(/%|％/)
+  })
+
+  it('后端返回旧数组时：不崩、不显示缺口行', async () => {
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    await openStatsTab()
+
+    // 旧后端返回数组 → 排行照常渲染，但没有缺口信息
+    expect(screen.getByText(/模型 & Provider 统计/)).toBeTruthy()
+    expect(screen.queryByText(/未记录模型/)).toBeNull()
+    expect(screen.queryByText(/未记录服务商/)).toBeNull()
+  })
+
+  it('coverageGap 缺失时不显示缺口行', async () => {
+    mockDashboardIpc({
+      [IPC_CHANNELS.DASHBOARD_MODEL_RANKING]: {
+        items: [{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }],
+      },
+      [IPC_CHANNELS.DASHBOARD_PROVIDER_STATS]: {
+        items: [{ provider: 'openai', tokenCount: 900, totalCost: 1 }],
+      },
+    })
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    await openStatsTab()
+
+    expect(screen.getByText(/模型 & Provider 统计/)).toBeTruthy()
+    expect(screen.queryByText(/未记录模型/)).toBeNull()
+    expect(screen.queryByText(/未记录服务商/)).toBeNull()
+  })
+
+  it('coverageGap.tokenCount 为 0 时不显示缺口行', async () => {
+    mockDashboardIpc({
+      [IPC_CHANNELS.DASHBOARD_MODEL_RANKING]: {
+        items: [{ model: 'gpt-5', tokenCount: 900, totalCost: 1 }],
+        coverageGap: { tokenCount: 0, sessionCount: 0 },
+      },
+      [IPC_CHANNELS.DASHBOARD_PROVIDER_STATS]: {
+        items: [{ provider: 'openai', tokenCount: 900, totalCost: 1 }],
+        coverageGap: { tokenCount: 0, sessionCount: 0 },
+      },
+    })
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+    await openStatsTab()
+
+    expect(screen.getByText(/模型 & Provider 统计/)).toBeTruthy()
+    expect(screen.queryByText(/未记录模型/)).toBeNull()
+    expect(screen.queryByText(/未记录服务商/)).toBeNull()
   })
 })
 
