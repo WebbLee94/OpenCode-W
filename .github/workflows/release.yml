@@ -37,7 +37,19 @@ jobs:
             rust-target: x86_64-unknown-linux-gnu
             bundle-arch: ''
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    # 门禁新增 cargo test（三平台）与 Playwright E2E（Linux）后上调。
+    # 依据（2026-10 GitHub 实测，非估算）：
+    #   - 改造前 build job 实测耗时 4.8–9.6 min（windows 9.6 / ubuntu 7.3 / macOS 6.3），
+    #     其中 Build (Tauri) 占 247–475 s；
+    #   - ci.yml 里 cargo test 实测 161/214/253 s（win/mac/ubuntu），但那是 Rust cache
+    #     full match 命中后的「链接 + 执行」时间；release job 没有 Rust cache，
+    #     需要额外承担冷编译（本地 -j4 冷编译 41 s，Linux 树更大），
+    #     ubuntu 上 189 个用例的实际执行就要 239 s；
+    #   - Playwright 实测 install 14 s + E2E 45 s（仅 Linux）。
+    # 保守外推后最慢条目（ubuntu）约 18 min，45 min 已有 2.5 倍余量；
+    # 但 darwin-x86_64 是 arm64 → x86_64 交叉编译条目，历史上从未在 CI 跑过，
+    # 真实耗时未知，且 runner 存在 2 倍慢速的可能，故从 45 适度上调到 60 留出余量。
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -67,7 +79,10 @@ jobs:
 
       - name: Install system dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+        # 与 ci.yml 保持一致：cargo test 现在会在本 job 里编译 tauri 依赖树
+        # （含 glib-sys 的 pkg-config 探测），glib 开发头文件显式列出，
+        # 不依赖 libgtk-3-dev 的传递依赖。
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libglib2.0-dev
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -84,6 +99,45 @@ jobs:
 
       - name: Test
         run: npm test -- --run
+
+      - name: Generate test fixtures
+        # 夹具（test-data/*.db）不入库（被 .gitignore 忽略），必须现场生成。
+        # Rust 侧的夹具测试在 CI 环境（CI=true）下缺少夹具会直接 panic 而不是跳过，
+        # 所以这一步必须排在 cargo test 之前。写法照抄 ci.yml 的同名步骤。
+        run: |
+          npm run generate-fixture:v2
+          npm run generate-fixture
+
+      - name: Cargo Test (Rust)
+        # 门禁必须覆盖 Rust 侧：ci.yml 虽然跑 cargo test，但它只对 main/master/release
+        # 的 push/PR 触发 —— 本分支的提交在打 tag 前不保证跑过，直接打 tag 会绕过它。
+        # 这里在每个平台矩阵条目里跑，平台覆盖与 CI 的三平台一致。
+        run: cd src-tauri && cargo test
+
+      - name: Install Playwright browsers (Linux)
+        # Playwright 只在 Linux 条目跑（与 ci.yml 一致）：浏览器级回归门禁只在
+        # Linux 生效，不额外占用 macOS / Windows 两个条目的时间。
+        if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright E2E
+        # 门禁必须覆盖浏览器级回归：新增 e2e（时间范围 / 覆盖缺口 / 复制播报 /
+        # tooltip 口径）此前只挂在 ci.yml 上，打 tag 的发布路径完全没跑过。
+        if: runner.os == 'Linux'
+        run: npx playwright test
+
+      - name: Upload Playwright failure artifacts
+        # 门禁失败时保留浏览器现场便于排查（照抄 ci.yml；artifact 名按矩阵条目唯一化，
+        # 避免两个 macOS 条目撞名导致 upload-artifact v4 冲突失败）。
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts-${{ matrix.platform }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Release scripts self-test
         # 清单生成 / 清单校验 / 版本守卫的回归自测（零依赖，见 scripts/selftest-latest-json.mjs）
@@ -198,7 +252,15 @@ jobs:
 
   release:
     name: Create GitHub Release
+    # 门禁链路：build job 必须先跑完全部质量门禁（typecheck / lint / vitest /
+    # cargo test / Playwright E2E / release:selftest / tauri build），本 job 才会执行。
+    # build 的任一平台矩阵条目失败 → build 整体结论为 failure → needs 链断开
+    # → 本 job 被跳过 → 不会创建 Release。
+    # 也就是说「tag 发布同样受 CI 门禁约束」：push 一个 v*.*.* tag 不再是绕过
+    # CI 的捷径，打 tag 之前必须已经通过同一批门禁。
     needs: build
+    # 双保险：只有真正的 tag 引用才创建 Release。workflow_dispatch 干跑时
+    # github.ref 是分支引用（如 refs/heads/xxx），该条件为 false → 干跑不会创建 Release。
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
