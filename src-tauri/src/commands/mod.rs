@@ -13,7 +13,6 @@ pub mod search;
 pub mod sessions;
 pub mod shell;
 pub mod todos;
-pub mod update;
 
 // Re-export all command functions at the module root so that
 // main.rs can register them via `commands::command_name`.
@@ -28,4 +27,3 @@ pub use search::*;
 pub use sessions::*;
 pub use shell::*;
 pub use todos::*;
-pub use update::*;

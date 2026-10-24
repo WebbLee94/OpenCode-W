@@ -571,6 +571,7 @@ pub struct TodoFilterByParent {
 // ─── Session Share ────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionShareDTO {
     pub session_id: String,
     /// v1 由 `session_share.id` 提供；v2 没有对应字段，返回 `null`。
@@ -579,47 +580,4 @@ pub struct SessionShareDTO {
     pub secret: Option<String>,
     pub url: String,
     pub time_created: i64,
-}
-
-// ─── Update ───────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum UpdateState {
-    Idle,
-    Available,
-    Downloading,
-    Downloaded,
-    Installing,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateInfo {
-    pub version: String,
-    pub release_date: String,
-    pub release_notes: String,
-    pub size_bytes: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateCheckResult {
-    pub available: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub info: Option<UpdateInfo>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateProgress {
-    pub bytes_per_second: f64,
-    pub percent: f64,
-    pub transferred: u64,
-    pub total: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateErrorPayload {
-    pub code: String,
-    pub message: String,
 }

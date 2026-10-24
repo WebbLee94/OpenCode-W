@@ -8,8 +8,10 @@
  *   - 关闭弹窗不会丢弃「有更新」的结论，设置页仍可继续更新
  */
 import { useUpdateStatus } from './useUpdateStatus'
+import { canRetryUpdate } from './errorClassifier'
+import { useOpenReleasePage } from './releasePage'
 import Modal from '@/components/Modal'
-import { Download, Package, Loader2, ShieldAlert } from 'lucide-react'
+import { Download, Package, Loader2, ShieldAlert, ExternalLink } from 'lucide-react'
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '未知大小'
@@ -20,6 +22,7 @@ function formatBytes(bytes: number): string {
 
 export function UpdateDialog() {
   const { dialogOpen, state, info, progress, error, download, install, dismissDialog } = useUpdateStatus()
+  const openReleasePage = useOpenReleasePage()
   if (!dialogOpen) return null
   if (!info) return null
 
@@ -27,8 +30,14 @@ export function UpdateDialog() {
   const hasKnownTotal = !!progress && progress.total > 0
   const percent = hasKnownTotal ? Math.round(progress!.percent) : null
 
+  // 下载 / 安装进行中不允许关闭弹窗：× 按钮会置灰，Esc 与遮罩点击同样无效。
+  const closeDisabled = state === 'downloading' || state === 'installing'
+
+  // 签名不匹配 / 本平台无产物时，重试必然同样失败：不再给「立即下载」入口。
+  const retryAllowed = canRetryUpdate(error)
+
   return (
-    <Modal isOpen onClose={dismissDialog} title="版本更新">
+    <Modal isOpen onClose={dismissDialog} title="版本更新" closeDisabled={closeDisabled}>
       <div className="space-y-4">
         <div className="flex items-start gap-3">
           <Package size={20} className="text-brand-800 mt-0.5 shrink-0" aria-hidden="true" />
@@ -50,13 +59,24 @@ export function UpdateDialog() {
           </div>
         )}
 
-        {state === 'available' && (
+        {state === 'available' && retryAllowed && (
           <button
             onClick={download}
             className="w-full flex items-center justify-center gap-2 py-2 rounded-md bg-brand-800 text-white hover:bg-brand-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
           >
             <Download size={16} aria-hidden="true" />
             立即下载
+          </button>
+        )}
+
+        {/* 重试无意义时（签名不符 / 本平台无产物）：只给发布页入口，不再给会再次失败的下载入口 */}
+        {!retryAllowed && (
+          <button
+            onClick={() => { void openReleasePage() }}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-md bg-brand-800 text-white hover:bg-brand-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+          >
+            <ExternalLink size={16} aria-hidden="true" />
+            打开发布页
           </button>
         )}
 
