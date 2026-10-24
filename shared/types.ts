@@ -472,6 +472,20 @@ export type UpdateState =
   | 'downloaded'
   | 'installing'
 
+/**
+ * 「检查更新」的结果状态。
+ *
+ * 与 UpdateState（更新下载流程）分离：UpdateState 描述「已发现更新之后」的
+ * 下载/安装进度，而 checkStatus 描述「这次检查得出了什么结论」。
+ * 两者组合才能唯一确定设置页要呈现的状态文案。
+ */
+export type UpdateCheckStatus =
+  | 'idle'        // 未检查
+  | 'checking'    // 检查中
+  | 'up-to-date'  // 已是最新版本
+  | 'available'   // 有可用更新
+  | 'failed'      // 检查失败
+
 export interface UpdateInfo {
   version: string         // 远端版本号，semver
   releaseDate: string     // ISO 8601
@@ -486,7 +500,23 @@ export interface UpdateProgress {
   total: number
 }
 
+/**
+ * 更新相关错误的分类码。
+ *
+ * 注意：这里**不能**用「当前已是最新版本」作为任何错误的兜底文案 ——
+ * 「已是最新」是 check() 返回 null 的成功结果，不是错误。
+ */
+export type UpdateErrorCode =
+  | 'network'            // 网络 / 超时 / DNS / TLS
+  | 'ratelimit'          // 被限流
+  | 'manifest-missing'   // 远端更新清单 404 / 不可用
+  | 'no-platform-asset'  // 清单里没有当前平台的产物
+  | 'signature-failed'   // 签名校验失败
+  | 'download-failed'    // 下载更新包失败
+  | 'install-failed'     // 安装 / 重启失败
+  | 'unknown'            // 无法归类
+
 export interface UpdateErrorPayload {
-  code: 'network' | 'ratelimit' | 'no-asset' | 'download-failed' | 'install-failed' | 'unknown'
+  code: UpdateErrorCode
   message: string
 }
