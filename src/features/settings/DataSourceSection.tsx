@@ -108,7 +108,14 @@ export function DataSourceSection() {
                 title="打开数据库所在目录"
                 aria-label="打开数据库所在目录"
                 aria-busy={revealing || undefined}
-                className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1"
+                /*
+                  ⚠️ 静止态用 text-gray-500（对白底 #ffffff = 4.84:1，真实浏览器实测），
+                  **不要**退回 text-gray-400（#99a1af = 2.60:1）：
+                  这个图标是按钮唯一的视觉标识（无文字、无边框），
+                  WCAG 1.4.11（非文本图形）要求对比度 ≥ 3:1，gray-400 达不到。
+                  hover 态 text-gray-600 已合规，保持不动。
+                */
+                className="p-1 rounded-md text-gray-500 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1"
               >
                 {revealing ? <Loader2 size={14} className="animate-spin" /> : <FolderOpen size={14} />}
               </button>
