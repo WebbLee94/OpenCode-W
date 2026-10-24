@@ -10,7 +10,8 @@ import { IPC_CHANNELS as CH } from '../shared/ipc-channels'
  *      —— 无更新时整行不渲染，不再有 `—` 占位。
  *   2. 状态化：未检查 / 检查中 / 已是最新 / 有更新 / 失败 各用独立文案，
  *      集中在 `src/features/update/updateStatus.ts`。
- *   3. 新增「复制版本号」按钮。
+ *   3. 新增「复制版本号」按钮：**常驻但弱化**（只留图标，自绘 tooltip 覆盖鼠标与
+ *      键盘两条路径），复制结果由 toast + 图标态 + 读屏 live region 三重反馈。
  *   4. 更新弹窗可关闭（`dialogOpen` 与流程状态分离）。
  *   5. 错误兜底不再说「当前已是最新版本」。
  *
@@ -250,6 +251,17 @@ function describeErrors(errors: CollectedErrors): string {
     .join('\n')
 }
 
+/**
+ * toast 提示条。
+ *
+ * ⚠️ toast 与读屏 live region 的文案**完全相同**（都是「已复制版本号 v1.4.0」），
+ * 直接用 `getByText` 会同时命中两个元素（strict mode violation）。
+ * 这里按 toast 自己的形态（绿色提示条）精确定位。
+ */
+function successToast(page: Page, text: string) {
+  return page.locator('div.bg-green-600', { hasText: text })
+}
+
 test.describe('设置页 · 版本更新（浏览器预览环境）', () => {
   test.beforeEach(async ({ page }) => {
     // 注意：这里**不**安装 Tauri stub —— `isTauri()` 必须保持 false，
@@ -299,7 +311,7 @@ test.describe('设置页 · 版本更新（浏览器预览环境）', () => {
     await expect(status).toHaveText(BROWSER_PREVIEW_HINT)
   })
 
-  test('状态区是唯一的 live region（role=status + aria-live/aria-atomic）', async ({ page }) => {
+  test('状态区是 live region（role=status + aria-live/aria-atomic）', async ({ page }) => {
     await page.goto('/#/settings')
 
     const section = page.getByTestId('update-section')
@@ -309,8 +321,11 @@ test.describe('设置页 · 版本更新（浏览器预览环境）', () => {
     await expect(status).toHaveAttribute('aria-live', 'polite')
     await expect(status).toHaveAttribute('aria-atomic', 'true')
 
-    // 整个「版本更新」区只有一个 live region，避免读屏重复播报
-    await expect(section.getByRole('status')).toHaveCount(1)
+    // 更新状态区与复制播报区职责不同，各自是独立的 live region
+    await expect(section.getByTestId('update-status')).toHaveCount(1)
+    const copyStatus = section.getByTestId('copy-version-status')
+    await expect(copyStatus).toHaveAttribute('role', 'status')
+    await expect(copyStatus).toHaveAttribute('aria-live', 'polite')
   })
 
   test('「检查更新」按钮在非 Tauri 环境下不可用', async ({ page }) => {
@@ -333,13 +348,64 @@ test.describe('设置页 · 版本更新（浏览器预览环境）', () => {
     await expect(copyBtn).toBeVisible()
     await expect(copyBtn).toBeEnabled()
 
+    // 按钮只留图标，没有可见文案（文案在 tooltip 里）
+    await expect(copyBtn).toHaveText('')
+
     await copyBtn.click()
 
     // 确实把当前版本号写进了剪贴板
     await expect.poll(() => clipboardWrites(page)).toEqual([BROWSER_PREVIEW_VERSION])
-    // 有明确的成功反馈（toast 文案 + 按钮态）
-    await expect(page.getByText(`已复制版本号 ${BROWSER_PREVIEW_VERSION}`)).toBeVisible()
-    await expect(copyBtn).toHaveText(/已复制/)
+    // 有明确的成功反馈：toast 文案 + 图标态（对勾）+ 读屏播报
+    await expect(successToast(page, `已复制版本号 ${BROWSER_PREVIEW_VERSION}`)).toBeVisible()
+    await expect(copyBtn.locator('svg.lucide-check')).toHaveCount(1)
+    await expect(page.getByTestId('copy-version-status')).toHaveText(
+      `已复制版本号 ${BROWSER_PREVIEW_VERSION}`,
+    )
+  })
+
+  test('复制按钮常驻但弱化：自绘 tooltip 覆盖鼠标与键盘两条路径', async ({ page }) => {
+    await page.goto('/#/settings')
+
+    const copyBtn = page.getByRole('button', { name: '复制版本号' })
+    const tooltip = page.getByTestId('copy-version-tooltip')
+
+    // 不用原生 title：它与自绘 tooltip 并存会弹出两个互相遮挡的提示
+    await expect(copyBtn).not.toHaveAttribute('title', /.+/)
+    // 按钮本身常驻可见（不靠 hover 才出现，触屏没有 hover）
+    await expect(copyBtn).toBeVisible()
+    // 常态隐藏
+    await expect(tooltip).toHaveCSS('opacity', '0')
+
+    // 鼠标路径
+    await copyBtn.hover()
+    await expect(tooltip).toHaveCSS('opacity', '1')
+    await expect(tooltip).toHaveText('复制版本号')
+
+    // 移开鼠标 → 重新隐藏
+    await page.mouse.move(0, 0)
+    await expect(tooltip).toHaveCSS('opacity', '0')
+
+    // 键盘路径：原生 title 在 focus 时不显示，自绘 tooltip 必须补上这一条
+    await copyBtn.focus()
+    await expect(tooltip).toHaveCSS('opacity', '1')
+  })
+
+  test('复制按钮：连续复制两次都会更新读屏播报区', async ({ page }) => {
+    await page.goto('/#/settings')
+
+    const copyBtn = page.getByRole('button', { name: '复制版本号' })
+    const copyStatus = page.getByTestId('copy-version-status')
+
+    await copyBtn.click()
+    await expect(copyStatus).toHaveText(`已复制版本号 ${BROWSER_PREVIEW_VERSION}`)
+
+    // 连点第二次：文案相同，但 live region 节点被重建 → 读屏会重播
+    await copyBtn.click()
+    await expect(copyStatus).toHaveText(`已复制版本号 ${BROWSER_PREVIEW_VERSION}`)
+    await expect.poll(() => clipboardWrites(page)).toEqual([
+      BROWSER_PREVIEW_VERSION,
+      BROWSER_PREVIEW_VERSION,
+    ])
   })
 
   test('设置页全程无控制台错误', async ({ page }) => {
