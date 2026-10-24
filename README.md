@@ -107,8 +107,7 @@ OpenCode-W/
 │   │       ├── messages.rs   # 消息查询 + 全文搜索
 │   │       ├── todos.rs      # 待办 Tab
 │   │       ├── cleanup.rs    # 清理操作
-│   │       ├── backup.rs     # 备份恢复
-│   │       └── update.rs     # 应用更新
+│   │       └── backup.rs     # 备份恢复
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── src/                # 前端渲染进程 (React)

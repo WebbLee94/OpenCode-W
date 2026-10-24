@@ -9,6 +9,7 @@
  */
 import { createContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { check as checkUpdate, type Update } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/plugin-process'
 import { isTauri } from '@/lib/ipc'
 import { useToast } from '@/hooks/useToast'
 import { classifyUpdateError, UPDATE_ERROR_COPY } from './errorClassifier'
@@ -43,12 +44,45 @@ export function UpdateProvider({ children }: UpdateProviderProps) {
   const stateRef = useRef<UpdateState>('idle')
   /** 复用 check() 拿到的 Update 实例，避免下载时再发一次检查请求。 */
   const updateRef = useRef<Update | null>(null)
+  /**
+   * 「检查中」的**同步**守卫。
+   *
+   * `isChecking` 是 state，要等 React 重渲染后才变成 true，
+   * 按钮的 `disabled={busy}` 同样要等重渲染才生效 ——
+   * 双击会在重渲染前连发两次 check()。
+   * 最坏组合：第一次拿到更新、第二次返回 null → 界面显示「已是最新」，
+   * 而 updateRef 里仍留着更新实例。
+   * ref 在任何 await 之前同步置位，因此同一时刻只可能有一次检查在途。
+   */
+  const checkingRef = useRef(false)
+  /**
+   * 「下载中」的**同步**守卫（与 `checkingRef` 同理）。
+   *
+   * `state` 要等 React 重渲染后才变成 'downloading'，按钮的 `disabled`
+   * 同样要等重渲染才生效 —— 双击会在重渲染前连发两次 `downloadAndInstall()`。
+   * 两次下载挂在**同一个 Update 实例**上，进度事件互相覆盖，
+   * 界面上的百分比会来回跳。
+   * ref 在任何 await 之前同步置位，因此同一时刻只可能有一次下载在途。
+   */
+  const downloadingRef = useRef(false)
+  /**
+   * 「安装中」的**同步**守卫（与 `downloadingRef` 同理）。
+   *
+   * 双击「立即安装」会重复调用 `relaunch()`。
+   * 成功时**不**释放守卫：重启成功后应用即将退出，此时再放行只会让用户
+   * 点出第二次 relaunch；只有重启失败（状态回到「已下载待安装」）才释放，
+   * 允许用户再试一次。
+   */
+  const installingRef = useRef(false)
   const { addToast } = useToast()
 
   useEffect(() => { stateRef.current = state }, [state])
 
   const handleCheck = useCallback(async () => {
     if (!isTauri()) return
+    // 同步守卫：isChecking 是 state，重渲染前仍是 false，双击会发出两次 check()。
+    if (checkingRef.current) return
+    checkingRef.current = true
     setIsChecking(true)
     setError(null)
     setCheckStatus('checking')
@@ -91,28 +125,34 @@ export function UpdateProvider({ children }: UpdateProviderProps) {
       setState('idle')
       setLastCheckedAt(Date.now())
     } finally {
+      checkingRef.current = false
       setIsChecking(false)
     }
   }, [])
 
   const handleDownload = useCallback(async () => {
     if (!isTauri()) return
+    // 同步守卫：state 要等重渲染才反映到按钮 disabled 上，双击会连发两次下载。
+    // 不能只靠 isValidTransition —— 它对 `from === to` 返回 true，
+    // 而第一次调用已经把 stateRef 置成了 'downloading'，第二次仍会被放行。
+    if (downloadingRef.current) return
     if (!isValidTransition(stateRef.current, 'downloading')) return
-    const update = updateRef.current
-    if (!update) {
-      // 没有可复用的 Update 实例（例如上下文被重置），提示重新检查。
-      setError({ code: 'unknown', message: UPDATE_ERROR_COPY.unknown })
-      return
-    }
-    stateRef.current = 'downloading'
-    setState('downloading')
-    setError(null)
-    setDialogOpen(true)
-
-    // 真实进度事件：Started 给总长度，Progress 给每个分片长度，Finished 收尾。
-    const tracker = createDownloadProgressTracker()
-    setProgress(tracker.snapshot())
+    downloadingRef.current = true
     try {
+      const update = updateRef.current
+      if (!update) {
+        // 没有可复用的 Update 实例（例如上下文被重置），提示重新检查。
+        setError({ code: 'unknown', message: UPDATE_ERROR_COPY.unknown })
+        return
+      }
+      stateRef.current = 'downloading'
+      setState('downloading')
+      setError(null)
+      setDialogOpen(true)
+
+      // 真实进度事件：Started 给总长度，Progress 给每个分片长度，Finished 收尾。
+      const tracker = createDownloadProgressTracker()
+      setProgress(tracker.snapshot())
       await update.downloadAndInstall((event) => {
         tracker.handleEvent(event)
         setProgress(tracker.snapshot())
@@ -126,17 +166,22 @@ export function UpdateProvider({ children }: UpdateProviderProps) {
       // 回到 available，用户可以重试下载。
       stateRef.current = 'available'
       setState('available')
+    } finally {
+      // 无论成败都释放：失败回到「有更新」后必须允许再点一次重试下载。
+      downloadingRef.current = false
     }
   }, [])
 
   const handleInstall = useCallback(async () => {
     if (!isTauri()) return
+    // 同步守卫：同 handleDownload，双击会重复 relaunch()。
+    if (installingRef.current) return
     if (!isValidTransition(stateRef.current, 'installing')) return
+    installingRef.current = true
     stateRef.current = 'installing'
     setState('installing')
     setError(null)
     try {
-      const { relaunch } = await import('@tauri-apps/plugin-process')
       await relaunch()
     } catch (err) {
       console.error('重启应用失败:', err)
@@ -144,6 +189,8 @@ export function UpdateProvider({ children }: UpdateProviderProps) {
       addToast('重启失败，请手动启动应用。', 'error')
       stateRef.current = 'downloaded'
       setState('downloaded')
+      // 重启失败 → 释放守卫，允许用户再点一次安装。
+      installingRef.current = false
     }
   }, [addToast])
 
