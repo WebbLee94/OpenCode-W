@@ -11,12 +11,14 @@ import bash from 'highlight.js/lib/languages/bash'
 import sql from 'highlight.js/lib/languages/sql'
 import css from 'highlight.js/lib/languages/css'
 import html from 'highlight.js/lib/languages/xml'
-import { ArrowLeft, ChevronDown, ChevronRight, Loader2, Filter, Search, X } from 'lucide-react'
-import type { MessageDTO, MessageDetailDTO, PartDTO, SearchResult } from '../../../shared/types'
+import { ArrowLeft, ChevronDown, ChevronRight, Loader2, Filter, Search, X, AlertTriangle } from 'lucide-react'
+import type { MessageDTO, MessageDetailDTO, PartDTO, SearchResult, SearchIndexProgress, SearchIndexState, SearchIndexStatus } from '../../../shared/types'
 import { IPC_CHANNELS } from '../../../shared/ipc-channels'
-import { invokeSafe } from '../../lib/ipc'
-import { formatBytes, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
+import { invokeSafe, isTauri } from '../../lib/ipc'
+import { listen } from '@tauri-apps/api/event'
+import { formatBytes, formatNumber, formatRelativeTime, formatDateTime, truncateText } from '../../lib/format'
 import { useToast } from '../../hooks/useToast'
+import { useSchemaStatus } from '../datasource/useDataSource'
 import { RoleBadge, PartTypeBadge, StatusBadge, ROLE_CONFIG } from './badges'
 import PaginationBar from '../../components/PaginationBar'
 
@@ -223,6 +225,7 @@ function Messages() {
   const [searchParams] = useSearchParams()
   const highlightKeyword = searchParams.get('highlight') || ''
   const { addToast } = useToast()
+  const { derived: schema } = useSchemaStatus()
 
   // Message list state
   const [messages, setMessages] = useState<MessageDTO[]>([])
@@ -257,6 +260,16 @@ function Messages() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [showSearchResults, setShowSearchResults] = useState(false)
+  /** 最近一次实际发起搜索的关键词（trim 后），用于判断是否走 LIKE 回退 */
+  const [lastSearchedKeyword, setLastSearchedKeyword] = useState('')
+
+  // ---- Search index（FTS5 sidecar，B-10）----
+  // 只做状态展示：building 进度 / LIKE 回退说明 / error 重试。
+  // ensure 幂等且后台执行，不阻塞；进度走事件，不轮询。
+  const [indexState, setIndexState] = useState<SearchIndexState>('none')
+  const [indexProgress, setIndexProgress] = useState<{ indexed: number; total: number } | null>(null)
+  const [indexError, setIndexError] = useState<string | null>(null)
+  const ensureStartedRef = useRef(false)
 
   // Initialize session title when sessionId changes
   useEffect(() => {
@@ -294,20 +307,103 @@ function Messages() {
     loadMessages(1)
   }, [loadMessages])
 
+  // ---- Search index：状态应用 / ensure / 进度事件 ----
+  const applyIndexStatus = useCallback((status: SearchIndexStatus) => {
+    // 防御：状态响应缺失/畸形时忽略，避免把合法状态覆盖成 undefined
+    if (!status || typeof status.state !== 'string') return
+    setIndexState(status.state)
+    setIndexProgress(status.state === 'building' ? { indexed: status.indexed, total: status.total } : null)
+    setIndexError(status.error)
+  }, [])
+
+  /**
+   * 挂载且库健康时调用一次 ensure_index：幂等、后台构建、立即返回状态。
+   * 迁移中/失败、格式不受支持时跳过（sidecar 构建会读全库，此时不合适）。
+   */
+  const ensureSearchIndex = useCallback(async () => {
+    if (!isTauri()) return
+    try {
+      const status = await invokeSafe<SearchIndexStatus>(IPC_CHANNELS.SEARCH_ENSURE_INDEX)
+      applyIndexStatus(status)
+    } catch (err) {
+      setIndexState('error')
+      setIndexError((err as Error).message || '搜索索引不可用')
+    }
+  }, [applyIndexStatus])
+
+  useEffect(() => {
+    if (!isTauri()) return
+    if (schema.isSchemaBlocked || schema.isMigrationRunning || schema.isMigrationFailed) return
+    if (ensureStartedRef.current) return
+    ensureStartedRef.current = true
+    void ensureSearchIndex()
+  }, [schema.isSchemaBlocked, schema.isMigrationRunning, schema.isMigrationFailed, ensureSearchIndex])
+
+  // 索引进度：监听 search:index-progress 事件（不轮询）
+  useEffect(() => {
+    if (!isTauri()) return
+    let disposed = false
+    let unlisten: (() => void) | null = null
+    listen<SearchIndexProgress>(IPC_CHANNELS.SEARCH_EVENT_INDEX_PROGRESS, (event) => {
+      const payload = event.payload
+      if (payload.phase === 'done') {
+        // 构建完成：FTS 成为权威结果源
+        setIndexState('ready')
+        setIndexError(null)
+        setIndexProgress(null)
+        return
+      }
+      setIndexState('building')
+      setIndexError(null)
+      setIndexProgress({ indexed: payload.indexed, total: payload.total })
+    })
+      .then((fn) => {
+        if (disposed) fn()
+        else unlisten = fn
+      })
+      .catch(() => { /* 事件监听失败不影响搜索主流程 */ })
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [])
+
   // ---- Search messages ----
   const handleSearch = useCallback(async () => {
     if (!searchKeyword.trim()) return
+    const keyword = searchKeyword.trim()
     setSearchLoading(true)
     setShowSearchResults(true)
+    setLastSearchedKeyword(keyword)
     try {
-      const results = await invokeSafe<SearchResult[]>(IPC_CHANNELS.MESSAGES_SEARCH, searchKeyword.trim())
+      const results = await invokeSafe<SearchResult[]>(IPC_CHANNELS.MESSAGES_SEARCH, keyword)
       setSearchResults(results)
     } catch {
       setSearchResults([])
     } finally {
       setSearchLoading(false)
+      // 一次性的状态校准（不是轮询）：捕捉 building → error 的转换，
+      // 让「已回退 LIKE」的说明与真实索引状态保持一致。
+      if (isTauri()) {
+        invokeSafe<SearchIndexStatus>(IPC_CHANNELS.SEARCH_INDEX_STATUS)
+          .then(applyIndexStatus)
+          .catch(() => { /* 状态校准失败不影响搜索结果 */ })
+      }
     }
-  }, [searchKeyword])
+  }, [searchKeyword, applyIndexStatus])
+
+  /** error 态重试：只重发 ensure_index 与当前搜索，不做其他动作 */
+  const handleIndexRetry = useCallback(() => {
+    void ensureSearchIndex()
+    if (lastSearchedKeyword) void handleSearch()
+  }, [ensureSearchIndex, handleSearch, lastSearchedKeyword])
+
+  /**
+   * 本次搜索是否走了 LIKE 回退：索引未就绪（非 ready）或关键词不足 3 字符
+   * （trigram 下限）。与后端 `search()` 的回退判定保持同一口径。
+   */
+  const likeFallback = lastSearchedKeyword.length > 0
+    && (indexState !== 'ready' || lastSearchedKeyword.length < 3)
 
   // ---- Extract snippet around keyword ----
   const extractSnippet = useCallback((content: string, keyword: string): string => {
@@ -502,6 +598,39 @@ function Messages() {
           </button>
         </div>
       </div>
+
+      {/* 搜索索引状态行（B-10）：error / building 进度 / LIKE 回退说明可叠加出现
+          （例如「索引构建中 + 本次搜索走了回退」），error 的说明已含回退语义。 */}
+      {(indexState === 'error' || indexState === 'building' || (showSearchResults && likeFallback)) && (
+        <div className="px-4 py-2 bg-blue-50 border-b border-gray-200 text-xs text-gray-700 flex flex-wrap items-center gap-2">
+          {indexState === 'error' && (
+            <>
+              <span role="alert" className="flex items-start gap-1.5 flex-1 min-w-0 break-words">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>
+                  搜索索引构建失败，已回退到最近 30 天搜索{indexError ? `：${indexError}` : ''}
+                </span>
+              </span>
+              <button
+                onClick={handleIndexRetry}
+                className="px-2.5 py-1 rounded-md border border-gray-300 bg-white text-xs text-gray-700 hover:bg-gray-50 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
+                重试
+              </button>
+            </>
+          )}
+          {indexState === 'building' && (
+            <span role="status">
+              {indexProgress && indexProgress.total > 0
+                ? `正在建立搜索索引（${formatNumber(indexProgress.indexed)}/${formatNumber(indexProgress.total)}）…`
+                : '正在建立搜索索引…'}
+            </span>
+          )}
+          {indexState !== 'error' && showSearchResults && likeFallback && (
+            <span>回退到最近 30 天搜索（索引未就绪或短关键词）</span>
+          )}
+        </div>
+      )}
 
       {/* Search results panel */}
       {showSearchResults && (
