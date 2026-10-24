@@ -4,9 +4,22 @@ import { IPC_CHANNELS } from '../../../shared/ipc-channels'
 import { invokeSafe, isTauri } from '../../lib/ipc'
 import { formatBytes, formatNumber, formatRelativeTime } from '../../lib/format'
 import PageHeader from '../../components/PageHeader'
+import { useOptionalDataSource, useSchemaStatus } from '../datasource/useDataSource'
 import { HardDrive, Archive, Trash2, RotateCcw, Download, Upload, AlertTriangle, Check, X, Clock } from 'lucide-react'
 
 function Backup() {
+  // Schema 状态（格式不受支持时的降级）
+  const { derived: schema } = useSchemaStatus()
+  const { dbPath } = useOptionalDataSource()
+  const schemaBlocked = schema.key === 'unsupported'
+  // 恢复会替换当前数据库：格式未识别时禁用（迁移态写保护由后端自行校验）
+  const restoreBlocked = schemaBlocked
+  const restoreReason = '恢复会替换当前数据库，需要先能识别数据库格式。当前格式未识别，恢复已暂停。'
+  // 文件级复制：后端 backup:create 复制的是**当前已打开**的库（DbState.path()），
+  // 不是用户刚选中但打不开的那个文件（规格 6.2）。
+  const copyPath = dbPath
+  const noCopySource = schemaBlocked && !copyPath
+
   // Backup list
   const [backups, setBackups] = useState<BackupDTO[]>([])
   const [loading, setLoading] = useState(true)
@@ -21,6 +34,8 @@ function Backup() {
   const [restoreModal, setRestoreModal] = useState<{ open: boolean; backup: BackupDTO | null; preview: BackupPreviewDTO | null; loading: boolean; restoring: boolean; success: boolean; error: string | null }>({
     open: false, backup: null, preview: null, loading: false, restoring: false, success: false, error: null,
   })
+  // v2 备份的 part_count 是消息行数，不展示成「Part」。isV2 缺失时按 v1 处理。
+  const previewIsV2 = restoreModal.preview?.isV2 === true
 
   // Delete confirmation modal
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; backup: BackupDTO | null; deleting: boolean; error: string | null }>({
@@ -68,6 +83,7 @@ function Backup() {
 
   // Open restore modal
   const handleOpenRestore = async (backup: BackupDTO) => {
+    if (restoreBlocked) return
     setRestoreModal({ open: true, backup, preview: null, loading: true, restoring: false, success: false, error: null })
     try {
       const preview = await invokeSafe<BackupPreviewDTO>(IPC_CHANNELS.BACKUP_PREVIEW, backup.fileName)
@@ -80,6 +96,8 @@ function Backup() {
   // Confirm restore
   const handleConfirmRestore = async () => {
     if (!restoreModal.backup) return
+    // 状态在弹窗打开期间变化时也要拦住写操作
+    if (restoreBlocked) return
     setRestoreModal(prev => ({ ...prev, restoring: true }))
     try {
       await invokeSafe<{ path: string }>(IPC_CHANNELS.BACKUP_RESTORE, restoreModal.backup.filePath)
@@ -136,7 +154,9 @@ function Backup() {
               </div>
               <div>
                 <h3 className="text-lg font-medium text-gray-900">创建备份</h3>
-                <p className="text-sm text-gray-500">将当前数据库导出为备份文件</p>
+                <p className="text-sm text-gray-500">
+                  {schemaBlocked ? '文件级复制，不解析内容' : '将当前数据库导出为备份文件'}
+                </p>
               </div>
             </div>
 
@@ -145,15 +165,36 @@ function Backup() {
                 <HardDrive size={14} className="text-gray-400" />
                 <span>备份目录: ~/.opencode-w/backups/</span>
               </div>
+              {/* 明确显示被复制的路径，避免用户误以为导出的是「刚才选中的那个坏文件」 */}
+              {schemaBlocked && copyPath && (
+                <div className="flex items-start gap-2 text-gray-600">
+                  <Archive size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                  <span className="font-mono text-xs break-all">将复制：{copyPath}</span>
+                </div>
+              )}
+              {/* 统计不可用时显示「内容统计不可用」，不显示 0 */}
+              {schemaBlocked && (
+                <div className="flex items-center gap-2 text-gray-500">
+                  <AlertTriangle size={14} className="text-gray-400 shrink-0" />
+                  <span>内容统计不可用</span>
+                </div>
+              )}
             </div>
           </div>
 
           <button
             onClick={handleCreateBackup}
-            disabled={creating}
+            disabled={creating || noCopySource}
+            title={noCopySource ? '没有可备份的数据库' : undefined}
+            aria-disabled={noCopySource || undefined}
             className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
           >
-            {creating ? (
+            {noCopySource ? (
+              <>
+                <AlertTriangle size={16} />
+                没有可备份的数据库
+              </>
+            ) : creating ? (
               <>
                 <Archive size={16} className="animate-pulse" />
                 备份中...
@@ -196,6 +237,14 @@ function Backup() {
             刷新
           </button>
         </div>
+
+        {/* 恢复被禁用时给出原因（而不是让按钮点了没反应） */}
+        {restoreBlocked && (
+          <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4 text-sm text-amber-800">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+            <span>{restoreReason}</span>
+          </div>
+        )}
 
         {listError && (
           <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg mb-4 text-sm text-red-800">
@@ -249,7 +298,10 @@ function Backup() {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleOpenRestore(backup)}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded hover:bg-green-100 transition-colors"
+                            disabled={restoreBlocked}
+                            title={restoreBlocked ? restoreReason : undefined}
+                            aria-disabled={restoreBlocked || undefined}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <RotateCcw size={12} />
                             恢复
@@ -336,7 +388,10 @@ function Backup() {
                   ) : restoreModal.preview ? (
                     <div className="bg-brand-50 rounded-lg p-4 mb-4">
                       <h4 className="text-sm font-medium text-brand-800 mb-2">备份内容</h4>
-                      <div className="grid grid-cols-3 gap-3">
+                      {/* v2 备份的 part_count 语义 = session_message 行数（与仪表盘一致），
+                          展示成「Part」会误导，因此只显示会话 / 消息两行。
+                          isV2 缺失（旧后端 / 旧备份）时按 v1 处理。 */}
+                      <div className={`grid gap-3 ${previewIsV2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
                         <div className="text-center">
                           <div className="text-lg font-bold text-brand-700">{formatNumber(restoreModal.preview.sessionCount)}</div>
                           <div className="text-xs text-brand-600">会话</div>
@@ -345,13 +400,29 @@ function Backup() {
                           <div className="text-lg font-bold text-brand-700">{formatNumber(restoreModal.preview.messageCount)}</div>
                           <div className="text-xs text-brand-600">消息</div>
                         </div>
-                        <div className="text-center">
-                          <div className="text-lg font-bold text-brand-700">{formatNumber(restoreModal.preview.partCount)}</div>
-                          <div className="text-xs text-brand-600">Part</div>
-                        </div>
+                        {!previewIsV2 && (
+                          <div className="text-center">
+                            <div className="text-lg font-bold text-brand-700">{formatNumber(restoreModal.preview.partCount)}</div>
+                            <div className="text-xs text-brand-600">Part</div>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ) : null}
+                  ) : (
+                    /* 统计不可用时给「内容统计不可用」，不显示 0 */
+                    <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-1">备份内容</h4>
+                      <p className="text-xs text-gray-500">内容统计不可用</p>
+                    </div>
+                  )}
+
+                  {/* Restore blocked reason（状态在弹窗打开期间变化时也要拦住） */}
+                  {restoreBlocked && (
+                    <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4 text-sm text-amber-800">
+                      <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                      <span>{restoreReason}</span>
+                    </div>
+                  )}
 
                   {/* Warning */}
                   <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
@@ -380,7 +451,9 @@ function Backup() {
                   </button>
                   <button
                     onClick={handleConfirmRestore}
-                    disabled={restoreModal.restoring || restoreModal.loading}
+                    disabled={restoreModal.restoring || restoreModal.loading || restoreBlocked}
+                    title={restoreBlocked ? restoreReason : undefined}
+                    aria-disabled={restoreBlocked || undefined}
                     className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {restoreModal.restoring ? (

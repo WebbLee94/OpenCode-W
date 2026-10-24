@@ -33,6 +33,8 @@ import SessionPreview from './SessionPreview'
 import PreviewTabPagination from '../../components/PreviewTabPagination'
 import PageHeader from '../../components/PageHeader'
 import PaginationBar from '../../components/PaginationBar'
+import SchemaBlockedState from '../datasource/SchemaBlockedState'
+import { useSchemaStatus, useOptionalDataSource } from '../datasource/useDataSource'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -70,6 +72,18 @@ const TODO_PRIORITY_BADGE: Record<string, string> = {
 // ─── Sessions Page ───────────────────────────────────────────────────────────
 
 function Sessions() {
+  // Schema 状态（格式不受支持时的降级）
+  const { derived: schema, refreshing: schemaRefreshing, refresh: refreshSchema } = useSchemaStatus()
+  const { dbPath } = useOptionalDataSource()
+  const schemaBlocked = schema.key === 'unsupported'
+  // v2 后端删除会递归子会话（`collect_targets` 走 session_v2.parent_id）；
+  // v1 后端不递归（没有 session_v2 表，只删当前会话）。文案必须按方言区分，
+  // 否则 v1 用户会以为子会话也被删了。
+  const isV2Schema = schema.mode === 'v2' || schema.mode === 'v2-mixed'
+  const deleteConfirmMessage = isV2Schema
+    ? '确定要删除此会话吗？这将同时删除其所有子会话、消息记录和相关数据，此操作不可恢复。建议先备份数据库。'
+    : '确定要删除此会话吗？这将仅删除当前会话的消息记录和相关数据，此操作不可恢复。建议先备份数据库。'
+
   // Data state
   const [sessions, setSessions] = useState<SessionDTO[]>([])
   const [total, setTotal] = useState(0)
@@ -205,6 +219,11 @@ const listRef = useRef<HTMLDivElement>(null)
   // ─── Load sessions ───────────────────────────────────────────────────────
 
   useEffect(() => {
+    // unsupported：整块占位，不再发起会话列表查询
+    if (schemaBlocked) {
+      setLoading(false)
+      return
+    }
     const filter: SessionFilter = {
       search: debouncedSearch || undefined,
       projectId: projectId || undefined,
@@ -227,7 +246,7 @@ const listRef = useRef<HTMLDivElement>(null)
         setTotal(0)
       })
       .finally(() => setLoading(false))
-  }, [debouncedSearch, projectId, sortBy, sortOrder, page, pageSize, startDate, endDate])
+  }, [debouncedSearch, projectId, sortBy, sortOrder, page, pageSize, startDate, endDate, schemaBlocked])
 
   // ─── Load projects list ──────────────────────────────────────────────────
 
@@ -366,6 +385,27 @@ const listRef = useRef<HTMLDivElement>(null)
     setShowBatchMove(true)
   }
 
+  // ─── 切换数据源（unsupported 占位里唯一的出路）─────────────────────
+  async function handleSwitchDataSource() {
+    try {
+      const filePath = await invokeSafe<string | null>(IPC_CHANNELS.DIALOG_OPEN_FILE)
+      if (!filePath) return
+      await invokeSafe<string>(IPC_CHANNELS.DATABASE_OPEN, filePath)
+      window.location.reload()
+    } catch {
+      /* 切换失败保持当前占位 */
+    }
+  }
+
+  // ─── 打开数据库所在目录（unsupported 占位里的取证入口）────────────
+  async function handleRevealDirectory() {
+    try {
+      await invokeSafe<boolean>(IPC_CHANNELS.SHELL_REVEAL_DATABASE_DIRECTORY)
+    } catch {
+      /* 打开目录失败不打断页面 */
+    }
+  }
+
   // ─── Pagination helpers ──────────────────────────────────────────────────
 
   const totalPages = Math.ceil(total / pageSize)
@@ -453,7 +493,10 @@ const listRef = useRef<HTMLDivElement>(null)
                     <span
                       className="text-sm font-medium text-gray-800 cursor-pointer hover:text-brand-600"
                       title="点击修改名称"
-                      onClick={() => { setEditTitle(selectedSession?.title || ''); setEditingTitle(true) }}
+                      onClick={() => {
+                        setEditTitle(selectedSession?.title || '')
+                        setEditingTitle(true)
+                      }}
                     >
                       {selectedSession?.title || '无标题'}
                     </span>
@@ -463,7 +506,7 @@ const listRef = useRef<HTMLDivElement>(null)
                       onClick={() => setShowDelete(true)}
                       title="删除会话"
                       aria-label="删除会话"
-                      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Trash2 size={12} />
                       删除
@@ -775,7 +818,7 @@ const listRef = useRef<HTMLDivElement>(null)
               }
             }}
             title="确认删除" variant="danger" confirmLabel="确认删除"
-            message="确定要删除此会话吗？这将同时删除其所有子会话、消息记录和相关数据，此操作不可恢复。建议先备份数据库。" />
+            message={deleteConfirmMessage} />
         )}
       </>
     ) : (
@@ -785,9 +828,18 @@ const listRef = useRef<HTMLDivElement>(null)
         <PageHeader
           icon={<MessageSquare size={24} />}
           title="会话浏览"
-          right={<span className="text-sm text-gray-500">共 {formatNumber(total)} 条会话</span>}
+          right={schemaBlocked ? (
+            // unsupported：不显示「共 0 条会话」，避免被误读为数据被删
+            <span className="text-sm text-gray-400">会话数量暂不可用</span>
+          ) : (
+            <span className="text-sm text-gray-500">
+              共 {formatNumber(total)} 条会话
+            </span>
+          )}
         />
 
+        {/* unsupported：隐藏搜索框 / 项目筛选 / 日期筛选 */}
+        {!schemaBlocked && (
         <div className="flex items-center gap-3">
           {/* Search */}
           <div className="relative flex-1 max-w-md">
@@ -868,22 +920,35 @@ const listRef = useRef<HTMLDivElement>(null)
             )}
           </div>
         </div>
+        )}
       </div>
 
-      {/* Table */}
+      {/* unsupported：表格区整块换成受限占位 */}
+      {schemaBlocked ? (
+        <SchemaBlockedState
+          reason={schema.reason}
+          path={schema.path || dbPath}
+          refreshing={schemaRefreshing}
+          onRetry={() => { void refreshSchema() }}
+          // 「打开所在目录」只对已打开的库有效
+          onReveal={dbPath ? handleRevealDirectory : undefined}
+          onSwitch={handleSwitchDataSource}
+        />
+      ) : (
+      /* Table */
       <div className="flex-1 overflow-auto px-6 py-0" tabIndex={0} ref={listRef} onKeyDown={handleListKeyDown} onBlur={() => setFocusedIndex(-1)}>
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-4 bg-blue-50 px-4 py-2 rounded mb-2 text-sm">
             <span className="text-blue-700 font-medium">已选 {selectedIds.size} 项</span>
             <button
               onClick={handleBatchMove}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-brand-600 border border-brand-300 rounded-md hover:bg-brand-50"
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-brand-600 border border-brand-300 rounded-md hover:bg-brand-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               📁 迁移
             </button>
             <button
               onClick={() => setShowBatchDelete(true)}
-              className="inline-flex items-center gap-1 text-red-600 hover:text-red-800"
+              className="inline-flex items-center gap-1 text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Trash2 size={14} />删除所选
             </button>
@@ -893,7 +958,9 @@ const listRef = useRef<HTMLDivElement>(null)
         {loading && sessions.length === 0 ? (
           <div className="flex items-center justify-center py-20 text-gray-400">加载中...</div>
         ) : sessions.length === 0 ? (
-          <div className="flex items-center justify-center py-20 text-gray-400">暂无会话数据</div>
+          <div className="flex items-center justify-center py-20 text-gray-400">
+            暂无会话数据
+          </div>
         ) : (
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-gray-50">
@@ -945,16 +1012,19 @@ const listRef = useRef<HTMLDivElement>(null)
           </table>
         )}
       </div>
+      )}
 
-      {/* Pagination */}
-      <PaginationBar
-        page={page}
-        total={total}
-        pageSize={pageSize}
-        pageSizeOptions={PAGE_SIZE_OPTIONS}
-        onPageChange={goToPage}
-        onPageSizeChange={handlePageSizeChange}
-      />
+      {/* Pagination（unsupported 时隐藏） */}
+      {!schemaBlocked && (
+        <PaginationBar
+          page={page}
+          total={total}
+          pageSize={pageSize}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
+          onPageChange={goToPage}
+          onPageSizeChange={handlePageSizeChange}
+        />
+      )}
     </div>
     )}
 

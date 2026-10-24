@@ -63,7 +63,7 @@ mod tests {
         let allowed = allowed_root.join(format!("reveal-path-{}.db", std::process::id()));
         std::fs::write(&allowed, []).unwrap();
         assert!(reveal_directory_path(&allowed.to_string_lossy()).is_ok());
-        std::fs::remove_file(allowed).unwrap();
+        crate::db::remove_fixture_file(&allowed);
         assert!(reveal_directory_path("/tmp/outside.db").is_err());
     }
 
@@ -78,6 +78,6 @@ mod tests {
 
         assert!(security::resolve_server_snapshot_path(&outside.to_string_lossy()).is_err());
 
-        fs::remove_file(outside).unwrap();
+        crate::db::remove_fixture_file(&outside);
     }
 }

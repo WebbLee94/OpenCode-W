@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, release]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, release]
 
 jobs:
   ci:
@@ -13,14 +13,17 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -35,6 +38,11 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
       - name: Typecheck
         run: npx tsc --noEmit
 
@@ -44,8 +52,35 @@ jobs:
       - name: Build (frontend only)
         run: npm run build:ci
 
-      - name: Cargo Check
-        run: cd src-tauri && cargo check
+      - name: Frontend unit tests (vitest)
+        run: npm test -- --run
+
+      - name: Generate test fixtures
+        run: |
+          npm run generate-fixture:v2
+          npm run generate-fixture
+
+      - name: Install Playwright browsers (Linux)
+        if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright E2E
+        if: runner.os == 'Linux'
+        run: npx playwright test
+
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts-${{ matrix.os }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Cargo Clippy
-        run: cd src-tauri && cargo clippy -- -D warnings
+        run: cd src-tauri && cargo clippy --all-targets -- -D warnings
+
+      - name: Cargo Test
+        run: cd src-tauri && cargo test

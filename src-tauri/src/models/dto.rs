@@ -149,6 +149,14 @@ pub struct SessionDTO {
     pub cost: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "childCount")]
     pub child_count: Option<i64>,
+    /// 父会话 id（根会话为 `None`）。
+    ///
+    /// 清理预览要靠它做「父子归属」：取消勾选父会话时，前端需要知道哪些行
+    /// 是它的子会话（`childSessionIds` 只说明「是子会话」，说不出属于谁）。
+    ///
+    /// 不填的调用点保持 `None`（字段可选，向后兼容）。
+    #[serde(rename = "parentId", skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -322,6 +330,10 @@ pub struct PartTokens {
     pub reasoning: i64,
     pub cache_read: i64,
     pub cache_write: i64,
+    /// v1 的 `step-finish` 自带 `tokens.total`；v2 由兼容层自行相加后填充。
+    /// v1 路径保持 `None`，因此 v1 的 IPC 输出逐字段不变。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -418,6 +430,34 @@ pub struct PartAttachment {
 
 // ─── Cleanup ──────────────────────────────────────────────────────────────
 
+/// 清理/删除的两侧明细：「v2 数据」与「旧版副本」。
+///
+/// Q-02 = A 决定删除时两套表都要清，因此预览必须分列两侧，用户才能看清
+/// 到底会删掉什么。v1 库只有旧表，`v2` 侧恒为 `None`（v1 输出逐字不变）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CleanupSideDTO {
+    /// 会话行数（v2 侧 = `session_v2` 行；旧版侧 = `session` 行）。
+    pub session_count: i64,
+    /// **逻辑消息数**：v2 侧 = `session_message` 行；旧版侧 = 旧表独有消息。
+    ///
+    /// 同 id 副本只在 v2 侧计一次，所以这个数是逻辑消息数，与实际删除的物理
+    /// 行数可能不同（混合库里旧表还留着同 id 的冻结副本，那些行也会被删掉）。
+    pub message_count: i64,
+    /// 内容块数。
+    ///
+    /// - v2 侧：**消息行数**（v2 没有 `part` 表，内容块数按 `session_message`
+    ///   行数统计，与 TASK-006 / 仪表盘 `partCount` 口径一致；不再解析 JSON）；
+    /// - 旧版侧：`part` 行数（沿用 v1 口径）。
+    pub part_count: i64,
+    /// 体积。
+    ///
+    /// - **v2 预览 = 字节数**（`octet_length`）：v2 侧与旧版副本侧单位一致，
+    ///   与磁盘占用一致，前端 `formatBytes` 在 v2 下才真正准确；
+    /// - **v1 预览 = 字符数**（`LENGTH`）：1.3.5 的历史口径，逐字保留。
+    pub estimated_size: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CleanupPreviewDTO {
@@ -426,6 +466,21 @@ pub struct CleanupPreviewDTO {
     pub part_count: i64,
     pub estimated_size: i64,
     pub sessions: Vec<SessionDTO>,
+    /// 预览结果里的**子会话** id（父会话也在结果里）。
+    ///
+    /// 子会话不能单独取消勾选：v2 删除父会话会连带删掉整棵子树，若只保留
+    /// 子会话就会留下 `parent_id` 悬空的孤儿（会话页只显示根会话，孤儿会
+    /// 凭空消失）。前端据此把这些行置灰、只允许取消父会话。
+    ///
+    /// v1 不递归（删父不动子），没有孤儿问题，因此恒为空数组。
+    #[serde(default)]
+    pub child_session_ids: Vec<String>,
+    /// v2 数据明细（v2 / 混合库才有；v1 库为 `None` 且不序列化）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub v2: Option<CleanupSideDTO>,
+    /// 旧版副本明细（混合库才有；v1 库为 `None` 且不序列化）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub legacy: Option<CleanupSideDTO>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -437,6 +492,15 @@ pub struct CleanupResultDTO {
     pub freed_bytes: i64,
     pub vacuum_before: i64,
     pub vacuum_after: i64,
+    /// VACUUM 失败原因；删除本身已生效，此字段仅用于提示空间未回收。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vacuum_error: Option<String>,
+    /// v2 侧删除计数（v2 / 混合库才有）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub v2: Option<CleanupSideDTO>,
+    /// 旧版副本侧删除计数（混合库才有）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub legacy: Option<CleanupSideDTO>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -454,6 +518,7 @@ pub struct CleanupFilter {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub excluded_session_ids: Option<Vec<String>>,
 }
+
 
 // ─── Backup ───────────────────────────────────────────────────────────────
 
@@ -474,6 +539,11 @@ pub struct BackupPreviewDTO {
     pub session_count: i64,
     pub message_count: i64,
     pub part_count: i64,
+    /// 备份是不是 v2 数据库。
+    ///
+    /// v2 备份没有 `part` 表，`part_count` 固定为 0；前端据此隐藏「Part 0」，
+    /// 免得用户误以为备份里没有内容块。
+    pub is_v2: bool,
 }
 
 // ─── Todos ────────────────────────────────────────────────────────────────
@@ -503,8 +573,10 @@ pub struct TodoFilterByParent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionShareDTO {
     pub session_id: String,
-    pub id: String,
-    pub secret: String,
+    /// v1 由 `session_share.id` 提供；v2 没有对应字段，返回 `null`。
+    pub id: Option<String>,
+    /// v1 由 `session_share.secret` 提供；v2 没有对应字段，返回 `null`。
+    pub secret: Option<String>,
     pub url: String,
     pub time_created: i64,
 }

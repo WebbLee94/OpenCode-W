@@ -17,6 +17,25 @@ export interface DatabaseStats {
   walSize: number;             // bytes
 }
 
+// Database dialect of the currently opened file.
+//  - v1        : 只有旧 session/message/part 表
+//  - v2        : 只有 session_v2/session_message 表
+//  - v2-mixed  : v2 表与旧的冻结表并存（迁移后形态）
+//  - unsupported: 缺少必需的表或列，后端拒绝打开
+export type SchemaMode = 'v1' | 'v2' | 'v2-mixed' | 'unsupported'
+
+// `kv['migration.v1-v2'].phase`
+export type MigrationPhase = 'none' | 'running' | 'completed' | 'failed' | 'unknown'
+
+// Returned by database:info — mirrors Rust SchemaInfoDTO
+export interface SchemaInfoDTO {
+  mode: SchemaMode
+  migrationPhase: MigrationPhase
+  hasLegacyTables: boolean
+  v2SessionCount: number
+  unsupportedReason: string | null
+}
+
 // Database health info returned by database:health
 export interface HealthInfo {
   ok: boolean;
@@ -116,6 +135,15 @@ export interface SessionDTO {
   time_updated: number;    // ms timestamp
   cost?: number;
   childCount?: number;
+  /**
+   * 父会话 id（根会话为 undefined）。
+   *
+   * 清理预览要靠它做「父子归属」：取消勾选父会话时，前端需要知道哪些行是
+   * 它的子会话（`childSessionIds` 只说明「是子会话」，说不出属于谁）。
+   *
+   * 不填的调用点保持缺省（字段可选，向后兼容）。
+   */
+  parentId?: string;
 }
 
 export interface SessionDetailDTO extends SessionDTO {
@@ -173,6 +201,31 @@ export interface SearchResult {
   content: string;
   session_title: string;
   time_created: number;
+}
+
+// ─── 全文搜索索引（FTS5 sidecar）─────────────────────────────────────────
+// 索引与 OpenCode 库完全分离，存放于 app_data_dir/search-index-v1.sqlite。
+// state: none（从未构建）/ building（后台构建中）/ ready / error（回退 LIKE）
+
+export type SearchIndexState = 'none' | 'building' | 'ready' | 'error'
+
+export interface SearchIndexStatus {
+  state: SearchIndexState
+  /** 已处理的消息行数（进度分子） */
+  indexed: number
+  /** 待处理的消息行数（进度分母） */
+  total: number
+  /** 已索引的最大 time_created（毫秒），0 表示尚未建立水位 */
+  watermark: number
+  error: string | null
+}
+
+/** 事件 search:index-progress 的负载 */
+export interface SearchIndexProgress {
+  indexed: number
+  total: number
+  /** rebuild / incremental / v2 / legacy / prune / done */
+  phase: string
 }
 
 // Part DTO — 覆盖 OpenCode canonical Part union 全部 12 种
@@ -262,6 +315,7 @@ export interface PartDTO {
     reasoning: number;
     cache_read: number;
     cache_write: number;
+    total?: number;             // v1 step-finish 自带；v2 由兼容层相加
   };
 
   // SubtaskPart
@@ -282,12 +336,35 @@ export interface PartDTO {
 }
 
 // Cleanup DTOs
+
+// 清理/删除的两侧明细：「v2 数据」与「旧版副本」。
+// Q-02 = A 决定删除时两套表都要清，因此预览必须分列两侧。
+// v1 库只有旧表，v2 侧恒为 null（v1 输出逐字不变）。
+export interface CleanupSideDTO {
+  sessionCount: number;   // 会话行数
+  messageCount: number;   // 消息行数（同 id 消息只在 v2 侧计一次）
+  partCount: number;      // 内容块数：v2 侧 = 消息行数（v2 无 part 表），旧版侧 = part 行数
+  estimatedSize: number;  // bytes
+}
+
 export interface CleanupPreviewDTO {
   sessionCount: number;
   messageCount: number;
   partCount: number;
   estimatedSize: number;   // bytes
   sessions: SessionDTO[];
+  /**
+   * 结果里的子会话 id（父会话也在结果里）。
+   *
+   * 子会话不能单独取消勾选：v2 删除父会话会连带删掉整棵子树，只保留子会话
+   * 会留下 parent_id 悬空的孤儿（会话页只显示根会话，孤儿会凭空消失）。
+   * 前端据此把这些行置灰，只允许取消父会话。
+   *
+   * v1 不递归（删父不动子），没有孤儿问题，因此恒为空数组。
+   */
+  childSessionIds: string[];
+  v2?: CleanupSideDTO | null;       // v2 数据明细（v2 / 混合库才有）
+  legacy?: CleanupSideDTO | null;   // 旧版副本明细（混合库才有）
 }
 
 export interface CleanupResultDTO {
@@ -297,6 +374,9 @@ export interface CleanupResultDTO {
   freedBytes: number;
   vacuumBefore: number;
   vacuumAfter: number;
+  vacuumError?: string | null;      // VACUUM 失败原因（删除已生效，仅空间未回收）
+  v2?: CleanupSideDTO | null;       // v2 侧删除计数
+  legacy?: CleanupSideDTO | null;   // 旧版副本侧删除计数
 }
 
 export type CleanupStrategy = 'time' | 'size' | 'project';
@@ -323,6 +403,14 @@ export interface BackupPreviewDTO extends BackupDTO {
   sessionCount: number;
   messageCount: number;
   partCount: number;
+  /**
+   * 备份是不是 v2 数据库：v2 备份没有 part 表，part_count 的语义是
+   * session_message 行数（与仪表盘口径一致），前端据此不展示 Part 行。
+   *
+   * 后端始终返回该字段（无法探测时按 false 处理）；保持可选是为了兼容
+   * 旧后端：字段缺失时按 v1 处理。
+   */
+  isV2?: boolean;
 }
 
 // Todo DTOs
@@ -347,8 +435,9 @@ export interface TodoFilterByParent {
 // Session Share DTO
 export interface SessionShareDTO {
   session_id: string;
-  id: string;
-  secret: string;
+  // v1 由 session_share 表提供；v2 只有 share_url，因此这两个字段可为 null
+  id?: string | null;
+  secret?: string | null;
   url: string;
   time_created: number;
 }
