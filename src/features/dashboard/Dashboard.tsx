@@ -56,7 +56,7 @@ import PageHeader from '@/components/PageHeader'
 import TooltipHint from '@/components/TooltipHint'
 import SchemaBlockedState from '@/features/datasource/SchemaBlockedState'
 import { useSchemaStatus, useOptionalDataSource } from '@/features/datasource/useDataSource'
-import { formatBytes, formatNumber, formatLargeNumber, sumTokenTotal, toLocalDateString } from '@/lib/format'
+import { formatBytes, formatNumber, formatLargeNumber, sumTokenTotal, toLocalDateString, toLocalDateStringDaysAgo, subtractLocalDays, calendarDayDiff } from '@/lib/format'
 
 // ── 统计不可用时的统一占位 ─────────────────────────────────────
 // 后端拒绝或查询失败都落到这里：只给「暂不可用」，不再区分具体原因，
@@ -151,8 +151,9 @@ const DASHBOARD_TABS: { key: DashboardTab; label: string; icon: string }[] = [
   { key: 'trends', label: '趋势', icon: '📈' },
 ]
 
-// 本地日期格式 YYYY-MM-DD 现在是共享实现（@/lib/format 的 toLocalDateString），
-// 会话浏览页的日期筛选也用它，避免两页出现两套日期口径。
+// 本地日期格式 YYYY-MM-DD 与「减 N 个日历日」现在都是共享实现
+// （@/lib/format 的 toLocalDateString / toLocalDateStringDaysAgo / subtractLocalDays），
+// 会话浏览页的日期筛选也用它们，避免两页出现两套日期口径。
 
 /**
  * 模型排行返回体归一化：**同时兼容旧数组与新对象**。
@@ -189,14 +190,18 @@ function normalizeProviderStats(
  * 即 start 当天 00:00:00 到 end 当天 23:59:59，**两端都含**。
  * 所以「7 天」= `[今天−6, 今天]`（7 个自然日），而不是 `[今天−7, 今天]`
  * ——后者是 8 天，会让按钮文案与实际口径对不上。
+ *
+ * ⚠️ 起点必须用**日历日**减法（共享实现 toLocalDateStringDaysAgo）：
+ * 减毫秒（`Date.now() - n * 86_400_000`）在夏令时切换日会差一天
+ * ——春季跳表落在窗口内时区间变 8 天、秋季回拨落在窗口内时变 6 天。
  */
 function computeTimeRange(days: TimePreset, start?: string, end?: string): TimeRange | undefined {
   if (days === 'all') return undefined
   if (days === 'custom' && start && end) return { startDate: start, endDate: end }
   if (days === 'custom') return undefined
   const endDate = toLocalDateString(new Date())
-  // 含今日 → 起点是「今天 − (N−1) 天」
-  const startDate = toLocalDateString(new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000))
+  // 含今日 → 起点是「今天 − (N−1) 天」（日历日减法，夏令时安全）
+  const startDate = toLocalDateStringDaysAgo(days - 1)
   return { startDate, endDate }
 }
 
@@ -205,7 +210,7 @@ function computeTimeRange(days: TimePreset, start?: string, end?: string): TimeR
  *
  * 例如：当前 5/14 ~ 6/12（30 天）→ 上期 4/14 ~ 5/13（30 天）。
  *
- * 按**日历日**推（`new Date(y, m, d - n)`），不用毫秒差：
+ * 全部走**日历日**推算（共享实现 subtractLocalDays / calendarDayDiff），不用毫秒差：
  * 毫秒差在夏令时切换的区间里会差 1 小时，可能把上期算成少一天 / 多一天，
  * 「等长」就不成立了。
  */
@@ -217,15 +222,12 @@ function computePrevTimeRange(current: TimeRange | undefined): TimeRange | undef
   const end = new Date(y2, m2 - 1, d2)
   if (end.getTime() <= start.getTime()) return undefined
   // 当前区间含端点的自然日数量（上期必须与它等长）
-  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1
+  // 用纯日历日差（UTC 解析），不受夏令时影响
+  const days = calendarDayDiff(current.startDate, current.endDate) + 1
   // 上期 endDate = 当前 startDate - 1 天（紧邻，不重叠）
-  const prevEnd = new Date(start.getFullYear(), start.getMonth(), start.getDate() - 1)
+  const prevEnd = subtractLocalDays(start, 1)
   // 上期 startDate = 上期 endDate 再往前推 (天数 − 1) 天
-  const prevStart = new Date(
-    prevEnd.getFullYear(),
-    prevEnd.getMonth(),
-    prevEnd.getDate() - (days - 1),
-  )
+  const prevStart = subtractLocalDays(prevEnd, days - 1)
   return {
     startDate: toLocalDateString(prevStart),
     endDate: toLocalDateString(prevEnd),
@@ -1947,7 +1949,12 @@ function Dashboard() {
               )}
               {providerGap && (
                 <p className="mt-1 text-xs text-gray-400">
-                  另有 {formatNumber(providerGap.sessionCount)} 个会话未记录服务商，合计 {formatLargeNumber(providerGap.tokenCount)} tokens 未计入上方统计
+                  {/*
+                    ⚠️ 措辞必须指向**服务商统计**，不能写「上方统计」：
+                    这些会话**有** model、是出现在上方模型图表里的，
+                    只是取不到 providerID。「上方统计」会被读成整张卡片。
+                  */}
+                  另有 {formatNumber(providerGap.sessionCount)} 个会话未记录服务商，合计 {formatLargeNumber(providerGap.tokenCount)} tokens 未计入上方服务商统计
                 </p>
               )}
               </SliceSurface>

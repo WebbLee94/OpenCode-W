@@ -365,25 +365,19 @@ function mockDashboardIpc(overrides: Record<string, unknown> = {}) {
 
 // ── 时间范围口径 ────────────────────────────────────────────────────────
 
-function toLocalDateString(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-/** 今天往前推 N 天的本地日期串。 */
-function daysAgo(n: number): string {
-  return toLocalDateString(new Date(Date.now() - n * 24 * 60 * 60 * 1000))
-}
-
-/** 两个 YYYY-MM-DD 之间的天数差（后者 − 前者）。 */
+/**
+ * 两个 YYYY-MM-DD 之间的**自然日**差（后者 − 前者）。
+ *
+ * 两端按 UTC 解析 → 纯日历日差，与夏令时 / 本地时区无关。
+ *
+ * ⚠️ 这里刻意**不复刻**实现的「减毫秒」公式（`Date.now() - n * 86_400_000`）：
+ * 那种断言在夏令时切换日会跟着实现**一起错**，照样是绿的，抓不到 DST 缺陷。
+ * 这里的期望值一律是**字面日期串**（时区 + 时钟都钉死），断言钉的是日历语义。
+ */
 function dayDiff(from: string, to: string): number {
   const [y1, m1, d1] = from.split('-').map(Number)
   const [y2, m2, d2] = to.split('-').map(Number)
-  return Math.round(
-    (new Date(y2, m2 - 1, d2).getTime() - new Date(y1, m1 - 1, d1).getTime()) / 86_400_000,
-  )
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000)
 }
 
 /** 最近一次「区间型」请求带的时间范围（统计类 IPC 的 payload 就是区间本身）。 */
@@ -400,6 +394,25 @@ function lastRequestedRange(): { startDate: string; endDate: string } | null {
 }
 
 describe('Dashboard 时间范围口径', () => {
+  const ORIGINAL_TZ = process.env.TZ
+
+  beforeEach(() => {
+    // 固定时区 + 固定时钟 →「今天」是确定的本地日历日，
+    // 期望值才能写成**字面日期串**（而不是跟着实现公式一起错）。
+    process.env.TZ = 'Asia/Shanghai'
+    // 只伪造 Date（定时器保持真实，testing-library 的 waitFor 才能正常轮询）
+    vi.useFakeTimers({ toFake: ['Date'] })
+    // 本地 2026-10-24 00:30 (+08:00) = 2026-10-23T16:30Z
+    vi.setSystemTime(new Date('2026-10-23T16:30:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    // 还原时区：process.env.TZ = undefined 会写成字符串 "undefined"
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ
+    else process.env.TZ = ORIGINAL_TZ
+  })
+
   it('「7 天」预设覆盖含今日在内的 7 个自然日（起点 = 今天 − 6 天）', async () => {
     mockDashboardIpc()
     render(<MemoryRouter><Dashboard /></MemoryRouter>)
@@ -409,8 +422,9 @@ describe('Dashboard 时间范围口径', () => {
 
     await waitFor(() => {
       const range = lastRequestedRange()
-      expect(range?.startDate).toBe(daysAgo(6))
-      expect(range?.endDate).toBe(daysAgo(0))
+      // 今天 = 2026-10-24（本地日历日）→ 7 天 = [10-18, 10-24]
+      expect(range?.startDate).toBe('2026-10-18')
+      expect(range?.endDate).toBe('2026-10-24')
     })
 
     // 端点相差 6 天 → 区间含 7 个自然日（含今日）
@@ -426,16 +440,16 @@ describe('Dashboard 时间范围口径', () => {
     fireEvent.click(screen.getByRole('button', { name: '30天' }))
     await waitFor(() => {
       const range = lastRequestedRange()
-      expect(range?.startDate).toBe(daysAgo(29))
-      expect(range?.endDate).toBe(daysAgo(0))
+      expect(range?.startDate).toBe('2026-09-25')
+      expect(range?.endDate).toBe('2026-10-24')
     })
     expect(dayDiff(lastRequestedRange()!.startDate, lastRequestedRange()!.endDate)).toBe(29)
 
     fireEvent.click(screen.getByRole('button', { name: '90天' }))
     await waitFor(() => {
       const range = lastRequestedRange()
-      expect(range?.startDate).toBe(daysAgo(89))
-      expect(range?.endDate).toBe(daysAgo(0))
+      expect(range?.startDate).toBe('2026-07-27')
+      expect(range?.endDate).toBe('2026-10-24')
     })
     expect(dayDiff(lastRequestedRange()!.startDate, lastRequestedRange()!.endDate)).toBe(89)
   })
@@ -465,11 +479,114 @@ describe('Dashboard 时间范围口径', () => {
     const prev = ranges[0]
     const current = ranges[ranges.length - 1]
 
-    // 当前区间含今日
-    expect(current.endDate).toBe(daysAgo(0))
+    // 默认 30 天 → 本期 [2026-09-25, 2026-10-24]，上期紧邻其前
+    expect(current.startDate).toBe('2026-09-25')
+    expect(current.endDate).toBe('2026-10-24')
+    expect(prev.startDate).toBe('2026-08-26')
+    expect(prev.endDate).toBe('2026-09-24')
     // 上期与当前**等长**（端点差相同 → 自然日数量相同）
     expect(dayDiff(prev.startDate, prev.endDate)).toBe(dayDiff(current.startDate, current.endDate))
     // 上期紧邻当前区间之前（不重叠、不留空档）
+    expect(dayDiff(prev.endDate, current.startDate)).toBe(1)
+  })
+})
+
+/**
+ * 夏令时切换日专项 —— 预设时间范围必须按**日历日**算。
+ *
+ * 背景：旧实现用 `Date.now() - (N−1) * 86_400_000`（减毫秒）算起点，
+ * 跨过夏令时边界时本地墙钟偏移 ±1 小时 → 本地日期翻转一天：
+ *   - 春季跳表落在窗口内 → 区间变成 8 天
+ *   - 秋季回拨落在窗口内 → 区间变成 6 天
+ */
+describe('Dashboard 时间范围口径（夏令时切换日）', () => {
+  const ORIGINAL_TZ = process.env.TZ
+
+  beforeEach(() => {
+    process.env.TZ = 'America/New_York'
+    vi.useFakeTimers({ toFake: ['Date'] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ
+    else process.env.TZ = ORIGINAL_TZ
+  })
+
+  it('春季跳表（2026-03-08）落在窗口内：「7 天」仍是 7 个自然日', async () => {
+    // 本地 2026-03-14 00:30 (-04:00 EDT) = 2026-03-14T04:30Z
+    vi.setSystemTime(new Date('2026-03-14T04:30:00Z'))
+
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '7天' }))
+    await waitFor(() => {
+      const range = lastRequestedRange()
+      expect(range?.startDate).toBe('2026-03-08')
+      expect(range?.endDate).toBe('2026-03-14')
+    })
+
+    const range = lastRequestedRange()!
+    // 端点差恰好 6 天 → 区间含 7 个自然日（不是 8 天）
+    expect(dayDiff(range.startDate, range.endDate)).toBe(6)
+  })
+
+  it('秋季回拨（2026-11-01）落在窗口内：「7 天」仍是 7 个自然日', async () => {
+    // 本地 2026-11-02 23:30 (-05:00 EST) = 2026-11-03T04:30Z
+    vi.setSystemTime(new Date('2026-11-03T04:30:00Z'))
+
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '7天' }))
+    await waitFor(() => {
+      const range = lastRequestedRange()
+      expect(range?.startDate).toBe('2026-10-27')
+      expect(range?.endDate).toBe('2026-11-02')
+    })
+
+    const range = lastRequestedRange()!
+    // 端点差恰好 6 天 → 区间含 7 个自然日（不是 6 天）
+    expect(dayDiff(range.startDate, range.endDate)).toBe(6)
+  })
+
+  it('夏令时切换日：「对比上期」的上期仍与本期等长且紧邻', async () => {
+    // 本地 2026-03-14 00:30 (-04:00 EDT)
+    vi.setSystemTime(new Date('2026-03-14T04:30:00Z'))
+
+    mockDashboardIpc()
+    render(<MemoryRouter><Dashboard /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('根/子会话数')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '7天' }))
+    fireEvent.click(screen.getByRole('button', { name: /趋势/ }))
+
+    await waitFor(() => {
+      const ranges = invokeSafe.mock.calls
+        .filter(([channel]) => channel === IPC_CHANNELS.DASHBOARD_SESSION_TREND)
+        .map(([, payload]) => payload as { startDate?: string; endDate?: string })
+        .filter((p) => p.startDate && p.endDate)
+      expect(ranges.length).toBeGreaterThanOrEqual(2)
+    })
+
+    const ranges = invokeSafe.mock.calls
+      .filter(([channel]) => channel === IPC_CHANNELS.DASHBOARD_SESSION_TREND)
+      .map(([, payload]) => payload as { startDate: string; endDate: string })
+      .filter((p) => p.startDate && p.endDate)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate))
+
+    const prev = ranges[0]
+    const current = ranges[ranges.length - 1]
+
+    // 本期 [3/8, 3/14]（7 天），上期 [3/1, 3/7]（也是 7 天，紧邻）
+    expect(current.startDate).toBe('2026-03-08')
+    expect(current.endDate).toBe('2026-03-14')
+    expect(prev.startDate).toBe('2026-03-01')
+    expect(prev.endDate).toBe('2026-03-07')
+    expect(dayDiff(prev.startDate, prev.endDate)).toBe(dayDiff(current.startDate, current.endDate))
     expect(dayDiff(prev.endDate, current.startDate)).toBe(1)
   })
 })

@@ -57,6 +57,19 @@ const SCHEMA = {
 
 const TOOL_ROW = (name: string, count: number) => ({ toolName: name, count })
 
+/**
+ * 两个 YYYY-MM-DD 之间的**自然日**差（后者 − 前者）。
+ *
+ * 两端按 UTC 解析 → 纯日历日差，与夏令时 / 本地时区无关。
+ * 用来断言「区间含端点正好 N 个自然日」这条**口径**，
+ * 而不是复刻实现的减法公式。
+ */
+function calendarDaysBetween(a: string, b: string): number {
+  const [y1, m1, d1] = a.split('-').map(Number)
+  const [y2, m2, d2] = b.split('-').map(Number)
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000)
+}
+
 function basePlan(): StubPlan {
   return {
     respond: {
@@ -455,8 +468,7 @@ test.describe('请求生命周期（真实浏览器）', () => {
     expect(external, '动作 Link 不得引入网络请求').toEqual([])
   })
 
-  test('9 tooltip 口径词：趋势首行给日期、合计行说清是分桶合计', async ({ page }) => {
-    await page.goto('/#/')
+  test('9 tooltip 口径词：趋势首行给日期、合计行说清是分桶合计', async ({ page }) => {    await page.goto('/#/')
     await expect(page.getByText('30/0')).toBeVisible()
 
     // 概览：总计行标签说明这是「所选范围」合计
@@ -502,28 +514,47 @@ test.describe('请求生命周期（真实浏览器）', () => {
     await expect(tooltip).not.toContainText('Token 总计')
   })
 
-  test('11 时间范围预设：7 天 = 含今日在内的 7 个自然日', async ({ page }) => {
-    await page.goto('/#/')
-    await expect(page.getByText('30/0')).toBeVisible()
+  /**
+   * 时间范围口径 —— **固定时区 + 固定时钟**。
+   *
+   * 断言钉的是**日历语义**（「含今日在内的 7 个自然日」），不是「减毫秒」
+   * 推出来的同一个值：旧写法 `fmt(new Date(Date.now() - 6 * 86_400_000))`
+   * 在夏令时切换日会退到前一个本地日，断言就会跟着实现**一起错**，
+   * 照样是绿的，抓不到 DST 缺陷。
+   *
+   * 这里把时区（Asia/Shanghai）与时钟（2026-10-24 00:30 本地）都钉死，
+   * 期望值就能写成**字面日期串**，断言的是口径本身。
+   */
+  test.describe('时间范围口径（固定时区 + 固定时钟）', () => {
+    // 时区钉死 → 期望值可以写成字面日期串
+    test.use({ timezoneId: 'Asia/Shanghai' })
 
-    const before = await stub.callCount(CH.DASHBOARD_OVERVIEW)
-    await page.getByRole('button', { name: '7天' }).click()
-    await expect
-      .poll(() => stub.callCount(CH.DASHBOARD_OVERVIEW), { timeout: 5_000 })
-      .toBeGreaterThan(before)
+    test('11 时间范围预设：7 天 = 含今日在内的 7 个自然日', async ({ page }) => {
+      // 本地 2026-10-24 00:30 (+08:00) = 2026-10-23T16:30Z
+      await page.clock.setFixedTime(new Date('2026-10-23T16:30:00Z'))
+      await page.goto('/#/')
+      await expect(page.getByText('30/0')).toBeVisible()
 
-    // 后端窗口两端都含（start 00:00:00 ~ end 23:59:59），所以「7 天」
-    // 必须是 [今天−6, 今天]（7 个自然日），不能是 [今天−7, 今天]（8 天）。
-    const range = await page.evaluate(() => {
-      const bridge = (window as unknown as { __qa?: QaBridge }).__qa
-      const calls = (bridge?.log ?? []).filter(c => c.channel === 'dashboard_overview')
-      const last = calls[calls.length - 1]
-      return (last?.payload ?? {}) as { startDate?: string; endDate?: string }
+      const before = await stub.callCount(CH.DASHBOARD_OVERVIEW)
+      await page.getByRole('button', { name: '7天' }).click()
+      await expect
+        .poll(() => stub.callCount(CH.DASHBOARD_OVERVIEW), { timeout: 5_000 })
+        .toBeGreaterThan(before)
+
+      // 后端窗口两端都含（start 00:00:00 ~ end 23:59:59），所以「7 天」
+      // 必须是 [今天−6, 今天]（7 个自然日），不能是 [今天−7, 今天]（8 天）。
+      const range = await page.evaluate(() => {
+        const bridge = (window as unknown as { __qa?: QaBridge }).__qa
+        const calls = (bridge?.log ?? []).filter(c => c.channel === 'dashboard_overview')
+        const last = calls[calls.length - 1]
+        return (last?.payload ?? {}) as { startDate?: string; endDate?: string }
+      })
+
+      // 今天 = 2026-10-24 → 7 天 = [2026-10-18, 2026-10-24]
+      expect(range.startDate).toBe('2026-10-18')
+      expect(range.endDate).toBe('2026-10-24')
+      // 端点差恰好 6 天 → 含端点正好 7 个自然日
+      expect(calendarDaysBetween(range.startDate!, range.endDate!)).toBe(6)
     })
-
-    const fmt = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    expect(range.startDate).toBe(fmt(new Date(Date.now() - 6 * 86_400_000)))
-    expect(range.endDate).toBe(fmt(new Date()))
   })
 })

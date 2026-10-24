@@ -256,7 +256,13 @@ describe('UpdateSection 复制按钮（弱化图标 + 读屏反馈）', () => {
     // 命中区 28×28，触屏可用
     expect(cls).toContain('size-7')
     // 默认弱化 / hover 强化 / 焦点环 / 禁用态
-    expect(cls).toContain('text-gray-400')
+    //
+    // ⚠️ 静止态必须是 text-gray-500（对白底 4.76:1），
+    // **不能**是 text-gray-400（#99a1af 对白底只有 2.60:1）：
+    // 这个图标是按钮唯一的视觉标识（无文字、无边框），
+    // WCAG 1.4.11 要求非文本对比度 ≥ 3:1。
+    expect(cls).toContain('text-gray-500')
+    expect(cls).not.toContain('text-gray-400')
     expect(cls).toContain('hover:text-gray-700')
     expect(cls).toContain('hover:bg-gray-100')
     expect(cls).toContain('focus-visible:ring-2')

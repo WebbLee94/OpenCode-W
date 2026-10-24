@@ -39,13 +39,12 @@ function addDays(iso: string, n: number): string {
   return localDate(new Date(y, m - 1, d + n))
 }
 
-/** 两个 YYYY-MM-DD 之间的天数差（b − a） */
+/** 两个 YYYY-MM-DD 之间的天数差（b − a），按**纯日历日**算 */
 function daysBetween(a: string, b: string): number {
   const [y1, m1, d1] = a.split('-').map(Number)
   const [y2, m2, d2] = b.split('-').map(Number)
-  return Math.round(
-    (new Date(y2, m2 - 1, d2).getTime() - new Date(y1, m1 - 1, d1).getTime()) / 86_400_000,
-  )
+  // 两端按 UTC 解析 → 与夏令时 / 本地时区无关（本地午夜相减会带 ±1 小时偏移）
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000)
 }
 
 // ── 夹具 ────────────────────────────────────────────────────────────────
@@ -100,7 +99,13 @@ const PROVIDER_GAP = { tokenCount: 12_000, sessionCount: 7 }
 
 /** 缺口行的期望文案（口径词由 src/lib/format.ts 的 formatLargeNumber 决定） */
 const MODEL_GAP_TEXT = '另有 43 个会话未记录模型，合计 681.73 M tokens 未计入上方排行'
-const PROVIDER_GAP_TEXT = '另有 7 个会话未记录服务商，合计 12.00 K tokens 未计入上方统计'
+/**
+ * ⚠️ 服务商缺口必须写「未计入上方**服务商**统计」：
+ * 这些会话**有** model、是出现在上方模型图表里的，只是取不到 providerID。
+ * 写成「上方统计」会被读成整张卡片。
+ */
+const PROVIDER_GAP_TEXT =
+  '另有 7 个会话未记录服务商，合计 12.00 K tokens 未计入上方服务商统计'
 
 interface DashStubOptions {
   /** dashboard:tokens 带 groupBy 时的分组数据（趋势折线图） */
@@ -881,5 +886,131 @@ test.describe('E. 通用回归', () => {
     await page.goto('/#/settings')
     await expect(page.getByTestId('update-section')).toBeVisible()
     await docOverflow('设置')
+  })
+})
+
+/**
+ * F. 夏令时切换日 —— 预设时间范围必须按**日历日**算。
+ *
+ * 背景：旧实现用 `Date.now() - (N−1) * 86_400_000`（减毫秒）算起点，
+ * 跨过夏令时边界时本地墙钟偏移 ±1 小时 → 本地日期翻转一天：
+ *   - 春季跳表落在窗口内 → 区间变成 **8** 天
+ *   - 秋季回拨落在窗口内 → 区间变成 **6** 天
+ * （复现于 America/New_York：本地 00:30 与 23:30 两个时刻都会翻页。）
+ *
+ * 为什么必须是**真浏览器**：jsdom / Node 里改 `process.env.TZ` 不改变
+ * 已经在跑的页面的时区，而 Playwright 的 `timezoneId` 是给**浏览器上下文**
+ * 设的 —— 这正是「用户所在机器的时区」在真实运行时的样子。
+ */
+test.describe('F. 夏令时切换日（America/New_York）', () => {
+  // 有夏令时的时区；期望值因此才是「用户在切换日看到的区间」
+  test.use({ timezoneId: 'America/New_York' })
+
+  /** 读出最近一次 dashboard:overview 请求带的时间范围 */
+  async function lastOverviewRange(page: Page): Promise<{ startDate?: string; endDate?: string }> {
+    return page.evaluate(() => {
+      const bridge = (window as unknown as {
+        __qa?: { log: Array<{ channel: string; payload: unknown }> }
+      }).__qa
+      const calls = (bridge?.log ?? []).filter(c => c.channel === 'dashboard_overview')
+      return (calls[calls.length - 1]?.payload ?? {}) as {
+        startDate?: string
+        endDate?: string
+      }
+    })
+  }
+
+  /** 页面里的「今天」（本地日历日）——用来确认固定时钟落在预期的日子 */
+  async function localTodayInPage(page: Page): Promise<string> {
+    return page.evaluate(() => {
+      const d = new Date()
+      const p = (n: number) => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+    })
+  }
+
+  test('F1 春季跳表（2026-03-08）落在窗口内：7 天 = 含今日在内的 7 个自然日', async ({ page }) => {
+    // 本地 2026-03-14 00:30 (-04:00 EDT) = 2026-03-14T04:30Z
+    await page.clock.setFixedTime(new Date('2026-03-14T04:30:00Z'))
+    const stub = await installDashboardStub(page)
+    await page.goto('/#/')
+    await expect(page.getByText('30/0')).toBeVisible()
+
+    // 前提自检：页面里的「今天」确实是预期的本地日历日
+    expect(await localTodayInPage(page), '固定时钟没有落在预期的本地日历日').toBe('2026-03-14')
+
+    const before = await stub.callCount(CH.DASHBOARD_OVERVIEW)
+    await page.getByRole('button', { name: '7天' }).click()
+    await expect
+      .poll(() => stub.callCount(CH.DASHBOARD_OVERVIEW), { timeout: 5_000 })
+      .toBeGreaterThan(before)
+
+    const range = await lastOverviewRange(page)
+
+    // 春季跳表落在 [今天−6, 今天] 窗口内 → 起点必须是 3/8（不是 3/7）
+    expect(range.startDate, '春季跳表日的 7 天起点差了一天').toBe('2026-03-08')
+    expect(range.endDate).toBe('2026-03-14')
+    // 端点差恰好 6 天 → 含端点正好 7 个自然日（不是 8 天）
+    expect(daysBetween(range.startDate!, range.endDate!)).toBe(6)
+    expect(daysBetween(range.startDate!, range.endDate!) + 1).toBe(7)
+  })
+
+  test('F2 秋季回拨（2026-11-01）落在窗口内：7 天 = 含今日在内的 7 个自然日', async ({ page }) => {
+    // 本地 2026-11-02 23:30 (-05:00 EST) = 2026-11-03T04:30Z
+    await page.clock.setFixedTime(new Date('2026-11-03T04:30:00Z'))
+    const stub = await installDashboardStub(page)
+    await page.goto('/#/')
+    await expect(page.getByText('30/0')).toBeVisible()
+
+    expect(await localTodayInPage(page), '固定时钟没有落在预期的本地日历日').toBe('2026-11-02')
+
+    const before = await stub.callCount(CH.DASHBOARD_OVERVIEW)
+    await page.getByRole('button', { name: '7天' }).click()
+    await expect
+      .poll(() => stub.callCount(CH.DASHBOARD_OVERVIEW), { timeout: 5_000 })
+      .toBeGreaterThan(before)
+
+    const range = await lastOverviewRange(page)
+
+    // 秋季回拨落在 [今天−6, 今天] 窗口内 → 起点必须是 10/27（不是 10/28）
+    expect(range.startDate, '秋季回拨日的 7 天起点差了一天').toBe('2026-10-27')
+    expect(range.endDate).toBe('2026-11-02')
+    expect(daysBetween(range.startDate!, range.endDate!)).toBe(6)
+    expect(daysBetween(range.startDate!, range.endDate!) + 1).toBe(7)
+  })
+
+  test('F3 会话页「近一周」：夏令时切换日同样是 7 个自然日', async ({ page }) => {
+    // 本地 2026-03-14 00:30 (-04:00 EDT) = 2026-03-14T04:30Z
+    await page.clock.setFixedTime(new Date('2026-03-14T04:30:00Z'))
+    const stub = await installTauriStub(page, {
+      respond: {
+        [CH.DATABASE_INFO]: SCHEMA,
+        [CH.DATABASE_HEALTH]: HEALTH,
+        [CH.SESSIONS_PROJECTS]: [],
+        [CH.SESSIONS_LIST]: { data: [], total: 0, page: 1, pageSize: 20 },
+      },
+    })
+
+    await page.goto('/#/sessions')
+    // ⚠️ 触发器的可访问名会随预设变化，按**日历图标**定位，不能按文案定位。
+    const dropdown = page.locator('button:has(svg.lucide-calendar)')
+    await expect(dropdown).toBeVisible()
+
+    const before = await stub.callCount(CH.SESSIONS_LIST)
+    await dropdown.click()
+    await page.getByRole('button', { name: '近一周', exact: true }).click()
+    await expect
+      .poll(() => stub.callCount(CH.SESSIONS_LIST), { timeout: 5_000 })
+      .toBeGreaterThan(before)
+
+    const last = (await stub.payloads(CH.SESSIONS_LIST)).pop() as {
+      startDate?: string
+      endDate?: string
+    }
+
+    expect(last?.startDate, '春季跳表日的「近一周」起点差了一天').toBe('2026-03-08')
+    expect(last?.endDate).toBe('2026-03-14')
+    expect(daysBetween(last!.startDate!, last!.endDate!)).toBe(6)
+    expect(daysBetween(last!.startDate!, last!.endDate!) + 1).toBe(7)
   })
 })
